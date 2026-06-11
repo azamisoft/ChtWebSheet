@@ -393,9 +393,82 @@
         font-size: 14px;
       }
 
+      .cws-source-sec {
+        background: #7889b5;
+      }
+
+      .cws-source-layout {
+        display: grid;
+        gap: 28px;
+        max-width: 980px;
+        margin: 0 auto;
+        color: #fff;
+      }
+
+      .cws-source-sec .h2org {
+        color: #fff;
+      }
+
+      .cws-source-sec .h2org::after {
+        background: #fff;
+      }
+
+      .cws-source-card {
+        padding: 26px 24px;
+        border: 1px solid #d7ddee;
+        background: #fff;
+        box-shadow: 3px 5px 18px rgba(8, 14, 52, 0.2);
+      }
+
+      .cws-source-card h3 {
+        margin: 0 0 14px;
+        color: #1b1d25;
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1.4;
+      }
+
+      .cws-source-card p {
+        margin: 0;
+        color: #5f6673;
+        font-size: 15px;
+        line-height: 1.9;
+      }
+
+      .cws-source-button {
+        width: 100%;
+        min-height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin-top: 22px;
+        padding: 0 18px;
+        border: 1px solid #1d4ed8;
+        background: #fff;
+        color: #1d4ed8;
+        font-size: 16px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+
+      .cws-source-button:hover,
+      .cws-source-button:focus-visible {
+        background: #eef4ff;
+        color: #1d4ed8;
+        text-decoration: none;
+        transform: translateY(-1px);
+      }
+
       @media (min-width: 768px) {
         .cws-download-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .cws-source-layout {
+          grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+          align-items: center;
         }
       }
 
@@ -470,6 +543,7 @@
         <input type="radio" id="radio-cws1" name="cws-download-radio" value="#about" checked /><label for="radio-cws1">ChtWebSheetとは</label>
         <input type="radio" id="radio-cws2" name="cws-download-radio" value="#concept" /><label for="radio-cws2">コンセプト</label>
         <input type="radio" id="radio-cws3" name="cws-download-radio" value="#download" /><label for="radio-cws3">ダウンロード</label>
+        <input type="radio" id="radio-cws4" name="cws-download-radio" value="#source" /><label for="radio-cws4">ソースコード</label>
       </fieldset>
     </div>
 
@@ -602,6 +676,22 @@
 
                   <div class="cws-download-notes load-in-up">
                     <span data-download-app-name>Cht WebSheet</span> <span data-download-version>0.1.0</span> / <span data-download-company>株式会社CHT</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div id="source" class="cws-manual-anchor"></div>
+            <section class="srv_sec prd_sec cws-source-sec bgblue sec4 page-section">
+              <div class="contains-frm">
+                <div class="contains-wrap">
+                  <div class="cws-source-layout load-in-up">
+                    <h2 class="h2org">ソースコード</h2>
+                    <article class="cws-source-card">
+                      <h3>GitHub</h3>
+                      <p>Cht WebSheet は GPL-3.0-only ライセンスのもとで公開している HTML ネイティブのワークシート アプリケーションです。CWS HTML 形式、Excel ファイルの読み書き、数式計算、描画や編集 UI など、開発中のソースコードと更新状況を GitHub で確認できます。</p>
+                      <a class="cws-source-button" href="https://github.com/azamisoft/ChtWebSheet">GitHub で見る <i class="fa-solid fa-arrow-right"></i></a>
+                    </article>
                   </div>
                 </div>
               </div>

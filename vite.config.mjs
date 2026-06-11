@@ -159,7 +159,7 @@ async function createStandaloneHtmlForDroppedWorkbook(body) {
 
 function isWebSheetStandaloneHtml(value) {
   const text = String(value || "");
-  return (text.includes('id="websheet-model"') || text.includes('id="webexcel-model"')) && /websheet|webexcel/i.test(text);
+  return text.includes('id="websheet-model"') && /websheet/i.test(text);
 }
 
 function sanitizeOutputHtmlFileName(value) {

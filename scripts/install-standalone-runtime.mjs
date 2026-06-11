@@ -1,6 +1,6 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   standaloneRuntimeBaseUrl,
   standaloneRuntimeCurrentBaseUrl,
@@ -13,14 +13,6 @@ import {
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeDir = standaloneRuntimeDir();
 const currentRuntimeDir = standaloneRuntimeCurrentDir();
-const legacyWebExcelRuntimeDir = runtimeDir.replace(
-  `${path.sep}WebSheet${path.sep}`,
-  `${path.sep}WebExcel${path.sep}`,
-);
-const legacyWebExcelCurrentRuntimeDir = currentRuntimeDir.replace(
-  `${path.sep}WebSheet${path.sep}`,
-  `${path.sep}WebExcel${path.sep}`,
-);
 const publicRuntimeDir = path.join(projectRoot, "public", "download", "runtime", STANDALONE_RUNTIME_VERSION);
 const publicCurrentRuntimeDir = path.join(projectRoot, "public", "download", "runtime", STANDALONE_RUNTIME_CHANNEL);
 const distRuntimeDir = path.join(projectRoot, "dist", "download", "runtime", STANDALONE_RUNTIME_VERSION);
@@ -47,27 +39,10 @@ function standaloneRuntimeBootstrap(appShellHtml) {
 (async function () {
   "use strict";
   var currentScript = document.currentScript;
-  var modelElement = document.getElementById("websheet-model") || document.getElementById("webexcel-model");
+  var modelElement = document.getElementById("websheet-model");
   window.__WEBSHEET_STANDALONE__ = true;
-  window.__WEBEXCEL_STANDALONE__ = true;
-  if (!window.__WEBSHEET_STANDALONE_CONFIG__ && window.__WEBEXCEL_STANDALONE_CONFIG__) {
-    window.__WEBSHEET_STANDALONE_CONFIG__ = window.__WEBEXCEL_STANDALONE_CONFIG__;
-  }
-  if (!window.__WEBSHEET_LOCAL_SAVE_ENDPOINT__ && window.__WEBEXCEL_LOCAL_SAVE_ENDPOINT__) {
-    window.__WEBSHEET_LOCAL_SAVE_ENDPOINT__ = window.__WEBEXCEL_LOCAL_SAVE_ENDPOINT__;
-  }
-  if (!window.__WEBSHEET_RUNTIME_SOURCE__ && window.__WEBEXCEL_RUNTIME_SOURCE__) {
-    window.__WEBSHEET_RUNTIME_SOURCE__ = window.__WEBEXCEL_RUNTIME_SOURCE__;
-  }
-  if (!window.__WEBSHEET_LOCAL_RUNTIME_INFO__ && window.__WEBEXCEL_LOCAL_RUNTIME_INFO__) {
-    window.__WEBSHEET_LOCAL_RUNTIME_INFO__ = window.__WEBEXCEL_LOCAL_RUNTIME_INFO__;
-  }
-  if (!window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ && window.__WEBEXCEL_LOCAL_RUNTIME_STATUS__) {
-    window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ = window.__WEBEXCEL_LOCAL_RUNTIME_STATUS__;
-  }
   if (!window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ && window.__WEBSHEET_RUNTIME_SOURCE__ === "remote") {
     window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ = "missing";
-    window.__WEBEXCEL_LOCAL_RUNTIME_STATUS__ = "missing";
   }
   function workbookPayload(value) {
     var seen = [];
@@ -88,7 +63,7 @@ function standaloneRuntimeBootstrap(appShellHtml) {
       if (typeof candidate !== "object" || seen.indexOf(candidate) >= 0) continue;
       seen.push(candidate);
       if (Array.isArray(candidate.sheets) && candidate.sheets.length) return candidate;
-      ["model", "workbook", "workbookModel", "webSheetWorkbook", "webExcelWorkbook", "data", "payload"].forEach(function(key) {
+      ["model", "workbook", "workbookModel", "webSheetWorkbook", "data", "payload"].forEach(function(key) {
         if (candidate[key]) queue.push(candidate[key]);
       });
     }
@@ -121,12 +96,9 @@ function standaloneRuntimeBootstrap(appShellHtml) {
       window.__WEBSHEET_STANDALONE_MODEL_RAW__ = await decodeWorkbookModelScriptPayload(parsedModelPayload);
       var workbookModel = workbookPayload(window.__WEBSHEET_STANDALONE_MODEL_RAW__);
       if (workbookModel) window.__WEBSHEET_STANDALONE_MODEL__ = workbookModel;
-      window.__WEBEXCEL_STANDALONE_MODEL_RAW__ = window.__WEBSHEET_STANDALONE_MODEL_RAW__;
-      window.__WEBEXCEL_STANDALONE_MODEL__ = window.__WEBSHEET_STANDALONE_MODEL__;
     } catch (error) {
       window.__WEBSHEET_STANDALONE_MODEL_ERROR__ = error && error.message ? error.message : String(error);
-      window.__WEBEXCEL_STANDALONE_MODEL_ERROR__ = window.__WEBSHEET_STANDALONE_MODEL_ERROR__;
-      var boot = document.getElementById("websheetStandaloneBoot") || document.getElementById("webexcelStandaloneBoot");
+      var boot = document.getElementById("websheetStandaloneBoot");
       if (boot) {
         var detail = boot.querySelector("div") || boot;
         detail.textContent = "HTML ワークブックのデータを読み込めませんでした。WebSheet を起動中...";
@@ -286,8 +258,6 @@ function standaloneLauncherLoaderScript(config) {
     var localRuntime = await firstUsableLocalRuntime();
     window.__WEBSHEET_LOCAL_RUNTIME_INFO__ = localRuntime.info || null;
     window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ = localRuntime.status;
-    window.__WEBEXCEL_LOCAL_RUNTIME_INFO__ = window.__WEBSHEET_LOCAL_RUNTIME_INFO__;
-    window.__WEBEXCEL_LOCAL_RUNTIME_STATUS__ = window.__WEBSHEET_LOCAL_RUNTIME_STATUS__;
     if (localRuntime.status === "current") {
       await loadRuntime(localRuntime.base, "local");
       return;
@@ -319,17 +289,14 @@ function versionScript() {
   return `(function(){
   var info = { version: ${JSON.stringify(STANDALONE_RUNTIME_VERSION)} };
   window.__WEBSHEET_STANDALONE_RUNTIME_VERSION__ = info;
-  window.__WEBEXCEL_STANDALONE_RUNTIME_VERSION__ = info;
   if (typeof window.__WEBSHEET_RUNTIME_VERSION_PROBE__ === "function") {
     window.__WEBSHEET_RUNTIME_VERSION_PROBE__(info);
-  }
-  if (typeof window.__WEBEXCEL_RUNTIME_VERSION_PROBE__ === "function") {
-    window.__WEBEXCEL_RUNTIME_VERSION_PROBE__(info);
   }
 })();\n`;
 }
 
 async function writeRuntimeFiles(targetDir, baseUrl, assets) {
+  await rm(targetDir, { recursive: true, force: true });
   await mkdir(targetDir, { recursive: true });
   await copyFile(assets.appJsPath, path.join(targetDir, "websheet-app.js"));
   await copyFile(assets.appCssPath, path.join(targetDir, "websheet-standalone.css"));
@@ -343,40 +310,6 @@ async function writeRuntimeFiles(targetDir, baseUrl, assets) {
         version: STANDALONE_RUNTIME_VERSION,
         baseUrl,
         files: ["version.js", "websheet-standalone.js", "websheet-standalone.css", "websheet-app.js"],
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
-}
-
-async function writeLegacyWebExcelRuntimeFiles(targetDir, baseUrl, assets) {
-  await mkdir(targetDir, { recursive: true });
-  await copyFile(assets.appJsPath, path.join(targetDir, "websheet-app.js"));
-  await copyFile(assets.appJsPath, path.join(targetDir, "webexcel-app.js"));
-  await copyFile(assets.appCssPath, path.join(targetDir, "websheet-standalone.css"));
-  await copyFile(assets.appCssPath, path.join(targetDir, "webexcel-standalone.css"));
-  const bootstrap = standaloneRuntimeBootstrap(assets.appShellHtml);
-  await writeFile(path.join(targetDir, "websheet-standalone.js"), bootstrap, "utf8");
-  await writeFile(path.join(targetDir, "webexcel-standalone.js"), bootstrap, "utf8");
-  await writeFile(path.join(targetDir, "version.js"), versionScript(), "utf8");
-  await writeFile(
-    path.join(targetDir, "manifest.json"),
-    JSON.stringify(
-      {
-        name: "WebSheet legacy WebExcel runtime compatibility",
-        version: STANDALONE_RUNTIME_VERSION,
-        baseUrl,
-        files: [
-          "version.js",
-          "webexcel-standalone.js",
-          "webexcel-standalone.css",
-          "webexcel-app.js",
-          "websheet-standalone.js",
-          "websheet-standalone.css",
-          "websheet-app.js",
-        ],
       },
       null,
       2,
@@ -401,12 +334,10 @@ const launcherHtml = standaloneLauncherHtml({
 
 await writeRuntimeFiles(runtimeDir, standaloneRuntimeBaseUrl(), assets);
 await writeRuntimeFiles(currentRuntimeDir, standaloneRuntimeCurrentBaseUrl(), assets);
-await writeLegacyWebExcelRuntimeFiles(legacyWebExcelRuntimeDir, pathToFileURL(legacyWebExcelRuntimeDir).href, assets);
-await writeLegacyWebExcelRuntimeFiles(legacyWebExcelCurrentRuntimeDir, pathToFileURL(legacyWebExcelCurrentRuntimeDir).href, assets);
-await writeLegacyWebExcelRuntimeFiles(publicRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_VERSION}`, assets);
-await writeLegacyWebExcelRuntimeFiles(publicCurrentRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`, assets);
-await writeLegacyWebExcelRuntimeFiles(distRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_VERSION}`, assets);
-await writeLegacyWebExcelRuntimeFiles(distCurrentRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`, assets);
+await writeRuntimeFiles(publicRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_VERSION}`, assets);
+await writeRuntimeFiles(publicCurrentRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`, assets);
+await writeRuntimeFiles(distRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_VERSION}`, assets);
+await writeRuntimeFiles(distCurrentRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`, assets);
 await writeFile(path.join(projectRoot, "websheet-launcher.html"), launcherHtml, "utf8");
 await writeFile(path.join(projectRoot, "dist", "websheet-launcher.html"), launcherHtml, "utf8");
 
@@ -415,8 +346,6 @@ console.log(runtimeDir);
 console.log(standaloneRuntimeBaseUrl());
 console.log(currentRuntimeDir);
 console.log(standaloneRuntimeCurrentBaseUrl());
-console.log(legacyWebExcelRuntimeDir);
-console.log(legacyWebExcelCurrentRuntimeDir);
 console.log(publicRuntimeDir);
 console.log(publicCurrentRuntimeDir);
 console.log(path.join(projectRoot, "websheet-launcher.html"));

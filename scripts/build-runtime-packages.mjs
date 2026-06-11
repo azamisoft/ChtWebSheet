@@ -307,8 +307,6 @@ function starterLoaderScript(config) {
     var localRuntime = await firstUsableLocalRuntime();
     window.__WEBSHEET_LOCAL_RUNTIME_INFO__ = localRuntime.info || null;
     window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ = localRuntime.status;
-    window.__WEBEXCEL_LOCAL_RUNTIME_INFO__ = window.__WEBSHEET_LOCAL_RUNTIME_INFO__;
-    window.__WEBEXCEL_LOCAL_RUNTIME_STATUS__ = window.__WEBSHEET_LOCAL_RUNTIME_STATUS__;
     if (localRuntime.status === "current") {
       await loadRuntime(localRuntime.base, "local");
       return;
