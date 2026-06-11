@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+public/download/runtime/
+websheet-launcher.html
+.DS_Store
+*.log
+testfile/*.xlsx
+scripts/deploy-onamae.mjs

@@ -1,0 +1,579 @@
+{
+  "format": "CWS_HTML",
+  "appName": "Cht WebSheet",
+  "shortName": "CWS",
+  "schemaVersion": 1,
+  "guideUrl": "https://chtec.co.jp/cws/ai/cws-html-guide-v1.json",
+  "editableRegion": "script#websheet-model",
+  "notice": "This is the public AI editing guide for Cht WebSheet (CWS) HTML workbooks. A CWS HTML workbook stores the real workbook data as JSON inside script#websheet-model. Edit only that JSON when changing workbook content.",
+  "identification": {
+    "purpose": "Use these markers to recognize whether an HTML file is a Cht WebSheet workbook.",
+    "positiveMatchRule": "Treat an HTML file as CWS when script#websheet-model exists and at least one explicit CWS marker exists.",
+    "markers": {
+      "htmlRoot": {
+        "selector": "html",
+        "attributes": {
+          "data-cws-format": "CWS_HTML",
+          "data-cws-schema-version": "1",
+          "data-cws-app": "CWS"
+        }
+      },
+      "metaTags": [
+        {
+          "name": "cws:format",
+          "content": "CWS_HTML"
+        },
+        {
+          "name": "cws:schema-version",
+          "content": "1"
+        },
+        {
+          "name": "cws:guide",
+          "content": "https://chtec.co.jp/cws/ai/cws-html-guide-v1.json"
+        }
+      ],
+      "modelScript": {
+        "selector": "script#websheet-model",
+        "type": "application/json",
+        "data-cws-model": "workbook",
+        "editable": true
+      },
+      "instructionScript": {
+        "selector": "script#cws-ai-instructions",
+        "type": "application/json"
+      }
+    },
+    "confidence": {
+      "high": "script#websheet-model exists and html[data-cws-format] or meta[name=cws:format] exists.",
+      "medium": "script#websheet-model and script#cws-ai-instructions exist, but html/meta markers are missing.",
+      "low": "Only product text such as Cht WebSheet is found. Do not edit as CWS unless script#websheet-model is present."
+    }
+  },
+  "concept": {
+    "title": "人とAIが共に扱える、設計文書の新しい標準へ",
+    "lead": "CWS HTML 形式により、AI生成後の編集性・操作性・構造管理を高め、人とAIがより自然に設計意図を共有できるドキュメントインターフェースを提供します。",
+    "dataNote": "データ保存形式は JSON 形式です"
+  },
+  "editingRules": [
+    "Edit only the JSON inside script#websheet-model when changing workbook content.",
+    "Do not rewrite the whole HTML file.",
+    "Do not edit runtime JavaScript, CSS, loader code, script attributes, meta tags, or external links unless the user explicitly asks for those changes.",
+    "Preserve unknown fields. CWS may add fields that are not listed in this guide.",
+    "Preserve existing ids, sheet names, formulas, images, shapes, drawings, hyperlinks, defined names, comments, notes, filters, tables, page layout, print ranges, and references unless the requested edit requires updating them.",
+    "Use 1-based row and column numbers. A1 is row 1, col 1. B2 is row 2, col 2.",
+    "Cell map keys use row:col form, such as 1:1 for A1 and 3:2 for B3.",
+    "Keep JSON valid. Do not leave comments, trailing commas, or unescaped control characters in JSON.",
+    "When adding data, update rowCount and colCount if the new content is outside the current sheet size.",
+    "When changing a merged range, keep the visible value and style in the top-left cell unless the user requests another layout."
+  ],
+  "modelReference": {
+    "workbook": {
+      "description": "The root JSON object inside script#websheet-model.",
+      "commonFields": {
+        "version": "Internal CWS workbook model version. Preserve it unless migrating the whole model.",
+        "sourceName": "Original or saved file name.",
+        "fileName": "Display file name when present.",
+        "activeSheetId": "Current sheet id.",
+        "sheets": "Ordered sheet array.",
+        "definedNames": "Workbook-level named ranges and formulas.",
+        "theme": "Theme colors and font information when present.",
+        "calcMode": "Calculation settings when present.",
+        "metadata": "Additional CWS or imported Excel metadata. Preserve unknown values."
+      }
+    },
+    "sheet": {
+      "description": "One worksheet.",
+      "commonFields": {
+        "id": "Stable sheet id. Preserve for existing sheets.",
+        "name": "Sheet tab name.",
+        "rowCount": "Maximum row count currently materialized or required.",
+        "colCount": "Maximum column count currently materialized or required.",
+        "columns": "Column settings array. columns[col - 1].width is pixel width. hidden and style fields may exist.",
+        "rows": "Row settings array. rows[row - 1].height is pixel height. hidden and style fields may exist.",
+        "cells": "Object map keyed by row:col.",
+        "merges": "Merged cell ranges.",
+        "images": "Image objects and imported picture-like objects.",
+        "shapes": "Shape objects. Some imported drawings may be stored in images or drawingObjects depending on the source.",
+        "drawings": "Ink / pen strokes.",
+        "drawingObjects": "Imported object container when present. Preserve existing structure.",
+        "comments": "Threaded comments when stored separately from cells.",
+        "notes": "Legacy notes when stored separately from cells.",
+        "hyperlinks": "Sheet-level hyperlink records when present.",
+        "validations": "Data validation rules.",
+        "conditionalFormats": "Conditional formatting rules.",
+        "autoFilter": "Filter range and filter state.",
+        "sortState": "Sort settings.",
+        "tables": "Table definitions.",
+        "pageLayout": "Print, paper, margin, page break, and page view settings.",
+        "view": "Zoom, freeze panes, gridline visibility, page break preview, and other view settings.",
+        "protection": "Sheet protection settings."
+      }
+    },
+    "cell": {
+      "description": "One worksheet cell object. Store it in sheet.cells using a row:col key.",
+      "commonFields": {
+        "row": "1-based row number.",
+        "col": "1-based column number.",
+        "raw": "User-entered literal value. Use string, number, boolean, or null.",
+        "formula": "Formula text beginning with =, such as =SUM(A1:A3).",
+        "cached": "Cached formula result, if available.",
+        "display": "Rendered display text. Keep consistent with raw or formula when possible.",
+        "numberFormat": "Excel-like display format, such as yyyy/mm/dd or #,##0.",
+        "type": "Optional value type, such as string, number, boolean, date, formula.",
+        "css": "Cell visual style.",
+        "richText": "Runs for partial text styling. Preserve it when changing cell-level styles unless the user asks to replace all formatting.",
+        "borders": "Cell border styles.",
+        "hyperlink": "Direct hyperlink for this cell.",
+        "note": "Legacy note / memo for this cell.",
+        "comment": "Threaded comment or comment reference for this cell.",
+        "validation": "Data validation attached directly to this cell.",
+        "locked": "Protection flag when present.",
+        "hidden": "Hidden formula/value flag when present."
+      },
+      "styleFields": {
+        "fontFamily": "Font family, such as MS Pゴシック.",
+        "fontSize": "Font size, usually with pt suffix or px depending on existing data.",
+        "fontWeight": "normal, bold, or numeric string such as 700.",
+        "fontStyle": "normal or italic.",
+        "textDecoration": "underline, double-underline, line-through, or combined value when present.",
+        "color": "Text color. Use #RRGGBB when adding new values.",
+        "backgroundColor": "Fill color. Use #RRGGBB or transparent.",
+        "textAlign": "left, center, right, justify.",
+        "verticalAlign": "top, middle, bottom.",
+        "whiteSpace": "normal, nowrap, pre-wrap, or break-spaces.",
+        "wrapText": "Boolean wrap setting when present.",
+        "indent": "Indent level.",
+        "rotation": "Text rotation angle when present."
+      },
+      "borderFields": {
+        "top": "Top border object.",
+        "right": "Right border object.",
+        "bottom": "Bottom border object.",
+        "left": "Left border object.",
+        "diagonalUp": "Diagonal border when present.",
+        "diagonalDown": "Diagonal border when present.",
+        "borderObject": {
+          "style": "solid, dashed, dotted, double, hair, medium, thick, or existing style value.",
+          "width": "Pixel width or imported width value.",
+          "color": "Border color."
+        }
+      },
+      "richTextRun": {
+        "text": "The run text.",
+        "css": "Style only for this run. Do not delete existing runs when only changing cell-level layout."
+      }
+    },
+    "range": {
+      "fields": {
+        "top": "Top row, 1-based.",
+        "left": "Left column, 1-based.",
+        "bottom": "Bottom row, 1-based.",
+        "right": "Right column, 1-based."
+      }
+    },
+    "merge": {
+      "fields": {
+        "top": "Top row.",
+        "left": "Left column.",
+        "bottom": "Bottom row.",
+        "right": "Right column."
+      },
+      "rule": "The visible value should normally remain in the top-left cell."
+    },
+    "image": {
+      "description": "A raster image or imported picture.",
+      "commonFields": {
+        "id": "Stable image id.",
+        "name": "Display name when present.",
+        "src": "data:image/...;base64,... or a URL that CWS can load.",
+        "left": "X position in sheet pixels.",
+        "top": "Y position in sheet pixels.",
+        "width": "Displayed width in pixels.",
+        "height": "Displayed height in pixels.",
+        "rotation": "Rotation degrees.",
+        "crop": "Crop settings when present.",
+        "zIndex": "Object stacking order when present.",
+        "alt": "Alternative text when present.",
+        "locked": "Protection flag when present."
+      }
+    },
+    "shape": {
+      "description": "A vector-like shape. Unsupported imported shapes may be preserved as fallback rectangles with original metadata.",
+      "commonFields": {
+        "id": "Stable shape id.",
+        "name": "Display name.",
+        "type": "Shape type, such as rect, roundRect, ellipse, triangle, line, arrow, callout, cloudCallout, star, explosion, connector, freeform.",
+        "left": "X position in sheet pixels.",
+        "top": "Y position in sheet pixels.",
+        "width": "Outer width in pixels.",
+        "height": "Outer height in pixels.",
+        "rotation": "Rotation degrees.",
+        "fill": "Fill color or fill object.",
+        "stroke": "Line color or stroke object.",
+        "strokeWidth": "Line width.",
+        "dash": "Dash pattern when present.",
+        "opacity": "0 to 1 opacity.",
+        "text": "Shape text. Use newline characters for line breaks.",
+        "textStyle": "Text style inside the shape.",
+        "adjustments": "Shape adjustment handles, such as callout pointer location or star depth.",
+        "connectors": "Connection info for line endpoints when present.",
+        "zIndex": "Object stacking order when present.",
+        "originalPreset": "Imported DrawingML preset. Preserve it."
+      }
+    },
+    "connector": {
+      "description": "A line or arrow that may connect to shapes or images.",
+      "commonFields": {
+        "type": "line, straightConnector, elbowConnector, curvedConnector, arrow, doubleArrow, etc.",
+        "x1": "Start x when stored as endpoints.",
+        "y1": "Start y when stored as endpoints.",
+        "x2": "End x when stored as endpoints.",
+        "y2": "End y when stored as endpoints.",
+        "start": "Start endpoint or connection object when present.",
+        "end": "End endpoint or connection object when present.",
+        "startConnection": "Connected object id and connection point when present.",
+        "endConnection": "Connected object id and connection point when present.",
+        "stroke": "Line color.",
+        "strokeWidth": "Line width.",
+        "startArrow": "Start arrow style.",
+        "endArrow": "End arrow style."
+      }
+    },
+    "drawing": {
+      "description": "Ink / pen stroke.",
+      "commonFields": {
+        "id": "Stable drawing id.",
+        "points": "Point array. Each point normally has x and y.",
+        "stroke": "Stroke color.",
+        "width": "Stroke width.",
+        "opacity": "0 to 1 opacity.",
+        "tool": "pen, highlighter, eraser, etc. when present."
+      }
+    },
+    "autoFilter": {
+      "description": "Filter range and per-column filter conditions.",
+      "commonFields": {
+        "range": "A range object.",
+        "columns": "Filter state per column.",
+        "criteria": "Filter criteria when present."
+      }
+    },
+    "table": {
+      "description": "Excel-like table definition.",
+      "commonFields": {
+        "id": "Table id.",
+        "name": "Table name.",
+        "range": "Table range.",
+        "headerRow": "Whether the table has headers.",
+        "totalsRow": "Whether the table has totals.",
+        "style": "Table style name or object.",
+        "columns": "Table column metadata."
+      }
+    },
+    "pageLayout": {
+      "description": "Print and page display settings.",
+      "commonFields": {
+        "printArea": "Print range, usually {range:{top,left,bottom,right}}.",
+        "orientation": "portrait or landscape.",
+        "paperSize": "A4, Letter, etc.",
+        "scale": "Print scale percentage.",
+        "fitToWidth": "Fit to page width count when present.",
+        "fitToHeight": "Fit to page height count when present.",
+        "margins": "top, bottom, left, right, header, footer.",
+        "pageBreaks": "Manual horizontal and vertical page breaks.",
+        "centerHorizontally": "Horizontal centering.",
+        "centerVertically": "Vertical centering.",
+        "printGridlines": "Whether to print gridlines.",
+        "printHeadings": "Whether to print row/column headings."
+      }
+    },
+    "view": {
+      "description": "Screen display state.",
+      "commonFields": {
+        "zoom": "Sheet zoom percentage.",
+        "mode": "normal, pageLayout, pageBreakPreview, etc.",
+        "showGridlines": "Gridline visibility.",
+        "showHeadings": "Row/column heading visibility.",
+        "freezePanes": "Freeze pane settings.",
+        "scrollLeft": "Horizontal scroll position.",
+        "scrollTop": "Vertical scroll position."
+      }
+    }
+  },
+  "operationExamples": {
+    "writeCellB3": {
+      "description": "Write text to B3.",
+      "target": "sheets[0].cells['3:2']",
+      "value": {
+        "row": 3,
+        "col": 2,
+        "raw": "内容",
+        "display": "内容"
+      }
+    },
+    "writeFormulaC3": {
+      "description": "Write a formula to C3.",
+      "target": "sheets[0].cells['3:3']",
+      "value": {
+        "row": 3,
+        "col": 3,
+        "formula": "=SUM(A3:B3)",
+        "cached": 0,
+        "display": "0"
+      }
+    },
+    "styleCell": {
+      "description": "Apply fill, text color, bold, center alignment, and wrapping.",
+      "target": "cell.css",
+      "value": {
+        "backgroundColor": "#D9EAF7",
+        "color": "#1F4E79",
+        "fontWeight": "700",
+        "textAlign": "center",
+        "verticalAlign": "middle",
+        "wrapText": true
+      }
+    },
+    "partialTextStyle": {
+      "description": "Use richText when only part of the cell text has special formatting.",
+      "target": "cell.richText",
+      "value": [
+        {
+          "text": "重要",
+          "css": {
+            "fontWeight": "700",
+            "color": "#C00000"
+          }
+        },
+        {
+          "text": "な説明",
+          "css": {}
+        }
+      ]
+    },
+    "addBorders": {
+      "description": "Apply solid borders to all sides.",
+      "target": "cell.borders",
+      "value": {
+        "top": {
+          "style": "solid",
+          "width": 1,
+          "color": "#000000"
+        },
+        "right": {
+          "style": "solid",
+          "width": 1,
+          "color": "#000000"
+        },
+        "bottom": {
+          "style": "solid",
+          "width": 1,
+          "color": "#000000"
+        },
+        "left": {
+          "style": "solid",
+          "width": 1,
+          "color": "#000000"
+        }
+      }
+    },
+    "mergeA1C1": {
+      "description": "Merge A1:C1.",
+      "target": "sheets[0].merges",
+      "valueToPush": {
+        "top": 1,
+        "left": 1,
+        "bottom": 1,
+        "right": 3
+      }
+    },
+    "addHyperlink": {
+      "description": "Add a hyperlink to a cell.",
+      "target": "cell.hyperlink",
+      "value": {
+        "url": "https://example.com",
+        "tooltip": "リンクを開く"
+      }
+    },
+    "addNote": {
+      "description": "Add a legacy note / memo.",
+      "target": "cell.note",
+      "value": {
+        "text": "メモ本文",
+        "visible": false
+      }
+    },
+    "addComment": {
+      "description": "Add a threaded comment when the workbook uses cell-level comments.",
+      "target": "cell.comment",
+      "value": {
+        "thread": [
+          {
+            "author": "User",
+            "text": "コメント本文",
+            "createdAt": "2026-01-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    "addValidationList": {
+      "description": "Add a dropdown list validation.",
+      "target": "cell.validation",
+      "value": {
+        "type": "list",
+        "allowBlank": true,
+        "formula1": "A,B,C"
+      }
+    },
+    "addImage": {
+      "description": "Add a raster image.",
+      "target": "sheets[0].images",
+      "valueToPush": {
+        "id": "img-new-1",
+        "src": "data:image/png;base64,...",
+        "left": 80,
+        "top": 60,
+        "width": 240,
+        "height": 120,
+        "rotation": 0,
+        "zIndex": 10
+      }
+    },
+    "addShape": {
+      "description": "Add a rectangle shape with text.",
+      "target": "sheets[0].shapes",
+      "valueToPush": {
+        "id": "shape-new-1",
+        "type": "rect",
+        "left": 120,
+        "top": 80,
+        "width": 180,
+        "height": 80,
+        "fill": "#D9EAF7",
+        "stroke": "#4472C4",
+        "strokeWidth": 1,
+        "text": "説明",
+        "textStyle": {
+          "fontSize": "12pt",
+          "color": "#000000",
+          "textAlign": "center",
+          "verticalAlign": "middle"
+        }
+      }
+    },
+    "addConnector": {
+      "description": "Add a connector line or arrow. Preserve existing connection object structure if the file already uses one.",
+      "target": "sheets[0].shapes",
+      "valueToPush": {
+        "id": "shape-line-1",
+        "type": "line",
+        "x1": 100,
+        "y1": 100,
+        "x2": 240,
+        "y2": 160,
+        "stroke": "#4472C4",
+        "strokeWidth": 2,
+        "endArrow": "triangle"
+      }
+    },
+    "addInk": {
+      "description": "Add a pen stroke.",
+      "target": "sheets[0].drawings",
+      "valueToPush": {
+        "id": "ink-new-1",
+        "points": [
+          {
+            "x": 10,
+            "y": 10
+          },
+          {
+            "x": 80,
+            "y": 40
+          }
+        ],
+        "stroke": "#000000",
+        "width": 2,
+        "opacity": 1
+      }
+    },
+    "setFilterRange": {
+      "description": "Set an auto filter range.",
+      "target": "sheets[0].autoFilter",
+      "value": {
+        "range": {
+          "top": 1,
+          "left": 1,
+          "bottom": 20,
+          "right": 8
+        },
+        "columns": {}
+      }
+    },
+    "setPrintArea": {
+      "description": "Set the print area.",
+      "target": "sheets[0].pageLayout.printArea",
+      "value": {
+        "range": {
+          "top": 1,
+          "left": 1,
+          "bottom": 40,
+          "right": 8
+        }
+      }
+    },
+    "setSheetZoom": {
+      "description": "Set sheet zoom.",
+      "target": "sheets[0].view.zoom",
+      "value": 120
+    }
+  },
+  "fallbackPolicy": {
+    "unsupportedShape": "If an imported Excel shape type is not recognized by CWS, preserve its original metadata and use a rectangle fallback for display. Do not delete originalPreset or imported raw drawing data.",
+    "unknownField": "Preserve unknown object fields exactly.",
+    "largeBinary": "Do not regenerate image data unless the user asks to replace or compress the image."
+  },
+  "prompt": {
+    "title": "大規模言語モデル向けプロンプト例",
+    "lines": [
+      "この HTML ファイルが Cht WebSheet（CWS）HTML か確認してから編集してください。",
+      "",
+      "識別方法:",
+      "- script#websheet-model[type=application/json] が存在すること。",
+      "- さらに html[data-cws-format=CWS_HTML]、meta[name=cws:format]、script#cws-ai-instructions のいずれかが存在すること。",
+      "- meta[name=cws:guide] または script#cws-ai-instructions.guideUrl があれば、その URL の CWS guide も参照すること。",
+      "",
+      "編集してよい範囲:",
+      "- ワークブック内容を変更する場合、編集対象は script#websheet-model 内の JSON だけです。",
+      "- HTML/CSS/JS runtime、loader、script タグ属性、meta タグ、外部リンクは変更しないでください。",
+      "- JSON として妥当な形式を維持し、未知フィールドは削除せず保持してください。",
+      "",
+      "座標とセル:",
+      "- 行番号と列番号は 1 始まりです。A1 は row 1 / col 1、B2 は row 2 / col 2 です。",
+      "- sheet.cells のキーは row:col 形式です。A1 は 1:1、B3 は 3:2 です。",
+      "- セル値は raw、数式は formula、表示文字列は display、計算済み値は cached に保持します。",
+      "- セル書式は css、部分文字書式は richText、罫線は borders、リンクは hyperlink、メモは note、コメントは comment を使います。",
+      "",
+      "シート要素:",
+      "- 結合セルは sheet.merges に {top,left,bottom,right} で保持します。値と主な書式は左上セルに置きます。",
+      "- 列幅は sheet.columns[col - 1].width、行高は sheet.rows[row - 1].height を使います。",
+      "- フィルターは autoFilter、テーブルは tables、入力規則は validations または cell.validation、印刷設定は pageLayout、表示状態は view を使います。",
+      "",
+      "画像・図形・手書き:",
+      "- 画像は images に id、src、left、top、width、height、rotation、crop、zIndex を保持します。",
+      "- 図形は shapes または既存の drawing object 構造に、type、left、top、width、height、rotation、fill、stroke、strokeWidth、text、textStyle、adjustments、zIndex を保持します。",
+      "- 線・矢印・コネクタは endpoint または connection 情報を壊さず保持します。",
+      "- 手書き線は drawings に points、stroke、width、opacity を保持します。",
+      "- 未対応の Excel 図形は矩形 fallback で表示される場合がありますが、originalPreset や imported raw drawing data は削除しないでください。",
+      "",
+      "変更例:",
+      "- B3 に値を書く: sheets[0].cells['3:2'] = { row:3, col:2, raw:'内容', display:'内容' }",
+      "- C3 に数式を書く: sheets[0].cells['3:3'] = { row:3, col:3, formula:'=SUM(A3:B3)', cached:0, display:'0' }",
+      "- A1:C1 を結合: sheets[0].merges.push({ top:1, left:1, bottom:1, right:3 })",
+      "- 背景色と文字色: cell.css.backgroundColor = '#D9EAF7'; cell.css.color = '#1F4E79'",
+      "- 画像追加: sheets[0].images.push({ id:'img-new-1', src:'data:image/png;base64,...', left:80, top:60, width:240, height:120, rotation:0 })",
+      "- 図形追加: sheets[0].shapes.push({ id:'shape-new-1', type:'rect', left:120, top:80, width:180, height:80, fill:'#D9EAF7', stroke:'#4472C4', strokeWidth:1, text:'説明' })",
+      "",
+      "最後に、既存 id、シート名、数式参照、画像 data URL、図形接続、結合範囲、フィルター、印刷範囲を壊していないことを確認してください。"
+    ]
+  }
+}
