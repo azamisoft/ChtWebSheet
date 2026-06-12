@@ -46,6 +46,14 @@ function standaloneRuntimeBootstrap(appShellHtml) {
   if (!window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ && window.__WEBSHEET_RUNTIME_SOURCE__ === "remote") {
     window.__WEBSHEET_LOCAL_RUNTIME_STATUS__ = "missing";
   }
+  function clearWorkbookModelScriptText() {
+    if (!modelElement) return;
+    try {
+      modelElement.textContent = "";
+      modelElement.setAttribute("data-cws-runtime-cleared", "true");
+      window.__WEBSHEET_STANDALONE_MODEL_SCRIPT_CLEARED__ = true;
+    } catch (error) {}
+  }
   function workbookPayload(value) {
     var seen = [];
     var seenText = [];
@@ -123,7 +131,10 @@ function standaloneRuntimeBootstrap(appShellHtml) {
       var parsedModelPayload = JSON.parse(modelElement.textContent || "{}");
       window.__WEBSHEET_STANDALONE_MODEL_RAW__ = await decodeWorkbookModelScriptPayload(parsedModelPayload);
       var workbookModel = workbookPayload(window.__WEBSHEET_STANDALONE_MODEL_RAW__);
-      if (workbookModel) window.__WEBSHEET_STANDALONE_MODEL__ = workbookModel;
+      if (workbookModel) {
+        window.__WEBSHEET_STANDALONE_MODEL__ = workbookModel;
+        clearWorkbookModelScriptText();
+      }
     } catch (error) {
       window.__WEBSHEET_STANDALONE_MODEL_ERROR__ = error && error.message ? error.message : String(error);
       var boot = document.getElementById("websheetStandaloneBoot");
