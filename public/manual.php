@@ -43,8 +43,8 @@
     <link rel="stylesheet" href="https://chtec.co.jp/wp/wp-content/themes/rishun/css/jquery-ui.css?ver=1.13.2" media="all" />
     <link rel="stylesheet" href="https://chtec.co.jp/wp/wp-content/themes/rishun/assets/fontawesome/css/all.min.css?ver=6.2.0" media="all" />
     <link rel="stylesheet" href="https://chtec.co.jp/wp/wp-content/themes/rishun_child/pages/css/product.css?ver=20260508-141650" media="all" />
-    <link rel="icon" href="https://chtec.co.jp/wp/wp-content/uploads/2024/08/cropped-sitelogo-32x32.jpg" sizes="32x32" />
-    <link rel="apple-touch-icon" href="https://chtec.co.jp/wp/wp-content/uploads/2024/08/cropped-sitelogo-180x180.jpg" />
+    <link rel="icon" type="image/png" href="/cws/img/icon.png?v=20260612-margin1" />
+    <link rel="apple-touch-icon" href="/cws/img/icon.png?v=20260612-margin1" />
     <style>
       .cws-download-pgheader .ph_image {
         background-image: url("https://chtec.co.jp/wp/wp-content/themes/rishun_child/img/head/prod_h.jpg?v=20260428");
@@ -67,8 +67,14 @@
         min-width: 0;
       }
 
-      .cws-start-trial-button {
+      .cws-start-trial-cta {
         flex: 0 0 auto;
+        display: grid;
+        justify-items: end;
+        gap: 8px;
+      }
+
+      .cws-start-trial-button {
         min-height: 42px;
         display: inline-flex;
         align-items: center;
@@ -93,6 +99,27 @@
         text-decoration: none;
         opacity: 0.96;
         transform: translateY(-1px);
+      }
+
+      .cws-free-note {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        border: 1px solid #8be59a;
+        background: #effff1;
+        color: #08751a;
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1.35;
+        box-shadow: 2px 4px 12px rgba(0, 116, 24, 0.12);
+        white-space: nowrap;
+      }
+
+      .cws-free-note i {
+        color: #00a817;
+        font-size: 13px;
       }
 
       .cws-about-lead {
@@ -486,6 +513,10 @@
         .cws-start-trial-button {
           margin: 12px 0 0;
         }
+
+        .cws-start-trial-cta {
+          justify-items: start;
+        }
       }
 
       .cws-manual-anchor {
@@ -579,7 +610,10 @@
                   <div class="cws-about-intro load-in-up">
                     <div class="cws-section-title-row">
                       <h2 class="h2org">ChtWebSheetとは</h2>
-                      <a class="cws-start-trial-button" href="https://chtec.co.jp/cws/"><i class="fa-solid fa-arrow-up-right-from-square"></i>今すぐ使ってみる</a>
+                      <div class="cws-start-trial-cta">
+                        <a class="cws-start-trial-button" href="https://chtec.co.jp/cws/"><i class="fa-solid fa-arrow-up-right-from-square"></i>今すぐ使ってみる</a>
+                        <span class="cws-free-note"><i class="fa-solid fa-circle-check"></i>無料・インストール不要ですぐに利用できます</span>
+                      </div>
                     </div>
                     <p class="cws-about-lead">Cht WebSheet は、ブラウザーで動く HTML ネイティブの WorkSheet です。作成・保存の中心は CWS HTML ファイルであり、Excel 形式のファイルは取り込み・書き出し対象として扱えます。</p>
                     <figure class="cws-about-image">
@@ -597,7 +631,7 @@
                           </article>
                           <article class="cws-about-point">
                             <h3>Excel 形式対応</h3>
-                            <p>.xlsx / .xlsm などの Excel ファイルを開き、必要に応じて CWS HTML または Excel 形式へ保存できます。</p>
+                            <p>.xlsx / .xlsm / .xls などの Excel ファイルを開き、必要に応じて CWS HTML または Excel 形式へ保存できます。</p>
                           </article>
                           <article class="cws-about-point">
                             <h3>オフライン利用</h3>

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebSheet HTML Converter</title>
+    <link rel="icon" type="image/png" href="./img/icon.png?v=20260612-margin1" />
     <style>
       body[data-app-booting] {
         margin: 0;
@@ -67,7 +68,7 @@
   </head>
   <body data-app-booting>
     <div id="app" class="app">
-      <input id="fileInput" class="sr-only" type="file" accept=".xlsx,.xlsm" />
+      <input id="fileInput" class="sr-only" type="file" accept=".xlsx,.xlsm,.xls" />
       <input id="pageBackgroundInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp" />
 
       <main class="workspace">
@@ -84,7 +85,7 @@
           <div id="dropZone" class="drop-zone">
             <i data-lucide="file-up"></i>
             <h2>Excel ファイルをここにドロップ</h2>
-            <p>.xlsx / .xlsm に対応しています。数式は HyperFormula で計算し、基本スタイル、結合セル、リンク、ドロップダウン リストをできるだけ保持します。</p>
+            <p>.xlsx / .xlsm / .xls に対応しています。数式は HyperFormula で計算し、基本スタイル、結合セル、リンク、ドロップダウン リストをできるだけ保持します。</p>
             <label class="button button-primary" for="fileInput">
               <i data-lucide="upload"></i>
               <span>ファイルを選択</span>

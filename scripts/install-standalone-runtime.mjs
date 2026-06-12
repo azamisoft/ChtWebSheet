@@ -19,6 +19,8 @@ const distRuntimeDir = path.join(projectRoot, "dist", "download", "runtime", STA
 const distCurrentRuntimeDir = path.join(projectRoot, "dist", "download", "runtime", STANDALONE_RUNTIME_CHANNEL);
 const sourceIndexPath = path.join(projectRoot, "index.html");
 const distIndexPath = path.join(projectRoot, "dist", "index.html");
+const iconPath = path.join(projectRoot, "public", "img", "icon.png");
+const appIconVersion = "20260612-margin1";
 const runtimeBuildId = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
 
 function extractBodyShell(source) {
@@ -122,11 +124,13 @@ function standaloneRuntimeBootstrap(appShellHtml) {
 }
 
 function standaloneLauncherHtml({ localBaseUrl, versionedLocalBaseUrl, remoteBaseUrl, versionedRemoteBaseUrl }) {
+  const iconHref = `${localBaseUrl.replace(/\/+$/, "")}/icon.png?v=${appIconVersion}`;
   return `<!doctype html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="${iconHref}" />
 <title>WebSheet Launcher</title>
 </head>
 <body>
@@ -300,6 +304,7 @@ async function writeRuntimeFiles(targetDir, baseUrl, assets) {
   await mkdir(targetDir, { recursive: true });
   await copyFile(assets.appJsPath, path.join(targetDir, "websheet-app.js"));
   await copyFile(assets.appCssPath, path.join(targetDir, "websheet-standalone.css"));
+  await copyFile(assets.iconPath, path.join(targetDir, "icon.png"));
   await writeFile(path.join(targetDir, "websheet-standalone.js"), standaloneRuntimeBootstrap(assets.appShellHtml), "utf8");
   await writeFile(path.join(targetDir, "version.js"), versionScript(), "utf8");
   await writeFile(
@@ -309,7 +314,7 @@ async function writeRuntimeFiles(targetDir, baseUrl, assets) {
         name: "WebSheet standalone runtime",
         version: STANDALONE_RUNTIME_VERSION,
         baseUrl,
-        files: ["version.js", "websheet-standalone.js", "websheet-standalone.css", "websheet-app.js"],
+        files: ["version.js", "icon.png", "websheet-standalone.js", "websheet-standalone.css", "websheet-app.js"],
       },
       null,
       2,
@@ -323,6 +328,7 @@ const assets = {
   appShellHtml: extractBodyShell(sourceIndex),
   appJsPath: extractBuiltAsset(distIndex, "js"),
   appCssPath: extractBuiltAsset(distIndex, "css"),
+  iconPath,
 };
 const launcherRemoteBaseUrl = process.env.WEBSHEET_REMOTE_RUNTIME_BASE_URL || `http://127.0.0.1:5173/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`;
 const launcherHtml = standaloneLauncherHtml({
