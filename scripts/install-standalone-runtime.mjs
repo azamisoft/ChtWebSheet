@@ -242,6 +242,31 @@ function standaloneLauncherLoaderScript(config) {
     });
     return result;
   }
+  function inferredUserRuntimeBaseUrls(){
+    var bases = [];
+    try {
+      var currentUrl = new URL(window.location.href);
+      if (currentUrl.protocol !== "file:") return bases;
+      var path = currentUrl.pathname || "";
+      var version = encodeURIComponent(config.version || "");
+      function add(root){
+        bases.push(root + "/current");
+        if (version) bases.push(root + "/" + version);
+      }
+      var macMatch = path.match(/^\\/Users\\/([^/]+)\\//);
+      if (macMatch) add("file:///Users/" + macMatch[1] + "/Library/Application%20Support/WebSheet/runtime");
+      var windowsMatch = path.match(/^\\/([A-Za-z]:)\\/Users\\/([^/]+)\\//);
+      if (windowsMatch) add("file:///" + windowsMatch[1] + "/Users/" + windowsMatch[2] + "/AppData/Roaming/WebSheet/runtime");
+      var linuxMatch = path.match(/^\\/home\\/([^/]+)\\//);
+      if (linuxMatch) add("file:///home/" + linuxMatch[1] + "/.local/share/WebSheet/runtime");
+    } catch {
+      // If the current file URL cannot be parsed, keep the configured candidates.
+    }
+    return bases;
+  }
+  function localRuntimeCandidates(){
+    return unique(inferredUserRuntimeBaseUrls().concat([config.localBaseUrl, config.versionedLocalBaseUrl]));
+  }
   function versionParts(value){
     return String(value || "").split(/[.-]/).map(function(part){
       var number = parseInt(part, 10);
@@ -264,7 +289,8 @@ function standaloneLauncherLoaderScript(config) {
   async function firstUsableLocalRuntime(){
     var firstInfo = null;
     var firstBase = "";
-    var candidates = unique([config.localBaseUrl, config.versionedLocalBaseUrl]);
+    var candidates = localRuntimeCandidates();
+    window.__WEBSHEET_LOCAL_RUNTIME_CANDIDATES__ = candidates.slice();
     for (var index = 0; index < candidates.length; index += 1) {
       var base = candidates[index];
       var info = await probeRuntimeVersion(base);
