@@ -21,7 +21,8 @@ const sourceIndexPath = path.join(projectRoot, "index.html");
 const distIndexPath = path.join(projectRoot, "dist", "index.html");
 const iconPath = path.join(projectRoot, "public", "img", "icon.png");
 const appIconVersion = "20260612-margin1";
-const runtimeBuildId = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+const runtimeUpdatedAt = new Date().toISOString();
+const runtimeBuildId = runtimeUpdatedAt.replace(/[-:.TZ]/g, "").slice(0, 14);
 
 function extractBodyShell(source) {
   const bodyMatch = source.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -354,7 +355,7 @@ function standaloneLauncherLoaderScript(config) {
 
 function versionScript() {
   return `(function(){
-  var info = { version: ${JSON.stringify(STANDALONE_RUNTIME_VERSION)} };
+  var info = { version: ${JSON.stringify(STANDALONE_RUNTIME_VERSION)}, updatedAt: ${JSON.stringify(runtimeUpdatedAt)} };
   window.__WEBSHEET_STANDALONE_RUNTIME_VERSION__ = info;
   if (typeof window.__WEBSHEET_RUNTIME_VERSION_PROBE__ === "function") {
     window.__WEBSHEET_RUNTIME_VERSION_PROBE__(info);
@@ -367,26 +368,50 @@ function standaloneClassicAppScript(source) {
     "window.__WEBSHEET_APP_SCRIPT_URL__=document.currentScript&&document.currentScript.src||document.baseURI;";
   const classicSource = String(source || "")
     .replaceAll("import.meta.url", "(window.__WEBSHEET_APP_SCRIPT_URL__||document.baseURI)")
+    .replace(/import\(\s*([`'"])(\.\/[^`'"]+\.js)\1\s*\)/g, 'import(new URL("$2", window.__WEBSHEET_APP_SCRIPT_URL__||document.baseURI).href)')
     .replace(/\n?export\s*\{[^}]*\};?\s*$/, "");
   return `${currentScriptUrl}\n${classicSource}`;
+}
+
+function extractDynamicImportChunkNames(source) {
+  const names = new Set();
+  const pattern = /import\(\s*([`'"])\.\/([^`'"]+\.js)\1\s*\)/g;
+  let match;
+  while ((match = pattern.exec(String(source || "")))) {
+    const name = path.basename(match[2]);
+    if (name) names.add(name);
+  }
+  return [...names].sort();
 }
 
 async function writeRuntimeFiles(targetDir, baseUrl, assets) {
   await rm(targetDir, { recursive: true, force: true });
   await mkdir(targetDir, { recursive: true });
-  await writeFile(path.join(targetDir, "websheet-app.js"), standaloneClassicAppScript(await readFile(assets.appJsPath, "utf8")), "utf8");
+  const appJsSource = await readFile(assets.appJsPath, "utf8");
+  const dynamicChunkNames = extractDynamicImportChunkNames(appJsSource);
+  await writeFile(path.join(targetDir, "websheet-app.js"), standaloneClassicAppScript(appJsSource), "utf8");
+  await Promise.all(dynamicChunkNames.map((fileName) => copyFile(path.join(path.dirname(assets.appJsPath), fileName), path.join(targetDir, fileName))));
   await copyFile(assets.appCssPath, path.join(targetDir, "websheet-standalone.css"));
   await copyFile(assets.iconPath, path.join(targetDir, "icon.png"));
   await writeFile(path.join(targetDir, "websheet-standalone.js"), standaloneRuntimeBootstrap(assets.appShellHtml), "utf8");
   await writeFile(path.join(targetDir, "version.js"), versionScript(), "utf8");
+  const runtimeFiles = [
+    "version.js",
+    "icon.png",
+    "websheet-standalone.js",
+    "websheet-standalone.css",
+    "websheet-app.js",
+    ...dynamicChunkNames,
+  ];
   await writeFile(
     path.join(targetDir, "manifest.json"),
     JSON.stringify(
       {
         name: "WebSheet standalone runtime",
         version: STANDALONE_RUNTIME_VERSION,
+        updatedAt: runtimeUpdatedAt,
         baseUrl,
-        files: ["version.js", "icon.png", "websheet-standalone.js", "websheet-standalone.css", "websheet-app.js"],
+        files: runtimeFiles,
       },
       null,
       2,
@@ -416,6 +441,7 @@ await writeRuntimeFiles(publicRuntimeDir, `/download/runtime/${STANDALONE_RUNTIM
 await writeRuntimeFiles(publicCurrentRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`, assets);
 await writeRuntimeFiles(distRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_VERSION}`, assets);
 await writeRuntimeFiles(distCurrentRuntimeDir, `/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`, assets);
+await updateDownloadVersionInfo();
 await writeFile(path.join(projectRoot, "websheet-launcher.html"), launcherHtml, "utf8");
 await writeFile(path.join(projectRoot, "dist", "websheet-launcher.html"), launcherHtml, "utf8");
 
@@ -434,4 +460,45 @@ function versionedRuntimeBaseUrl(baseUrl) {
     return `${text.slice(0, -STANDALONE_RUNTIME_CHANNEL.length)}${STANDALONE_RUNTIME_VERSION}`;
   }
   return text;
+}
+
+async function updateDownloadVersionInfo() {
+  const paths = [
+    path.join(projectRoot, "public", "download", "version.json"),
+    path.join(projectRoot, "dist", "download", "version.json"),
+  ];
+  await Promise.all(paths.map(async (targetPath) => {
+    let info = {};
+    try {
+      info = JSON.parse(await readFile(targetPath, "utf8"));
+    } catch {
+      info = {};
+    }
+    const nextInfo = {
+      appName: info.appName || "Cht WebSheet",
+      company: info.company || "株式会社CHT",
+      version: info.version || "0.1.0",
+      runtimeVersion: STANDALONE_RUNTIME_VERSION,
+      runtimeUpdatedAt,
+      updatedAt: runtimeUpdatedAt,
+      runtimeChannel: info.runtimeChannel || STANDALONE_RUNTIME_CHANNEL,
+      downloadPage: info.downloadPage || "https://chtec.co.jp/cws/manual/",
+      packages: downloadVersionPackages(info.packages),
+    };
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, `${JSON.stringify(nextInfo, null, 2)}\n`, "utf8");
+  }));
+}
+
+function downloadVersionPackages(packages = {}) {
+  return {
+    windows: {
+      label: packages.windows?.label || "Windows ランタイム パッケージ (.zip)",
+      href: `/cws/download/packages/ChtWebSheet-runtime-${STANDALONE_RUNTIME_VERSION}-windows.zip`,
+    },
+    macos: {
+      label: packages.macos?.label || "macOS ランタイム パッケージ (.zip)",
+      href: `/cws/download/packages/ChtWebSheet-runtime-${STANDALONE_RUNTIME_VERSION}-macos.zip`,
+    },
+  };
 }

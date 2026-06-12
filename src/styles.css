@@ -407,20 +407,23 @@ textarea {
 }
 
 .ribbon-tab-row {
+  position: relative;
   min-height: 22px;
   display: flex;
   align-items: stretch;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   border-bottom: 1px solid #edf0f5;
   padding: 0 8px;
 }
 
 .ribbon-tabs {
+  flex: 0 1 auto;
   display: flex;
   align-items: stretch;
   gap: 2px;
   min-width: 0;
+  max-width: min(66vw, 760px);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -466,9 +469,45 @@ textarea {
   border-bottom-color: #7c3aed;
 }
 
+.workbook-name-display {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  width: fit-content;
+  min-width: 0;
+  max-width: min(42vw, 420px);
+  height: 18px;
+  padding: 0 12px;
+  border: 1px solid #ddc7ff;
+  border-radius: 4px;
+  background: #f1e8ff;
+  color: #4c1d95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.workbook-name-display-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .ribbon-status {
-  min-width: 180px;
-  max-width: 34vw;
+  margin-left: auto;
+  flex: 0 1 220px;
+  min-width: 120px;
+  max-width: 26vw;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -11406,7 +11445,7 @@ body.is-drawing-ink .sheet-host {
 }
 
 .version-dialog {
-  width: min(500px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
   grid-template-rows: 32px minmax(0, 1fr) 46px;
 }
 
@@ -11444,19 +11483,45 @@ body.is-drawing-ink .sheet-host {
 
 .version-dialog-list {
   display: grid;
-  grid-template-columns: 124px minmax(0, 1fr);
-  column-gap: 12px;
-  row-gap: 5px;
+  gap: 5px;
   margin: 0 0 12px;
 }
 
-.version-dialog-list dt {
+.version-dialog-row {
+  display: grid;
+  grid-template-columns: 124px minmax(96px, 1fr) max-content;
+  align-items: baseline;
+  column-gap: 18px;
+}
+
+.version-dialog-label {
   color: #526173;
 }
 
-.version-dialog-list dd {
-  margin: 0;
+.version-dialog-value,
+.version-dialog-updated {
+  color: #111827;
   min-width: 0;
+}
+
+.version-dialog-updated {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .version-dialog-row {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    row-gap: 1px;
+  }
+
+  .version-dialog-label {
+    grid-column: 1 / -1;
+  }
+
+  .version-dialog-updated {
+    justify-self: start;
+  }
 }
 
 .version-dialog-benefit {
@@ -11975,16 +12040,23 @@ body.is-object-selection-mode .sheet-host {
   }
 
   .ribbon-tab-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0;
-    padding: 0 8px 6px;
+    align-items: stretch;
+    flex-direction: row;
+    gap: 4px;
+    padding: 0 6px;
+  }
+
+  .ribbon-tabs {
+    max-width: 68%;
+  }
+
+  .workbook-name-display {
+    max-width: 36vw;
+    padding-inline: 8px;
   }
 
   .ribbon-status {
-    justify-content: flex-start;
-    max-width: 100%;
-    min-height: 18px;
+    display: none;
   }
 
   .ribbon-panels {

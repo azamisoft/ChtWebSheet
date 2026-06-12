@@ -68,7 +68,7 @@
   </head>
   <body data-app-booting>
     <div id="app" class="app">
-      <input id="fileInput" class="sr-only" type="file" accept=".xlsx,.xlsm,.xls" />
+      <input id="fileInput" class="sr-only" type="file" accept=".html,.htm,.xlsx,.xlsm,.xls" />
       <input id="pageBackgroundInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp" />
 
       <main class="workspace">
@@ -84,12 +84,12 @@
         <section id="emptyState" class="empty-state hidden">
           <div id="dropZone" class="drop-zone">
             <i data-lucide="file-up"></i>
-            <h2>Excel ファイルをここにドロップ</h2>
-            <p>.xlsx / .xlsm / .xls に対応しています。数式は HyperFormula で計算し、基本スタイル、結合セル、リンク、ドロップダウン リストをできるだけ保持します。</p>
-            <label class="button button-primary" for="fileInput">
+            <h2>CWS HTML または Excel ファイルをここにドロップ</h2>
+            <p>.html / .xlsx / .xlsm / .xls に対応しています。数式は HyperFormula で計算し、基本スタイル、結合セル、リンク、ドロップダウン リストをできるだけ保持します。</p>
+            <button class="button button-primary" type="button" data-open-workbook-file>
               <i data-lucide="upload"></i>
               <span>ファイルを選択</span>
-            </label>
+            </button>
           </div>
         </section>
 
@@ -111,6 +111,9 @@
                   <span>ヘルプ</span>
                   <span class="ribbon-help-update-badge hidden" aria-hidden="true">!</span>
                 </button>
+              </div>
+              <div id="workbookNameDisplay" class="workbook-name-display" aria-label="現在のファイル名" title="未読み込み">
+                <span id="workbookNameDisplayText" class="workbook-name-display-text">未読み込み</span>
               </div>
               <div id="statusText" class="ribbon-status">Excel ファイルを選択してください。</div>
             </div>
