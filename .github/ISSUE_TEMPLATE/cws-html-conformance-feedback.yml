@@ -1,0 +1,44 @@
+name: CWS HTML conformance feedback
+description: Report validator, schema, example, or conformance issues for CWS HTML.
+title: "[CWS HTML conformance] "
+labels:
+  - cws-html
+  - conformance
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for CWS HTML schema, validator, conformance language, or valid/invalid example feedback.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Specification text
+        - JSON Schema
+        - Validator
+        - Valid example
+        - Invalid example
+        - AI editing guide
+        - Round-trip evidence
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the issue or ambiguity.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior or wording
+      description: If possible, describe the expected validator result, schema rule, or spec wording.
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample file or model excerpt
+      description: Paste a minimal excerpt or link to a file if it is safe to share.
+      render: json

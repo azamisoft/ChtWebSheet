@@ -1,0 +1,58 @@
+{
+  "testId": "real-export-smoke",
+  "generatedAt": "2026-06-12T09:00:18.444Z",
+  "appUrl": "http://127.0.0.1:5174/",
+  "files": {
+    "sourceWorkbook": "docs/evidence/generated/real-export-smoke/source.xlsx",
+    "exported": "docs/evidence/generated/real-export-smoke/exported.cws.html",
+    "edited": "docs/evidence/generated/real-export-smoke/edited.cws.html",
+    "resaved": "docs/evidence/generated/real-export-smoke/resaved.cws.html",
+    "report": "docs/evidence/generated/real-export-smoke/roundtrip-report.md"
+  },
+  "resave": {
+    "mode": "local-save-bridge",
+    "targetPath": "/Users/azami/ChtWebSheet/docs/evidence/generated/real-export-smoke/edited.cws.html",
+    "fileName": "edited.cws.html",
+    "pickerCalls": []
+  },
+  "validation": {
+    "exported": {
+      "status": 0,
+      "output": "OK docs/evidence/generated/real-export-smoke/exported.cws.html"
+    },
+    "edited": {
+      "status": 0,
+      "output": "OK docs/evidence/generated/real-export-smoke/edited.cws.html"
+    },
+    "resaved": {
+      "status": 0,
+      "output": "OK docs/evidence/generated/real-export-smoke/resaved.cws.html"
+    }
+  },
+  "report": {
+    "status": 0,
+    "output": "Wrote docs/evidence/generated/real-export-smoke/roundtrip-report.md"
+  },
+  "assertions": [
+    {
+      "ok": true,
+      "message": "Exported model should start before the AI-style edit."
+    },
+    {
+      "ok": true,
+      "message": "Edited model should set Evidence!C3 to Done."
+    },
+    {
+      "ok": true,
+      "message": "Resaved model should preserve the AI-style cell edit."
+    },
+    {
+      "ok": true,
+      "message": "Resaved model should preserve the unknown top-level cwsEvidence field."
+    },
+    {
+      "ok": true,
+      "message": "Standalone edited HTML should be saveable after reopening."
+    }
+  ]
+}

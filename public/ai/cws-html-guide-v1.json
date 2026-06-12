@@ -4,6 +4,7 @@
   "shortName": "CWS",
   "schemaVersion": 1,
   "guideUrl": "https://chtec.co.jp/cws/ai/cws-html-guide-v1.json",
+  "schemaUrl": "https://chtec.co.jp/cws/schema/cws-html-workbook-model-v1.schema.json",
   "editableRegion": "script#websheet-model",
   "notice": "This is the public AI editing guide for Cht WebSheet (CWS) HTML workbooks. A CWS HTML workbook stores the real workbook data as JSON inside script#websheet-model. Edit only that JSON when changing workbook content.",
   "identification": {
@@ -30,6 +31,10 @@
         {
           "name": "cws:guide",
           "content": "https://chtec.co.jp/cws/ai/cws-html-guide-v1.json"
+        },
+        {
+          "name": "cws:schema",
+          "content": "https://chtec.co.jp/cws/schema/cws-html-workbook-model-v1.schema.json"
         }
       ],
       "modelScript": {
@@ -56,6 +61,8 @@
   },
   "editingRules": [
     "Edit only the JSON inside script#websheet-model when changing workbook content.",
+    "For CWS HTML 1.0 AI-editable files, script#websheet-model should contain the plain workbook object, not a top-level encoded gzip/base64 wrapper.",
+    "Image binary payloads may be stored separately in assets.images and may use dataEncoding gzip-base64. This does not change the rule that sheets, cells, formulas, styles, and image metadata remain plain JSON.",
     "Do not rewrite the whole HTML file.",
     "Do not edit runtime JavaScript, CSS, loader code, script attributes, meta tags, or external links unless the user explicitly asks for those changes.",
     "Preserve unknown fields. CWS may add fields that are not listed in this guide.",
@@ -80,6 +87,25 @@
         "calcMode": "Calculation settings when present.",
         "metadata": "Additional CWS or imported Excel metadata. Preserve unknown values."
       }
+    },
+    "assets": {
+      "description": "Shared workbook assets. Image data may be stored here so sheet image objects can keep placement metadata readable while avoiding duplicated large payloads.",
+      "commonFields": {
+        "images": "Object map or array of reusable image assets. Sheet images can refer to entries by assetId."
+      }
+    },
+    "imageAsset": {
+      "description": "Reusable image binary payload and metadata.",
+      "commonFields": {
+        "mimeType": "Image media type, such as image/png or image/webp.",
+        "extension": "Preferred file extension.",
+        "width": "Intrinsic or optimized image width in pixels.",
+        "height": "Intrinsic or optimized image height in pixels.",
+        "data": "Base64 image bytes, or base64 gzip bytes when dataEncoding is gzip-base64.",
+        "dataEncoding": "Optional payload encoding. gzip-base64 means data is gzip-compressed image bytes encoded with base64.",
+        "uncompressedByteLength": "Original image byte count when known."
+      },
+      "editingRule": "Preserve image asset data exactly unless the user asks to replace, remove, or compress the image. AI agents can still edit workbook structure because image placement, dimensions, and references remain plain JSON."
     },
     "sheet": {
       "description": "One worksheet.",
@@ -194,7 +220,8 @@
         "crop": "Crop settings when present.",
         "zIndex": "Object stacking order when present.",
         "alt": "Alternative text when present.",
-        "locked": "Protection flag when present."
+        "locked": "Protection flag when present.",
+        "assetId": "Reference to workbook.assets.images when the binary payload is stored as a reusable asset."
       }
     },
     "shape": {
@@ -541,9 +568,12 @@
       "- script#websheet-model[type=application/json] が存在すること。",
       "- さらに html[data-cws-format=CWS_HTML]、meta[name=cws:format]、script#cws-ai-instructions のいずれかが存在すること。",
       "- meta[name=cws:guide] または script#cws-ai-instructions.guideUrl があれば、その URL の CWS guide も参照すること。",
+      "- meta[name=cws:schema] または script#cws-ai-instructions.schemaUrl があれば、その JSON Schema も参照すること。",
       "",
       "編集してよい範囲:",
       "- ワークブック内容を変更する場合、編集対象は script#websheet-model 内の JSON だけです。",
+      "- CWS HTML 1.0 の AI 編集用 profile では、script#websheet-model 全体を gzip/base64 にせず、明文の workbook JSON object にしてください。",
+      "- 画像の binary payload は assets.images に分離され、dataEncoding=gzip-base64 で圧縮される場合があります。セル、数式、書式、画像位置などの構造情報は明文 JSON のままです。",
       "- HTML/CSS/JS runtime、loader、script タグ属性、meta タグ、外部リンクは変更しないでください。",
       "- JSON として妥当な形式を維持し、未知フィールドは削除せず保持してください。",
       "",
@@ -559,7 +589,7 @@
       "- フィルターは autoFilter、テーブルは tables、入力規則は validations または cell.validation、印刷設定は pageLayout、表示状態は view を使います。",
       "",
       "画像・図形・手書き:",
-      "- 画像は images に id、src、left、top、width、height、rotation、crop、zIndex を保持します。",
+      "- 画像は images に id、src または assetId、left、top、width、height、rotation、crop、zIndex を保持します。",
       "- 図形は shapes または既存の drawing object 構造に、type、left、top、width、height、rotation、fill、stroke、strokeWidth、text、textStyle、adjustments、zIndex を保持します。",
       "- 線・矢印・コネクタは endpoint または connection 情報を壊さず保持します。",
       "- 手書き線は drawings に points、stroke、width、opacity を保持します。",

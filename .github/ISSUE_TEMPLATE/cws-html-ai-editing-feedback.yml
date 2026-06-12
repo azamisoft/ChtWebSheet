@@ -1,0 +1,43 @@
+name: CWS HTML AI editing feedback
+description: Report AI edit workflow, model diff, or round-trip feedback for CWS HTML.
+title: "[CWS HTML AI editing] "
+labels:
+  - cws-html
+  - ai-editing
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for feedback on AI editing boundaries, instructions, model diffs, or round-trip behavior.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow
+      description: What did the AI tool or automation try to change?
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result
+      description: What happened after editing, validation, reload, or resave?
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      options:
+        - Worked as expected
+        - Worked with warnings
+        - Validator rejected the file
+        - File reopened incorrectly
+        - Edit instructions were unclear
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link to a round-trip report or paste non-sensitive details.

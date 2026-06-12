@@ -15,6 +15,7 @@ const starterHtmlName = "ChtWebSheet.html";
 const cwsHtmlFormat = "CWS_HTML";
 const cwsSchemaVersion = 1;
 const cwsAiGuideUrl = "https://chtec.co.jp/cws/ai/cws-html-guide-v1.json";
+const cwsModelSchemaUrl = "https://chtec.co.jp/cws/schema/cws-html-workbook-model-v1.schema.json";
 const appIconVersion = "20260612-margin1";
 const remoteRuntimeBaseUrl = process.env.WEBSHEET_REMOTE_RUNTIME_BASE_URL ||
   `https://chtec.co.jp/cws/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`;
@@ -170,6 +171,7 @@ function starterHtml({ localBaseUrl, versionedLocalBaseUrl, title }) {
 <meta name="cws:format" content="${cwsHtmlFormat}" />
 <meta name="cws:schema-version" content="${cwsSchemaVersion}" />
 <meta name="cws:guide" content="${cwsAiGuideUrl}" />
+<meta name="cws:schema" content="${cwsModelSchemaUrl}" />
 <link rel="icon" type="image/png" href="runtime/${STANDALONE_RUNTIME_VERSION}/icon.png?v=${appIconVersion}" />
 <title>${escapeHtml(title)}</title>
 </head>

@@ -18,6 +18,7 @@ continue to apply when they are used, bundled, or redistributed.
 | Package | Version | License |
 | --- | ---: | --- |
 | `@playwright/test` | 1.60.0 | Apache-2.0 |
+| `ajv` | 8.20.0 | MIT |
 | `vite` | 8.0.13 | MIT |
 
 ## Notes

@@ -1,0 +1,474 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chtec.co.jp/cws/schema/cws-html-workbook-model-v1.schema.json",
+  "title": "CWS HTML Workbook Model v1",
+  "description": "JSON Schema for the plain workbook object stored in script#websheet-model in a CWS HTML 1.0 file.",
+  "type": "object",
+  "required": ["version", "sourceName", "sheets"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "description": "Internal CWS workbook model version. This is distinct from the CWS HTML schema version.",
+      "type": ["integer", "number", "string"]
+    },
+    "sourceName": {
+      "type": "string"
+    },
+    "saveType": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "activeSheetIndex": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "showFormulaBar": {
+      "type": "boolean"
+    },
+    "definedNames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "workbookProperties": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "calcProperties": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "images": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/imageAsset"
+              }
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/imageAsset"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "workbookView": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "sheets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/sheet"
+      }
+    }
+  },
+  "$defs": {
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "nonNegativeNumber": {
+      "type": "number",
+      "minimum": 0
+    },
+    "range": {
+      "type": "object",
+      "required": ["top", "left", "bottom", "right"],
+      "additionalProperties": true,
+      "properties": {
+        "top": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "left": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "bottom": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "right": {
+          "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "css": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "fontFamily": {
+          "type": "string"
+        },
+        "fontSize": {
+          "type": ["string", "number"]
+        },
+        "fontWeight": {
+          "type": ["string", "number"]
+        },
+        "fontStyle": {
+          "type": "string"
+        },
+        "textDecoration": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "backgroundColor": {
+          "type": "string"
+        },
+        "textAlign": {
+          "type": "string"
+        },
+        "verticalAlign": {
+          "type": "string"
+        },
+        "whiteSpace": {
+          "type": "string"
+        },
+        "wrapText": {
+          "type": "boolean"
+        }
+      }
+    },
+    "border": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "style": {
+          "type": "string"
+        },
+        "width": {
+          "type": "number"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "color": {
+          "type": "string"
+        }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "row": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "col": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "raw": {
+          "type": ["string", "number", "boolean", "null"]
+        },
+        "formula": {
+          "type": "string",
+          "pattern": "^="
+        },
+        "cached": {
+          "type": ["string", "number", "boolean", "null"]
+        },
+        "display": {
+          "type": "string"
+        },
+        "numberFormat": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "css": {
+          "$ref": "#/$defs/css"
+        },
+        "richText": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": true,
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "css": {
+                "$ref": "#/$defs/css"
+              }
+            }
+          }
+        },
+        "borders": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top": {
+              "$ref": "#/$defs/border"
+            },
+            "right": {
+              "$ref": "#/$defs/border"
+            },
+            "bottom": {
+              "$ref": "#/$defs/border"
+            },
+            "left": {
+              "$ref": "#/$defs/border"
+            },
+            "diagonalUp": {
+              "$ref": "#/$defs/border"
+            },
+            "diagonalDown": {
+              "$ref": "#/$defs/border"
+            }
+          }
+        },
+        "hyperlink": {
+          "type": ["object", "string"],
+          "additionalProperties": true
+        },
+        "note": {
+          "type": ["object", "string"],
+          "additionalProperties": true
+        },
+        "comment": {
+          "type": ["object", "string"],
+          "additionalProperties": true
+        },
+        "validation": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "width": {
+          "$ref": "#/$defs/nonNegativeNumber"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "style": {
+          "$ref": "#/$defs/css"
+        }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "height": {
+          "$ref": "#/$defs/nonNegativeNumber"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "style": {
+          "$ref": "#/$defs/css"
+        }
+      }
+    },
+    "visualObject": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "left": {
+          "type": "number"
+        },
+        "top": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "zIndex": {
+          "type": "number"
+        },
+        "assetId": {
+          "type": "string"
+        }
+      }
+    },
+    "imageAsset": {
+      "type": "object",
+      "required": ["data"],
+      "additionalProperties": true,
+      "properties": {
+        "mimeType": {
+          "type": "string",
+          "pattern": "^image/"
+        },
+        "extension": {
+          "type": "string"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 1
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1
+        },
+        "data": {
+          "description": "Base64 image bytes. When dataEncoding is gzip-base64, this is base64-encoded gzip data and must be decompressed to recover the image bytes.",
+          "type": "string"
+        },
+        "dataEncoding": {
+          "type": "string",
+          "enum": ["gzip-base64"]
+        },
+        "uncompressedByteLength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "sheet": {
+      "type": "object",
+      "required": ["name", "rowCount", "colCount", "cells"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 31,
+          "not": {
+            "pattern": "[:\\\\/\\?\\*\\[\\]]"
+          }
+        },
+        "state": {
+          "type": "string"
+        },
+        "tabColor": {
+          "type": "string"
+        },
+        "rowCount": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "colCount": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "defaultColumnWidth": {
+          "$ref": "#/$defs/nonNegativeNumber"
+        },
+        "defaultRowHeight": {
+          "$ref": "#/$defs/nonNegativeNumber"
+        },
+        "zoomScale": {
+          "type": "number",
+          "minimum": 10
+        },
+        "displayScale": {
+          "type": "number",
+          "minimum": 0
+        },
+        "defaultCellCss": {
+          "$ref": "#/$defs/css"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/column"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/row"
+          }
+        },
+        "cells": {
+          "type": "object",
+          "patternProperties": {
+            "^[1-9][0-9]*:[1-9][0-9]*$": {
+              "$ref": "#/$defs/cell"
+            }
+          },
+          "additionalProperties": false
+        },
+        "merges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/range"
+          }
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/visualObject"
+          }
+        },
+        "shapes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/visualObject"
+          }
+        },
+        "drawingObjects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/visualObject"
+          }
+        },
+        "inkStrokes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "autoFilter": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "validations": {
+          "type": ["array", "object"],
+          "additionalProperties": true
+        },
+        "pageLayout": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

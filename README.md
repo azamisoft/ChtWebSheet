@@ -187,12 +187,77 @@ npm run test:e2e
 - `src/main.js`: workbook model, import/export, rendering, editing, dialogs,
   menus, data tools, drawing tools, and runtime behavior.
 - `src/styles.css`: application UI and worksheet styling.
+- `docs/cws-html-1.0-draft.md`: draft CWS HTML profile specification for
+  AI-readable and AI-editable workbook files.
+- `docs/cws-html-application-index.md`: index of standardization application
+  materials and recommended review order.
+- `docs/cws-html-prior-art-and-positioning.md`: prior-art review and
+  positioning against ODF, OOXML, CSVW, and adjacent W3C Community Groups.
+- `docs/standardization-application-plan.md`: standardization application
+  roadmap and material checklist.
+- `docs/cws-html-w3c-cg-form-draft.md`: form-ready W3C Community Group
+  proposal draft.
+- `docs/cws-html-w3c-cg-submission-copy.md`: final copy-paste text for a W3C
+  Community Group proposal.
+- `docs/cws-html-w3c-submission-day-runbook.md`: submission-day checklist and
+  post-submission follow-up sequence.
+- `docs/cws-html-cg-operational-agreement-draft.md`: initial Community Group
+  operating rules, scope, status language, and decision policy draft.
+- `docs/cws-html-outreach-kit.md`: supporter recruitment, prior-art feedback,
+  and launch announcement text.
+- `docs/cws-html-publication-checklist.md`: public URL, status wording,
+  license, privacy, and launch readiness checklist.
+- `docs/cws-html-readiness-audit.md`: current readiness gaps, source-of-truth
+  map, and repetition cleanup notes.
+- `docs/cws-html-supporter-tracker.md`: private/public supporter tracking for
+  W3C Community Group creation.
+- `docs/cws-html-initial-issues-and-labels.md`: recommended labels and initial
+  public issue texts.
+- `.github/ISSUE_TEMPLATE/`: issue forms for CWS HTML prior-art, conformance,
+  and AI-editing feedback.
+- `public/schema/cws-html-workbook-model-v1.schema.json`: JSON Schema for the
+  plain workbook model stored in `script#websheet-model`.
+- `public/ai/cws-html-guide-v1.json`: public AI editing guide for CWS HTML.
+- `examples/cws-html/`: valid and invalid CWS HTML conformance examples.
+- `scripts/validate-cws-html.mjs`: reference validator for CWS HTML profile
+  checks.
+- `scripts/diff-cws-model.mjs`: helper for comparing workbook models extracted
+  from two CWS HTML files.
+- `scripts/report-cws-roundtrip.mjs`: helper for generating Markdown
+  validation/diff reports for round-trip evidence.
+- `scripts/generate-cws-evidence.mjs`: browser automation for real export,
+  AI-style JSON edit, standalone reopen/save, validation, and report evidence.
 - `scripts/install-standalone-runtime.mjs`: builds and installs the shared
   standalone runtime for local use.
 - `scripts/e2e-real-upload.mjs`: browser-based validation script.
 - `public/download/`: development download page, runtime version metadata, and
   runtime assets.
 - `THIRD_PARTY_NOTICES.md`: third-party dependency license summary.
+
+Validate the CWS HTML draft examples:
+
+```bash
+npm run spec:validate
+```
+
+Compare workbook models extracted from two CWS HTML files:
+
+```bash
+npm run spec:diff -- before.html after.html
+```
+
+Generate a round-trip evidence report:
+
+```bash
+npm run spec:roundtrip-report -- --out docs/evidence/report.md original.html edited.html resaved.html
+```
+
+Generate real export smoke evidence from a running dev server:
+
+```bash
+npm run dev
+npm run spec:evidence
+```
 
 ## Main Open-Source Components
 
@@ -207,6 +272,7 @@ to apply when they are used, bundled, or redistributed.
 | `jszip` | 3.10.1 | MIT OR GPL-3.0-or-later | Reading and writing zipped Office Open XML packages. |
 | `lucide` | 0.468.0 | ISC | Ribbon, menu, and dialog icons. |
 | `@playwright/test` | 1.60.0 | Apache-2.0 | Browser-based development and E2E validation. |
+| `ajv` | 8.20.0 | MIT | JSON Schema validation for CWS HTML conformance tooling. |
 | `vite` | 8.0.13 | MIT | Local development server and production bundling. |
 
 See `THIRD_PARTY_NOTICES.md` and `package-lock.json` for more detail,

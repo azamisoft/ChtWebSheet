@@ -79,18 +79,44 @@ function standaloneRuntimeBootstrap(appShellHtml) {
     }
     return bytes;
   }
-  async function gunzipBase64Text(value) {
+  function bytesToBase64(bytes) {
+    var binary = "";
+    var chunkSize = 0x8000;
+    for (var index = 0; index < bytes.length; index += chunkSize) {
+      var chunk = bytes.subarray(index, index + chunkSize);
+      binary += String.fromCharCode.apply(null, chunk);
+    }
+    return btoa(binary);
+  }
+  async function gunzipBase64Bytes(value) {
     if (typeof DecompressionStream !== "function" || typeof Response !== "function" || typeof Blob !== "function") {
       throw new Error("圧縮された CWS HTML を読み込むには、gzip 解凍に対応したブラウザーが必要です。");
     }
     var stream = new Blob([base64ToBytes(value)]).stream().pipeThrough(new DecompressionStream("gzip"));
-    return await new Response(stream).text();
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  async function gunzipBase64Text(value) {
+    return new TextDecoder().decode(await gunzipBase64Bytes(value));
+  }
+  async function decodeCompressedImageAssets(model) {
+    var assets = model && model.assets && model.assets.images;
+    if (!assets || typeof assets !== "object") return model;
+    var keys = Object.keys(assets);
+    for (var index = 0; index < keys.length; index += 1) {
+      var asset = assets[keys[index]];
+      if (!asset || asset.dataEncoding !== "gzip-base64" || typeof asset.data !== "string") continue;
+      asset.data = bytesToBase64(await gunzipBase64Bytes(asset.data));
+      delete asset.dataEncoding;
+      delete asset.uncompressedByteLength;
+    }
+    return model;
   }
   async function decodeWorkbookModelScriptPayload(value) {
+    var decoded = value;
     if (value && typeof value === "object" && value.encoding === "gzip-base64" && typeof value.payload === "string") {
-      return JSON.parse(await gunzipBase64Text(value.payload));
+      decoded = JSON.parse(await gunzipBase64Text(value.payload));
     }
-    return value;
+    return await decodeCompressedImageAssets(decoded);
   }
   if (modelElement && String(modelElement.textContent || "").trim()) {
     try {
@@ -299,10 +325,14 @@ function versionScript() {
 })();\n`;
 }
 
+function standaloneClassicAppScript(source) {
+  return String(source || "").replace(/\n?export\s*\{[^}]*\};?\s*$/, "");
+}
+
 async function writeRuntimeFiles(targetDir, baseUrl, assets) {
   await rm(targetDir, { recursive: true, force: true });
   await mkdir(targetDir, { recursive: true });
-  await copyFile(assets.appJsPath, path.join(targetDir, "websheet-app.js"));
+  await writeFile(path.join(targetDir, "websheet-app.js"), standaloneClassicAppScript(await readFile(assets.appJsPath, "utf8")), "utf8");
   await copyFile(assets.appCssPath, path.join(targetDir, "websheet-standalone.css"));
   await copyFile(assets.iconPath, path.join(targetDir, "icon.png"));
   await writeFile(path.join(targetDir, "websheet-standalone.js"), standaloneRuntimeBootstrap(assets.appShellHtml), "utf8");

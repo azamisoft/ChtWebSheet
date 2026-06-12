@@ -1,0 +1,43 @@
+name: CWS HTML prior-art feedback
+description: Report related work, overlap, or venue feedback for CWS HTML incubation.
+title: "[CWS HTML prior art] "
+labels:
+  - cws-html
+  - prior-art
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to identify related standards, formats, tools, groups, or repositories that CWS HTML should acknowledge before or during incubation.
+  - type: input
+    id: related-work
+    attributes:
+      label: Related work
+      description: Name or URL of the related work.
+      placeholder: "Example: W3C CSVW, ODF, OOXML, WICG proposal, open-source tool"
+    validations:
+      required: true
+  - type: textarea
+    id: relationship
+    attributes:
+      label: Relationship to CWS HTML
+      description: Explain whether this is overlap, dependency, inspiration, conflict, or a possible venue.
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Suggested impact
+      options:
+        - Acknowledge in prior-art note
+        - Adjust scope
+        - Discuss in an existing venue first
+        - Change terminology
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Add any useful references, risks, or reviewer contacts.

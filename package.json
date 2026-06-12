@@ -10,6 +10,10 @@
     "build": "npm run build:app && npm run install:runtime",
     "preview": "vite preview --host 127.0.0.1",
     "install:runtime": "node scripts/install-standalone-runtime.mjs",
+    "spec:validate": "node scripts/validate-cws-html.mjs --examples",
+    "spec:diff": "node scripts/diff-cws-model.mjs",
+    "spec:roundtrip-report": "node scripts/report-cws-roundtrip.mjs",
+    "spec:evidence": "node scripts/generate-cws-evidence.mjs",
     "build:packages": "node scripts/build-runtime-packages.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "node scripts/e2e-real-upload.mjs"
@@ -24,6 +28,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "ajv": "^8.20.0",
     "vite": "^8.0.13"
   }
 }

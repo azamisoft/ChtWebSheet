@@ -79,10 +79,23 @@ function exportedStandaloneModelFromHtml(source) {
 }
 
 function decodeStandaloneModelPayload(value) {
+  let decoded = value;
   if (value && typeof value === "object" && value.encoding === "gzip-base64" && typeof value.payload === "string") {
-    return JSON.parse(gunzipSync(Buffer.from(value.payload, "base64")).toString("utf8"));
+    decoded = JSON.parse(gunzipSync(Buffer.from(value.payload, "base64")).toString("utf8"));
   }
-  return value;
+  decodeCompressedImageAssets(decoded);
+  return decoded;
+}
+
+function decodeCompressedImageAssets(model) {
+  const assets = model?.assets?.images;
+  if (!assets || typeof assets !== "object") return;
+  Object.values(assets).forEach((asset) => {
+    if (!asset || asset.dataEncoding !== "gzip-base64" || typeof asset.data !== "string") return;
+    asset.data = gunzipSync(Buffer.from(asset.data, "base64")).toString("base64");
+    delete asset.dataEncoding;
+    delete asset.uncompressedByteLength;
+  });
 }
 
 function replaceStandaloneModelPayload(source, payload) {

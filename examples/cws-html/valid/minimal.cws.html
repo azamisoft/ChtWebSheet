@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja" data-cws-format="CWS_HTML" data-cws-schema-version="1" data-cws-app="CWS">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="generator" content="Cht WebSheet 0.1.0" />
+<meta name="cws:format" content="CWS_HTML" />
+<meta name="cws:schema-version" content="1" />
+<meta name="cws:guide" content="https://chtec.co.jp/cws/ai/cws-html-guide-v1.json" />
+<meta name="cws:schema" content="https://chtec.co.jp/cws/schema/cws-html-workbook-model-v1.schema.json" />
+<title>minimal.cws.html</title>
+</head>
+<body>
+<div id="websheetStandaloneBoot">Cht WebSheet runtime placeholder</div>
+<!--
+Cht WebSheet (CWS) AI Notice:
+The workbook data is the JSON inside script#websheet-model.
+Edit only that JSON when changing workbook content.
+-->
+<script id="websheet-model" type="application/json" data-cws-model="workbook" data-cws-format="CWS_HTML" data-cws-schema-version="1" data-cws-editable="true">{
+  "version": 8,
+  "sourceName": "minimal.cws.html",
+  "saveType": "html",
+  "createdAt": "2026-06-12T00:00:00.000Z",
+  "activeSheetIndex": 0,
+  "showFormulaBar": true,
+  "definedNames": [],
+  "relationships": [],
+  "workbookProperties": {},
+  "calcProperties": {},
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "state": "visible",
+      "rowCount": 3,
+      "colCount": 3,
+      "defaultColumnWidth": 64,
+      "defaultRowHeight": 20,
+      "zoomScale": 100,
+      "displayScale": 1,
+      "defaultCellCss": {},
+      "columns": [
+        { "width": 64, "hidden": false },
+        { "width": 64, "hidden": false },
+        { "width": 64, "hidden": false }
+      ],
+      "rows": [
+        { "height": 20, "hidden": false },
+        { "height": 20, "hidden": false },
+        { "height": 20, "hidden": false }
+      ],
+      "merges": [],
+      "images": [],
+      "inkStrokes": [],
+      "cells": {
+        "1:1": { "row": 1, "col": 1, "raw": "Item", "display": "Item", "css": { "fontWeight": "700" } },
+        "1:2": { "row": 1, "col": 2, "raw": "Amount", "display": "Amount", "css": { "fontWeight": "700" } },
+        "2:1": { "row": 2, "col": 1, "raw": "Sample", "display": "Sample" },
+        "2:2": { "row": 2, "col": 2, "raw": 120, "display": "120" },
+        "3:2": { "row": 3, "col": 2, "formula": "=SUM(B2:B2)", "cached": 120, "display": "120" }
+      },
+      "autoFilter": null,
+      "pageLayout": {}
+    }
+  ]
+}</script>
+<script id="cws-ai-instructions" type="application/json">{
+  "notice": "This file is a Cht WebSheet (CWS) HTML workbook. Edit only the JSON inside script#websheet-model when changing workbook content.",
+  "format": "CWS_HTML",
+  "appName": "Cht WebSheet",
+  "shortName": "CWS",
+  "schemaVersion": 1,
+  "modelScriptId": "websheet-model",
+  "editableRegion": "script#websheet-model",
+  "guideUrl": "https://chtec.co.jp/cws/ai/cws-html-guide-v1.json",
+  "schemaUrl": "https://chtec.co.jp/cws/schema/cws-html-workbook-model-v1.schema.json",
+  "rules": [
+    "Only edit the workbook JSON inside script#websheet-model.",
+    "Do not edit runtime scripts, styles, loader code, meta tags, or external links unless explicitly requested.",
+    "Keep JSON valid and preserve unknown fields."
+  ]
+}</script>
+</body>
+</html>
