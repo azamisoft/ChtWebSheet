@@ -326,7 +326,12 @@ function versionScript() {
 }
 
 function standaloneClassicAppScript(source) {
-  return String(source || "").replace(/\n?export\s*\{[^}]*\};?\s*$/, "");
+  const currentScriptUrl =
+    "window.__WEBSHEET_APP_SCRIPT_URL__=document.currentScript&&document.currentScript.src||document.baseURI;";
+  const classicSource = String(source || "")
+    .replaceAll("import.meta.url", "(window.__WEBSHEET_APP_SCRIPT_URL__||document.baseURI)")
+    .replace(/\n?export\s*\{[^}]*\};?\s*$/, "");
+  return `${currentScriptUrl}\n${classicSource}`;
 }
 
 async function writeRuntimeFiles(targetDir, baseUrl, assets) {
