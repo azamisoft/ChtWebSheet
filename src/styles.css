@@ -14,7 +14,13 @@
   --warning: #a15c07;
   --warning-bg: #fff7ed;
   --danger: #b42318;
-  --cell-selected: #22c55e;
+  --selection: #a78bfa;
+  --selection-strong: #8b5cf6;
+  --selection-dark: #6d28d9;
+  --selection-soft: rgba(167, 139, 250, 0.12);
+  --selection-tint: #f3f0ff;
+  --selection-focus: #c4b5fd;
+  --cell-selected: var(--selection-strong);
   --z-grid-header: 100000;
   --z-grid-corner: 100001;
   --z-grid-frozen: 100002;
@@ -519,10 +525,17 @@ textarea {
 }
 
 .ribbon-panels {
+  height: 70px;
   min-height: 70px;
   padding: 2px 6px 1px;
   background: #f8fafc;
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.ribbon-panels::-webkit-scrollbar {
+  display: none;
 }
 
 .ribbon.is-collapsed .ribbon-panels {
@@ -731,6 +744,8 @@ textarea {
 }
 
 .ribbon-data-panel .ribbon-group {
+  height: 66px;
+  min-height: 66px;
   overflow: hidden;
 }
 
@@ -798,9 +813,13 @@ textarea {
 }
 
 .ribbon-data-menu-button .ribbon-inline-chevron {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
   width: 10px;
   height: 10px;
-  margin-top: -1px;
+  margin: 0;
+  pointer-events: none;
 }
 
 .ribbon-data-sort-filter-group [data-ribbon-command="data-sort-asc"] {
@@ -1312,7 +1331,7 @@ body.is-dragging-page-break * {
   z-index: 4;
   pointer-events: none;
   box-sizing: border-box;
-  border: 2px solid #1d4ed8;
+  border: 2px solid var(--selection-strong);
   background: transparent;
 }
 
@@ -1357,10 +1376,10 @@ body.is-dragging-print-area * {
   background:
     repeating-linear-gradient(
       45deg,
-      rgba(37, 99, 235, 0.08) 0,
-      rgba(37, 99, 235, 0.08) 8px,
-      rgba(191, 219, 254, 0.16) 8px,
-      rgba(191, 219, 254, 0.16) 16px
+      rgba(167, 139, 250, 0.08) 0,
+      rgba(167, 139, 250, 0.08) 8px,
+      rgba(221, 214, 254, 0.18) 8px,
+      rgba(221, 214, 254, 0.18) 16px
     );
 }
 
@@ -1368,7 +1387,7 @@ body.is-dragging-print-area * {
   position: absolute;
   left: 14px;
   top: 12px;
-  color: rgba(30, 64, 175, 0.42);
+  color: rgba(109, 40, 217, 0.42);
   font: 700 16px/1.2 "Yu Gothic UI", Meiryo, sans-serif;
   user-select: none;
 }
@@ -1466,15 +1485,15 @@ body.is-dragging-print-area * {
 
 .sheet-page-layout-print-area {
   z-index: 5;
-  border: 2px solid #1d4ed8;
+  border: 2px solid var(--selection-strong);
   background: transparent;
 }
 
 .sheet-page-layout-title-row,
 .sheet-page-layout-title-col {
   z-index: 5;
-  border: 2px solid rgba(34, 197, 94, 0.88);
-  background: rgba(34, 197, 94, 0.08);
+  border: 2px solid rgba(139, 92, 246, 0.88);
+  background: var(--selection-soft);
 }
 
 .sheet-page-layout-background-label {
@@ -1491,7 +1510,7 @@ body.is-dragging-print-area * {
   position: absolute;
   z-index: 4;
   pointer-events: none;
-  color: rgba(37, 99, 235, 0.28);
+  color: rgba(109, 40, 217, 0.28);
   font: 700 42px/1 "Yu Gothic UI", Meiryo, sans-serif;
   user-select: none;
 }
@@ -3098,9 +3117,9 @@ body.is-dragging-print-area * {
 }
 
 .shape-format-pane-tabs button.is-active {
-  border-color: #7aa7e8;
-  background: #eaf3ff;
-  color: #1d4ed8;
+  border-color: var(--selection);
+  background: var(--selection-tint);
+  color: var(--selection-dark);
   font-weight: 700;
 }
 
@@ -3287,8 +3306,8 @@ body.is-dragging-print-area * {
 
 .shape-selection-pane-toolbar button:hover,
 .shape-selection-pane-visibility:hover {
-  border-color: #7aa7e8;
-  background: #eef6ff;
+  border-color: var(--selection-focus);
+  background: var(--selection-tint);
 }
 
 .shape-selection-pane-count {
@@ -3319,8 +3338,8 @@ body.is-dragging-print-area * {
 }
 
 .shape-selection-pane-row.is-selected {
-  border-color: #7aa7e8;
-  background: #eaf3ff;
+  border-color: var(--selection);
+  background: var(--selection-tint);
 }
 
 .shape-selection-pane-row.is-drop-before::before,
@@ -3330,7 +3349,7 @@ body.is-dragging-print-area * {
   left: 2px;
   right: 2px;
   height: 2px;
-  background: #107c41;
+  background: var(--selection-strong);
   pointer-events: none;
 }
 
@@ -3387,7 +3406,7 @@ body.is-dragging-print-area * {
 }
 
 .shape-selection-pane-rename {
-  border-color: #7aa7e8;
+  border-color: var(--selection);
   background: #fff;
   padding: 0 4px;
 }
@@ -3402,8 +3421,8 @@ body.is-dragging-print-area * {
 .shape-selection-pane-object:focus-visible,
 .shape-selection-pane-rename-button:hover,
 .shape-selection-pane-rename-button:focus-visible {
-  border-color: #c9dfff;
-  background: #f5f9ff;
+  border-color: var(--selection-focus);
+  background: var(--selection-tint);
 }
 
 .ribbon-underline-menu {
@@ -4068,7 +4087,7 @@ body.is-dragging-print-area * {
   color: #111827;
   background: #fff;
   font-weight: 700;
-  box-shadow: inset 0 -2px 0 var(--success);
+  box-shadow: inset 0 -2px 0 var(--selection-strong);
 }
 
 .sheet-tab.is-active[data-tab-color="true"] {
@@ -4082,7 +4101,7 @@ body.is-dragging-print-area * {
   min-height: 28px;
   padding: 0 5px;
   background: #fff;
-  box-shadow: inset 0 -2px 0 var(--success);
+  box-shadow: inset 0 -2px 0 var(--selection-strong);
 }
 
 .sheet-tab-rename-input {
@@ -4090,7 +4109,7 @@ body.is-dragging-print-area * {
   height: 22px;
   min-width: 48px;
   max-width: 220px;
-  border: 1px solid var(--success);
+  border: 1px solid var(--selection-strong);
   border-radius: 0;
   background: #fff;
   color: #111827;
@@ -4103,14 +4122,14 @@ body.is-dragging-print-area * {
 }
 
 .sheet-tab-rename-input::selection {
-  background: #0078d4;
+  background: var(--selection-strong);
   color: #fff;
 }
 
 .sheet-tab.is-group-selected:not(.is-active) {
-  background: #edf5ff;
-  color: #1d4ed8;
-  box-shadow: inset 0 -2px 0 #93c5fd;
+  background: var(--selection-tint);
+  color: var(--selection-dark);
+  box-shadow: inset 0 -2px 0 var(--selection);
 }
 
 .sheet-tab.is-drag-source {
@@ -4551,9 +4570,9 @@ body.is-dragging-print-area * {
 }
 
 .workbook-window-chip-wrap.is-active {
-  border-color: #0f766e;
-  box-shadow: inset 0 -2px 0 #0f766e;
-  color: #0f4f48;
+  border-color: var(--selection-strong);
+  box-shadow: inset 0 -2px 0 var(--selection-strong);
+  color: var(--selection-dark);
 }
 
 .workbook-window-chip-wrap.is-compared {
@@ -4688,9 +4707,9 @@ body.is-dragging-print-area * {
 }
 
 .workbook-window-preview-slot.is-active {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 1px #0f766e inset;
-  background: #f0fdfa;
+  border-color: var(--selection-strong);
+  box-shadow: 0 0 0 1px var(--selection-strong) inset;
+  background: var(--selection-tint);
 }
 
 .workbook-window-preview-slot.is-compared {
@@ -5917,15 +5936,15 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 
 .outline-level-button:hover,
 .outline-level-button:focus-visible {
-  border-color: #217346;
-  color: #217346;
+  border-color: var(--selection-strong);
+  color: var(--selection-dark);
   outline: none;
 }
 
 .outline-level-button.is-active {
-  border-color: #217346;
-  background: #dff0e7;
-  color: #185c37;
+  border-color: var(--selection-strong);
+  background: var(--selection-tint);
+  color: var(--selection-dark);
 }
 
 .outline-level-mark {
@@ -5971,8 +5990,8 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 
 .outline-toggle:hover,
 .outline-toggle:focus-visible {
-  border-color: #217346;
-  color: #217346;
+  border-color: var(--selection-strong);
+  color: var(--selection-dark);
   outline: none;
 }
 
@@ -6242,7 +6261,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 }
 
 .sheet-image-selection-frame.is-group-shape {
-  background: rgba(34, 197, 94, 0.02);
+  background: rgba(167, 139, 250, 0.04);
 }
 
 .sheet-image-selection-frame.is-picture-crop-mode {
@@ -6315,7 +6334,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
   position: absolute;
   width: 6px;
   height: 6px;
-  border: 1px solid #0f766e;
+  border: 1px solid var(--selection-strong);
   background: #fff;
   box-sizing: border-box;
 }
@@ -6422,7 +6441,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
   top: -32px;
   width: 11px;
   height: 11px;
-  border: 1px solid #0f766e;
+  border: 1px solid var(--selection-strong);
   border-radius: 50%;
   background: #fff;
   box-sizing: border-box;
@@ -6440,7 +6459,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
   display: block;
   box-sizing: border-box;
   padding: 6px 8px;
-  border: 1px dotted #107c41;
+  border: 1px dotted var(--selection-strong);
   outline: none;
   background: rgba(255, 255, 255, 0.72);
   color: #1f2937;
@@ -6480,7 +6499,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
   position: absolute;
   width: 7px;
   height: 7px;
-  border: 1px solid #0f766e;
+  border: 1px solid var(--selection-strong);
   background: #fff;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
   transform: translate(-50%, -50%);
@@ -6489,9 +6508,9 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 .sheet-connection-point.is-active {
   width: 10px;
   height: 10px;
-  border: 2px solid #00b050;
-  background: #eafff1;
-  box-shadow: 0 0 0 2px rgba(0, 176, 80, 0.18);
+  border: 2px solid var(--selection-strong);
+  background: var(--selection-tint);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
 }
 
 .sheet-host.is-drawing-shape,
@@ -6508,8 +6527,8 @@ body.is-drawing-ink .sheet-host {
   position: absolute;
   z-index: 10000;
   box-sizing: border-box;
-  border: 1px dashed #0f766e;
-  background: rgba(15, 118, 110, 0.05);
+  border: 1px dashed var(--selection-strong);
+  background: rgba(167, 139, 250, 0.08);
   pointer-events: none;
 }
 
@@ -6659,8 +6678,8 @@ body.is-drawing-ink .sheet-host {
 }
 
 .sheet-selection-frame.is-multi-range {
-  border: 1px solid #107c41;
-  background: rgba(16, 124, 65, 0.12);
+  border: 1px solid var(--selection-strong);
+  background: var(--selection-soft);
 }
 
 .sheet-fill-handle {
@@ -6699,8 +6718,8 @@ body.is-drawing-ink .sheet-host {
 
 .auto-fill-options-button:hover,
 .auto-fill-options-button[aria-expanded="true"] {
-  border-color: #107c41;
-  background: #eef7f0;
+  border-color: var(--selection-strong);
+  background: var(--selection-tint);
 }
 
 .auto-fill-options-menu {
@@ -6736,7 +6755,7 @@ body.is-drawing-ink .sheet-host {
 
 .auto-fill-options-check {
   width: 14px;
-  color: #107c41;
+  color: var(--selection-strong);
   text-align: center;
 }
 
@@ -7295,7 +7314,7 @@ body.is-drawing-ink .sheet-host {
 .validation-dropdown-choice:hover,
 .validation-dropdown-choice:focus,
 .validation-dropdown-choice.is-selected {
-  background: #dbeafe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -7394,13 +7413,13 @@ body.is-drawing-ink .sheet-host {
 
 .auto-filter-menu > button:hover,
 .auto-filter-menu > button:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
 .auto-filter-menu > button.is-active {
-  background: #dff7ef;
-  color: #0f766e;
+  background: var(--selection-tint);
+  color: var(--selection-dark);
   font-weight: 600;
 }
 
@@ -7883,8 +7902,8 @@ body.is-drawing-ink .sheet-host {
 .save-as-place.is-active,
 .save-as-place:hover,
 .save-as-place:focus-visible {
-  border-color: #7ba7df;
-  background: #e5f1fb;
+  border-color: var(--selection);
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -7960,7 +7979,7 @@ body.is-drawing-ink .sheet-host {
 .save-as-file-row:hover,
 .save-as-file-row:focus-visible,
 .save-as-file-row.is-active {
-  background: #dbeafe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -8027,8 +8046,8 @@ body.is-drawing-ink .sheet-host {
 .sheet-insert-template:hover,
 .sheet-insert-template:focus-visible,
 .sheet-insert-template.is-selected {
-  border-color: #4a90e2;
-  background: #dcecff;
+  border-color: var(--selection);
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -8376,8 +8395,8 @@ body.is-drawing-ink .sheet-host {
 }
 
 .text-columns-preview-table th button.is-selected {
-  background: #d8e8ff;
-  outline: 1px solid #5b9cff;
+  background: var(--selection-tint);
+  outline: 1px solid var(--selection);
   outline-offset: -1px;
 }
 
@@ -8423,11 +8442,11 @@ body.is-drawing-ink .sheet-host {
 
 .text-columns-fixed-break:hover span,
 .text-columns-fixed-break:focus-visible span {
-  border-left-color: #5b9cff;
+  border-left-color: var(--selection);
 }
 
 .text-columns-fixed-break.is-break span {
-  border-left-color: #217346;
+  border-left-color: var(--selection-strong);
 }
 
 .text-columns-fixed-break.is-break {
@@ -8457,7 +8476,7 @@ body.is-drawing-ink .sheet-host {
   top: -1px;
   bottom: -1px;
   right: -1px;
-  border-right: 1px dashed #217346;
+  border-right: 1px dashed var(--selection-strong);
 }
 
 .text-columns-step .excel-dialog-field {
@@ -8538,8 +8557,8 @@ body.is-drawing-ink .sheet-host {
 }
 
 .sort-level-selector.is-active {
-  border-color: #7da7d9;
-  background: #eaf3ff;
+  border-color: var(--selection);
+  background: var(--selection-tint);
 }
 
 .sort-level-row {
@@ -8547,7 +8566,7 @@ body.is-drawing-ink .sheet-host {
 }
 
 .sort-level-row.is-active select {
-  border-color: #7da7d9;
+  border-color: var(--selection);
 }
 
 .sort-order-color-controls {
@@ -8688,8 +8707,8 @@ body.is-drawing-ink .sheet-host {
 
 .data-range-picker:hover,
 .data-range-picker:focus-visible {
-  border-color: #5b9cff;
-  background-color: #eef6ff;
+  border-color: var(--selection);
+  background-color: var(--selection-tint);
 }
 
 .data-range-picker:disabled {
@@ -9280,7 +9299,7 @@ body.is-drawing-ink .sheet-host {
 }
 
 .query-pane-tabs button.is-active {
-  border-bottom-color: #217346;
+  border-bottom-color: var(--selection-strong);
   background: #ffffff;
   color: #111827;
   font-weight: 700;
@@ -9351,8 +9370,8 @@ body.is-drawing-ink .sheet-host {
 
 .query-pane button:hover,
 .query-pane button:focus-visible {
-  border-color: #217346;
-  outline: 1px solid #b7d7a8;
+  border-color: var(--selection-strong);
+  outline: 1px solid var(--selection-focus);
   outline-offset: -1px;
 }
 
@@ -9534,8 +9553,8 @@ body.is-drawing-ink .sheet-host {
 
 .translation-pane button:hover,
 .translation-pane button:focus-visible {
-  border-color: #217346;
-  outline: 1px solid #b7d7a8;
+  border-color: var(--selection-strong);
+  outline: 1px solid var(--selection-focus);
   outline-offset: -1px;
 }
 
@@ -9799,8 +9818,8 @@ body.is-drawing-ink .sheet-host {
 }
 
 .function-argument-row.is-active {
-  border-color: #b9d4f6;
-  background: #eaf3ff;
+  border-color: var(--selection-focus);
+  background: var(--selection-tint);
 }
 
 .function-arguments-dialog.is-reference-collapsed .function-argument-list {
@@ -9998,7 +10017,7 @@ body.is-drawing-ink .sheet-host {
 .name-manager-table th:nth-child(5) { width: 22%; }
 
 .name-manager-table tr.is-active td {
-  background: #dbeafe;
+  background: var(--selection-tint);
 }
 
 .name-manager-table tr.is-empty td {
@@ -10018,7 +10037,7 @@ body.is-drawing-ink .sheet-host {
 }
 
 .name-manager-table button:focus-visible {
-  outline: 1px solid #2563eb;
+  outline: 1px solid var(--selection-strong);
   outline-offset: 1px;
 }
 
@@ -10122,7 +10141,7 @@ body.is-drawing-ink .sheet-host {
 }
 
 .formula-error-list button.is-active {
-  background: #dbeafe;
+  background: var(--selection-tint);
 }
 
 .formula-error-actions {
@@ -10157,7 +10176,7 @@ body.is-drawing-ink .sheet-host {
 }
 
 .formula-evaluate-steps div.is-active {
-  background: #e0f2fe;
+  background: var(--selection-tint);
   font-weight: 700;
 }
 
@@ -10224,7 +10243,7 @@ body.is-drawing-ink .sheet-host {
 }
 
 .formula-watch-table tr.is-active td {
-  background: #dbeafe;
+  background: var(--selection-tint);
 }
 
 .formula-watch-table td:nth-child(6),
@@ -11007,15 +11026,15 @@ body.is-drawing-ink .sheet-host {
 
 .link-dialog-kind button:hover,
 .link-dialog-kind button:focus-visible {
-  background: #eef6ff;
-  outline: 1px solid #7aa7d9;
+  background: var(--selection-tint);
+  outline: 1px solid var(--selection-focus);
   outline-offset: -1px;
 }
 
 .link-dialog-kind button.is-active,
 .link-dialog-kind button.is-active:hover,
 .link-dialog-kind button.is-active:focus-visible {
-  background: #dcecff;
+  background: var(--selection-tint);
 }
 
 .link-dialog-main {
@@ -11076,15 +11095,15 @@ body.is-drawing-ink .sheet-host {
 
 .link-dialog-sheet-list button:hover,
 .link-dialog-sheet-list button:focus-visible {
-  background: #eef6ff;
-  outline: 1px solid #7aa7d9;
+  background: var(--selection-tint);
+  outline: 1px solid var(--selection-focus);
   outline-offset: -1px;
 }
 
 .link-dialog-sheet-list button.is-active,
 .link-dialog-sheet-list button.is-active:hover,
 .link-dialog-sheet-list button.is-active:focus-visible {
-  background: #dcecff;
+  background: var(--selection-tint);
 }
 
 .symbol-dialog {
@@ -11983,8 +12002,8 @@ body.is-object-selection-mode .sheet-host {
   position: fixed;
   z-index: calc(var(--z-floating-menu) + 1);
   pointer-events: none;
-  border: 1px dashed #0f766e;
-  background: rgba(15, 118, 110, 0.08);
+  border: 1px dashed var(--selection-strong);
+  background: var(--selection-soft);
 }
 
 .translation-pane {

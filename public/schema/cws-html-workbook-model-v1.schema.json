@@ -111,6 +111,55 @@
         }
       }
     },
+    "styleRange": {
+      "type": "object",
+      "required": ["top", "left", "bottom", "right"],
+      "additionalProperties": true,
+      "properties": {
+        "top": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "left": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "bottom": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "right": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "css": {
+          "$ref": "#/$defs/css"
+        },
+        "borders": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top": {
+              "$ref": "#/$defs/border"
+            },
+            "right": {
+              "$ref": "#/$defs/border"
+            },
+            "bottom": {
+              "$ref": "#/$defs/border"
+            },
+            "left": {
+              "$ref": "#/$defs/border"
+            }
+          }
+        },
+        "hasFill": {
+          "type": "boolean"
+        },
+        "hasFontColor": {
+          "type": "boolean"
+        },
+        "styleId": {
+          "type": "string"
+        }
+      }
+    },
     "css": {
       "type": "object",
       "additionalProperties": true,
@@ -397,6 +446,29 @@
         "defaultCellCss": {
           "$ref": "#/$defs/css"
         },
+        "styleTable": {
+          "description": "Plain JSON style table used by cells and styleRanges through styleId references.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "css": {
+                "$ref": "#/$defs/css"
+              },
+              "borders": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "hasFill": {
+                "type": "boolean"
+              },
+              "hasFontColor": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
         "columns": {
           "type": "array",
           "items": {
@@ -417,6 +489,13 @@
             }
           },
           "additionalProperties": false
+        },
+        "styleRanges": {
+          "description": "Plain JSON range-level styles for empty cells. Applications may materialize these into cell records when opening the workbook.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/styleRange"
+          }
         },
         "merges": {
           "type": "array",
