@@ -21,6 +21,7 @@ const sourceIndexPath = path.join(projectRoot, "index.html");
 const distIndexPath = path.join(projectRoot, "dist", "index.html");
 const iconPath = path.join(projectRoot, "public", "img", "icon.png");
 const appIconVersion = "20260612-margin1";
+const appVersion = "0.1.0";
 const runtimeUpdatedAt = new Date().toISOString();
 const runtimeBuildId = runtimeUpdatedAt.replace(/[-:.TZ]/g, "").slice(0, 14);
 
@@ -221,6 +222,16 @@ function standaloneLauncherLoaderScript(config) {
       document.head.appendChild(script);
     });
   }
+  async function fetchRuntimeVersionJson(base){
+    try {
+      var response = await fetch(asset(base, "version.json") + "?t=" + Date.now(), { cache: "no-store" });
+      if (!response.ok) return null;
+      var info = await response.json();
+      return info && typeof info === "object" ? info : null;
+    } catch (error) {
+      return null;
+    }
+  }
   function probeRuntimeVersion(base){
     return new Promise(function(resolve){
       if (!base) {
@@ -245,6 +256,9 @@ function standaloneLauncherLoaderScript(config) {
       script.onerror = function(){ finish(null); };
       document.head.appendChild(script);
     });
+  }
+  async function readRuntimeVersion(base){
+    return await fetchRuntimeVersionJson(base) || await probeRuntimeVersion(base);
   }
   function unique(values){
     var result = [];
@@ -296,7 +310,8 @@ function standaloneLauncherLoaderScript(config) {
     return 0;
   }
   function runtimeIsUsable(info){
-    return !!(info && info.version && compareVersions(info.version, config.version) >= 0);
+    var version = info && (info.runtimeVersion || info.version);
+    return !!(version && compareVersions(version, config.version) >= 0);
   }
   async function firstUsableLocalRuntime(){
     var firstInfo = null;
@@ -305,7 +320,7 @@ function standaloneLauncherLoaderScript(config) {
     window.__WEBSHEET_LOCAL_RUNTIME_CANDIDATES__ = candidates.slice();
     for (var index = 0; index < candidates.length; index += 1) {
       var base = candidates[index];
-      var info = await probeRuntimeVersion(base);
+      var info = await readRuntimeVersion(base);
       if (info && !firstInfo) {
         firstInfo = info;
         firstBase = base;
@@ -353,9 +368,29 @@ function standaloneLauncherLoaderScript(config) {
 })();`;
 }
 
-function versionScript() {
+function runtimeVersionJsonInfo(baseUrl) {
+  return {
+    appName: "Cht WebSheet",
+    company: "株式会社CHT",
+    version: appVersion,
+    runtimeVersion: STANDALONE_RUNTIME_VERSION,
+    runtimeUpdatedAt,
+    updatedAt: runtimeUpdatedAt,
+    runtimeChannel: STANDALONE_RUNTIME_CHANNEL,
+    baseUrl,
+  };
+}
+
+function versionScript(baseUrl) {
+  const jsonInfo = runtimeVersionJsonInfo(baseUrl);
+  const scriptInfo = {
+    ...jsonInfo,
+    appVersion: jsonInfo.version,
+    version: jsonInfo.runtimeVersion,
+    versionJson: jsonInfo,
+  };
   return `(function(){
-  var info = { version: ${JSON.stringify(STANDALONE_RUNTIME_VERSION)}, updatedAt: ${JSON.stringify(runtimeUpdatedAt)} };
+  var info = ${JSON.stringify(scriptInfo, null, 2)};
   window.__WEBSHEET_STANDALONE_RUNTIME_VERSION__ = info;
   if (typeof window.__WEBSHEET_RUNTIME_VERSION_PROBE__ === "function") {
     window.__WEBSHEET_RUNTIME_VERSION_PROBE__(info);
@@ -394,8 +429,10 @@ async function writeRuntimeFiles(targetDir, baseUrl, assets) {
   await copyFile(assets.appCssPath, path.join(targetDir, "websheet-standalone.css"));
   await copyFile(assets.iconPath, path.join(targetDir, "icon.png"));
   await writeFile(path.join(targetDir, "websheet-standalone.js"), standaloneRuntimeBootstrap(assets.appShellHtml), "utf8");
-  await writeFile(path.join(targetDir, "version.js"), versionScript(), "utf8");
+  await writeFile(path.join(targetDir, "version.json"), `${JSON.stringify(runtimeVersionJsonInfo(baseUrl), null, 2)}\n`, "utf8");
+  await writeFile(path.join(targetDir, "version.js"), versionScript(baseUrl), "utf8");
   const runtimeFiles = [
+    "version.json",
     "version.js",
     "icon.png",
     "websheet-standalone.js",
@@ -477,7 +514,7 @@ async function updateDownloadVersionInfo() {
     const nextInfo = {
       appName: info.appName || "Cht WebSheet",
       company: info.company || "株式会社CHT",
-      version: info.version || "0.1.0",
+      version: info.version || appVersion,
       runtimeVersion: STANDALONE_RUNTIME_VERSION,
       runtimeUpdatedAt,
       updatedAt: runtimeUpdatedAt,
