@@ -232,6 +232,16 @@ function starterLoaderScript(config) {
       document.head.appendChild(script);
     });
   }
+  async function fetchRuntimeVersionJson(base){
+    try {
+      var response = await fetch(asset(base, "version.json") + "?t=" + Date.now(), { cache: "no-store" });
+      if (!response.ok) return null;
+      var info = await response.json();
+      return info && typeof info === "object" ? info : null;
+    } catch (error) {
+      return null;
+    }
+  }
   function probeRuntimeVersion(base){
     return new Promise(function(resolve){
       if (!base) {
@@ -256,6 +266,9 @@ function starterLoaderScript(config) {
       script.onerror = function(){ finish(null); };
       document.head.appendChild(script);
     });
+  }
+  async function readRuntimeVersion(base){
+    return await fetchRuntimeVersionJson(base) || await probeRuntimeVersion(base);
   }
   function unique(values){
     var result = [];
@@ -307,7 +320,8 @@ function starterLoaderScript(config) {
     return 0;
   }
   function runtimeIsUsable(info){
-    return !!(info && info.version && compareVersions(info.version, config.version) >= 0);
+    var version = info && (info.runtimeVersion || info.version);
+    return !!(version && compareVersions(version, config.version) >= 0);
   }
   async function firstUsableLocalRuntime(){
     var firstInfo = null;
@@ -316,7 +330,7 @@ function starterLoaderScript(config) {
     window.__WEBSHEET_LOCAL_RUNTIME_CANDIDATES__ = candidates.slice();
     for (var index = 0; index < candidates.length; index += 1) {
       var base = candidates[index];
-      var info = await probeRuntimeVersion(base);
+      var info = await readRuntimeVersion(base);
       if (info && !firstInfo) {
         firstInfo = info;
         firstBase = base;
