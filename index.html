@@ -116,6 +116,32 @@
                 <span id="workbookNameDisplayText" class="workbook-name-display-text">未読み込み</span>
               </div>
               <div id="statusText" class="ribbon-status">Excel ファイルを選択してください。</div>
+              <div class="ribbon-display-options">
+                <button id="ribbonDisplayButton" class="ribbon-display-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="ribbonDisplayMenu" title="リボン表示オプション">
+                  <i data-lucide="chevron-down"></i>
+                </button>
+                <div id="ribbonDisplayMenu" class="ribbon-display-menu hidden" role="menu" aria-label="リボン表示オプション">
+                  <div class="ribbon-display-menu-title">リボンのレイアウト</div>
+                  <button class="ribbon-display-menu-item" type="button" role="menuitemradio" aria-checked="true" data-ribbon-layout-option="classic">
+                    <span class="ribbon-display-check" aria-hidden="true">✓</span>
+                    <span>クラシック リボン</span>
+                  </button>
+                  <button class="ribbon-display-menu-item" type="button" role="menuitemradio" aria-checked="false" data-ribbon-layout-option="single">
+                    <span class="ribbon-display-check" aria-hidden="true">✓</span>
+                    <span>1行のリボン</span>
+                  </button>
+                  <div class="ribbon-display-menu-separator" role="separator"></div>
+                  <div class="ribbon-display-menu-title">リボンを表示</div>
+                  <button class="ribbon-display-menu-item" type="button" role="menuitemradio" aria-checked="true" data-ribbon-visibility-option="always">
+                    <span class="ribbon-display-check" aria-hidden="true">✓</span>
+                    <span>常に表示</span>
+                  </button>
+                  <button class="ribbon-display-menu-item" type="button" role="menuitemradio" aria-checked="false" data-ribbon-visibility-option="auto">
+                    <span class="ribbon-display-check" aria-hidden="true">✓</span>
+                    <span>自動的に非表示にする</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div id="fileSideMenu" class="file-side-menu hidden" role="menu" aria-label="ファイル">
@@ -401,8 +427,8 @@
                 </div>
                 <div class="ribbon-group ribbon-shape-arrange-group">
                   <div class="ribbon-stack">
-                    <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="shape-bring-front"><i data-lucide="arrow-up-down"></i><span>前面へ移動</span></button>
-                    <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="shape-send-back"><i data-lucide="arrow-up-down"></i><span>背面へ移動</span></button>
+                    <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="shape-bring-front"><i data-lucide="chevron-up"></i><span>前面へ移動</span></button>
+                    <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="shape-send-back"><i data-lucide="chevron-down"></i><span>背面へ移動</span></button>
                     <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="shape-group"><i data-lucide="box"></i><span>グループ化</span></button>
                     <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="shape-ungroup"><i data-lucide="box"></i><span>グループ解除</span></button>
                     <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="shape-selection-pane"><i data-lucide="eye"></i><span>選択ウィンドウ</span></button>
@@ -436,8 +462,8 @@
                   <button class="ribbon-icon-tool ribbon-draw-color" type="button" data-ribbon-command="draw-color-blue" title="青"><span style="background:#2563eb"></span></button>
                   <button class="ribbon-icon-tool ribbon-draw-color" type="button" data-ribbon-command="draw-color-red" title="赤"><span style="background:#dc2626"></span></button>
                   <button class="ribbon-icon-tool ribbon-draw-color" type="button" data-ribbon-command="draw-color-yellow" title="黄"><span style="background:#facc15"></span></button>
-                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="draw-thin"><i data-lucide="minus"></i><span>細線</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="draw-thick"><i data-lucide="minus"></i><span>太線</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="draw-thin"><span class="ribbon-line-weight-icon ribbon-line-weight-thin" aria-hidden="true"></span><span>細線</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="draw-thick"><span class="ribbon-line-weight-icon ribbon-line-weight-thick" aria-hidden="true"></span><span>太線</span></button>
                   <div class="ribbon-group-label">ペン</div>
                 </div>
                 <div class="ribbon-group ribbon-draw-convert-group">
@@ -482,8 +508,8 @@
                   <div class="ribbon-group-label">シートのオプション</div>
                 </div>
                 <div class="ribbon-group ribbon-layout-arrange-group">
-                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="layout-bring-front"><i data-lucide="arrow-up-down"></i><span>前面へ移動</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="layout-send-back"><i data-lucide="arrow-up-down"></i><span>背面へ移動</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="layout-bring-front"><i data-lucide="chevron-up"></i><span>前面へ移動</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="layout-send-back"><i data-lucide="chevron-down"></i><span>背面へ移動</span></button>
                   <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="layout-selection-pane"><i data-lucide="eye"></i><span>選択ウィンドウ</span></button>
                   <div class="ribbon-group-label">配置</div>
                 </div>
@@ -542,12 +568,12 @@
                   <div class="ribbon-group-label">データの取得と変換</div>
                 </div>
                 <div class="ribbon-group ribbon-data-sort-filter-group">
-                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-sort-asc"><span>A→Z</span></button>
-                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-sort-desc"><span>Z→A</span></button>
+                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-sort-asc"><span class="ribbon-data-sort-icon" aria-hidden="true">A→Z</span><span>A→Z</span></button>
+                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-sort-desc"><span class="ribbon-data-sort-icon" aria-hidden="true">Z→A</span><span>Z→A</span></button>
                   <button class="ribbon-tool" type="button" data-ribbon-command="data-sort-dialog"><i data-lucide="arrow-up-down"></i><span>並べ替え</span></button>
                   <button class="ribbon-tool" type="button" data-ribbon-command="data-filter"><i data-lucide="list-filter"></i><span>フィルター</span></button>
-                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-clear-filter"><span>クリア</span></button>
-                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-reapply-filter"><span>再適用</span></button>
+                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-clear-filter"><i data-lucide="eraser"></i><span>クリア</span></button>
+                  <button class="ribbon-tool ribbon-tool-compact" type="button" data-ribbon-command="data-reapply-filter"><i data-lucide="refresh-cw"></i><span>再適用</span></button>
                   <button class="ribbon-tool" type="button" data-ribbon-command="data-advanced-filter"><i data-lucide="filter"></i><span>詳細<br>設定</span></button>
                   <div class="ribbon-group-label">並べ替えとフィルター</div>
                 </div>
@@ -597,21 +623,21 @@
                   <div class="ribbon-group-label">シート ビュー</div>
                 </div>
                 <div class="ribbon-group ribbon-view-show-group">
-                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="view-ruler"><span class="ribbon-check-box" aria-hidden="true"></span><span>ルーラー</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-gridlines"><span class="ribbon-check-box" aria-hidden="true"></span><span>目盛線</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-headings"><span class="ribbon-check-box" aria-hidden="true"></span><span>見出し</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-formula-bar"><span class="ribbon-check-box" aria-hidden="true"></span><span>数式バー</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-zero-values"><span class="ribbon-check-box" aria-hidden="true"></span><span>ゼロ値</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-objects"><span class="ribbon-check-box" aria-hidden="true"></span><span>オブジェクト</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-outline-symbols"><span class="ribbon-check-box" aria-hidden="true"></span><span>アウトライン記号</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="view-right-to-left"><span class="ribbon-check-box" aria-hidden="true"></span><span>右から左</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="view-ruler" title="ルーラー"><i class="ribbon-view-option-icon" data-lucide="ruler"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>ルーラー</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-gridlines" title="目盛線"><i class="ribbon-view-option-icon" data-lucide="table-2"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>目盛線</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-headings" title="見出し"><i class="ribbon-view-option-icon" data-lucide="panel-top"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>見出し</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-formula-bar" title="数式バー"><i class="ribbon-view-option-icon" data-lucide="square-function"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>数式バー</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-zero-values" title="ゼロ値"><i class="ribbon-view-option-icon" data-lucide="hash"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>ゼロ値</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-objects" title="オブジェクト"><i class="ribbon-view-option-icon" data-lucide="shapes"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>オブジェクト</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-outline-symbols" title="アウトライン記号"><i class="ribbon-view-option-icon" data-lucide="list-checks"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>アウトライン記号</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool" type="button" data-ribbon-command="view-right-to-left" title="右から左"><i class="ribbon-view-option-icon" data-lucide="align-right"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>右から左</span></button>
                   <div class="ribbon-group-label">表示</div>
                 </div>
                 <div class="ribbon-group ribbon-view-options-group">
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-white-space"><span class="ribbon-check-box" aria-hidden="true"></span><span>ページ余白</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-horizontal-scrollbar"><span class="ribbon-check-box" aria-hidden="true"></span><span>横スクロールバー</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-vertical-scrollbar"><span class="ribbon-check-box" aria-hidden="true"></span><span>縦スクロールバー</span></button>
-                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-sheet-tabs"><span class="ribbon-check-box" aria-hidden="true"></span><span>シート見出し</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-white-space" title="ページ余白"><i class="ribbon-view-option-icon" data-lucide="file-text"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>ページ余白</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-horizontal-scrollbar" title="横スクロールバー"><i class="ribbon-view-option-icon" data-lucide="columns-3"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>横スクロールバー</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-vertical-scrollbar" title="縦スクロールバー"><i class="ribbon-view-option-icon" data-lucide="arrow-up-down"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>縦スクロールバー</span></button>
+                  <button class="ribbon-tool ribbon-compact-tool is-active" type="button" data-ribbon-command="view-sheet-tabs" title="シート見出し"><i class="ribbon-view-option-icon" data-lucide="table-2"></i><span class="ribbon-check-box" aria-hidden="true"></span><span>シート見出し</span></button>
                   <div class="ribbon-group-label">オプション</div>
                 </div>
                 <div class="ribbon-group ribbon-view-zoom-group">

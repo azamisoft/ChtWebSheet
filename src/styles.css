@@ -317,7 +317,7 @@ textarea {
 
 .message-box-button:hover,
 .message-box-button:focus-visible {
-  outline: 2px solid #bfdbfe;
+  outline: 2px solid var(--selection-focus);
   outline-offset: -1px;
 }
 
@@ -407,6 +407,8 @@ textarea {
 
 .ribbon {
   flex: 0 0 auto;
+  position: relative;
+  z-index: 120000;
   background: #fff;
   border-bottom: 1px solid var(--line);
   font-family: "Aptos Narrow", "Arial Narrow", "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Segoe UI", sans-serif;
@@ -524,6 +526,100 @@ textarea {
   font-size: 10px;
 }
 
+.ribbon-display-options {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  margin-left: 2px;
+}
+
+.ribbon-display-button {
+  width: 24px;
+  min-height: 22px;
+  border: 0;
+  border-inline: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #475467;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ribbon-display-button:hover,
+.ribbon-display-button[aria-expanded="true"] {
+  background: #f1e8ff;
+  border-color: #ddc7ff;
+  color: #4c1d95;
+}
+
+.ribbon-display-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ribbon-display-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 230px;
+  padding: 5px 0;
+  border: 1px solid #cfd7e3;
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.ribbon-display-menu-title {
+  padding: 6px 12px 5px;
+  color: #344054;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ribbon-display-menu-item {
+  width: 100%;
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 0 8px;
+  font-size: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ribbon-display-menu-item:hover,
+.ribbon-display-menu-item:focus-visible {
+  background: #f1e8ff;
+  outline: none;
+}
+
+.ribbon-display-check {
+  color: #4c1d95;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  visibility: hidden;
+}
+
+.ribbon-display-menu-item[aria-checked="true"] .ribbon-display-check {
+  visibility: visible;
+}
+
+.ribbon-display-menu-separator {
+  height: 1px;
+  margin: 5px 12px;
+  background: #d6dde8;
+}
+
 .ribbon-panels {
   height: 70px;
   min-height: 70px;
@@ -542,6 +638,20 @@ textarea {
   display: none;
 }
 
+.ribbon.ribbon-visibility-auto:not(.ribbon-auto-open) .ribbon-panels {
+  display: none;
+}
+
+.ribbon.ribbon-visibility-auto.ribbon-auto-open .ribbon-panels {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 1;
+  border-bottom: 1px solid #cfd7e3;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.16);
+}
+
 .ribbon-panel {
   display: none;
   align-items: stretch;
@@ -551,6 +661,107 @@ textarea {
 
 .ribbon-panel.is-active {
   display: flex;
+}
+
+.ribbon.ribbon-layout-single .ribbon-panels {
+  height: 38px;
+  min-height: 38px;
+  padding: 2px 6px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-panel.is-active {
+  align-items: center;
+}
+
+.ribbon.ribbon-layout-single .ribbon-group {
+  width: auto;
+  height: 33px;
+  min-height: 33px;
+  padding: 2px 5px;
+  display: flex;
+  align-items: center;
+  align-content: center;
+  gap: 3px;
+  overflow: visible;
+}
+
+.ribbon.ribbon-layout-single .ribbon-group-label {
+  display: none;
+}
+
+.ribbon.ribbon-layout-single .ribbon-stack,
+.ribbon.ribbon-layout-single .ribbon-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-input-row,
+.ribbon.ribbon-layout-single .ribbon-command-row {
+  min-height: 24px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-tool,
+.ribbon.ribbon-layout-single .ribbon-large-tool,
+.ribbon.ribbon-layout-single .ribbon-data-panel .ribbon-tool {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  flex-direction: row;
+  gap: 0;
+  white-space: nowrap;
+}
+
+.ribbon.ribbon-layout-single .ribbon-tool > span:not([aria-hidden="true"]):not(.ribbon-check-box):not(.ribbon-version-mark),
+.ribbon.ribbon-layout-single .ribbon-large-tool > span:not([aria-hidden="true"]):not(.ribbon-check-box):not(.ribbon-version-mark),
+.ribbon.ribbon-layout-single .ribbon-data-panel .ribbon-tool > span:not([aria-hidden="true"]):not(.ribbon-check-box):not(.ribbon-version-mark),
+.ribbon.ribbon-layout-single .ribbon-tool br,
+.ribbon.ribbon-layout-single .ribbon-large-tool br {
+  display: none;
+}
+
+.ribbon.ribbon-layout-single .ribbon-large-tool svg,
+.ribbon.ribbon-layout-single .ribbon-compact-tool svg,
+.ribbon.ribbon-layout-single .ribbon-data-panel .ribbon-tool svg {
+  width: 15px;
+  height: 15px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-icon-tool,
+.ribbon.ribbon-layout-single .ribbon-menu-button,
+.ribbon.ribbon-layout-single .ribbon-color-main,
+.ribbon.ribbon-layout-single .ribbon-color-arrow,
+.ribbon.ribbon-layout-single .ribbon-underline-main,
+.ribbon.ribbon-layout-single .ribbon-underline-arrow,
+.ribbon.ribbon-layout-single .ribbon-border-main,
+.ribbon.ribbon-layout-single .ribbon-border-arrow {
+  height: 24px;
+  min-height: 24px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-menu-button {
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
+  flex-direction: row;
+}
+
+.ribbon.ribbon-layout-single .ribbon-menu-button > span {
+  display: none;
+}
+
+.ribbon.ribbon-layout-single .ribbon-font-field {
+  width: 114px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-size-field {
+  width: 44px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-number-field {
+  width: 116px;
 }
 
 .file-side-menu {
@@ -586,7 +797,7 @@ textarea {
 
 .file-side-menu-item:hover,
 .file-side-menu-item:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -869,6 +1080,18 @@ textarea {
 .ribbon-data-sort-filter-group [data-ribbon-command="data-reapply-filter"] {
   justify-content: center;
   font-weight: 600;
+}
+
+.ribbon-data-sort-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 14px;
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 .ribbon-formula-panel .ribbon-tool,
@@ -1171,6 +1394,181 @@ textarea {
 
 .ribbon-view-macro-split .ribbon-macro-arrow {
   min-height: 45px;
+}
+
+.ribbon-view-option-icon {
+  display: none;
+}
+
+.ribbon.ribbon-layout-single .ribbon-panels {
+  height: 31px;
+  min-height: 31px;
+  padding: 1px 6px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-panel.is-active {
+  align-items: center;
+}
+
+.ribbon.ribbon-layout-single .ribbon-group,
+.ribbon.ribbon-layout-single .ribbon-formula-panel .ribbon-group,
+.ribbon.ribbon-layout-single .ribbon-view-panel .ribbon-group,
+.ribbon.ribbon-layout-single .ribbon-data-panel .ribbon-group {
+  width: auto;
+  height: 27px;
+  min-height: 27px;
+  padding: 1px 5px;
+  display: flex;
+  align-items: center;
+  align-content: center;
+  gap: 3px;
+  overflow: visible;
+}
+
+.ribbon.ribbon-layout-single .ribbon-font-group,
+.ribbon.ribbon-layout-single .ribbon-number-group,
+.ribbon.ribbon-layout-single .ribbon-alignment-group,
+.ribbon.ribbon-layout-single .ribbon-data-get-group,
+.ribbon.ribbon-layout-single .ribbon-data-sort-filter-group,
+.ribbon.ribbon-layout-single .ribbon-data-tools-group,
+.ribbon.ribbon-layout-single .ribbon-data-forecast-group,
+.ribbon.ribbon-layout-single .ribbon-data-outline-group,
+.ribbon.ribbon-layout-single .ribbon-data-analysis-group,
+.ribbon.ribbon-layout-single .ribbon-formula-library-group,
+.ribbon.ribbon-layout-single .ribbon-formula-names-group,
+.ribbon.ribbon-layout-single .ribbon-formula-audit-group,
+.ribbon.ribbon-layout-single .ribbon-formula-calc-group,
+.ribbon.ribbon-layout-single .ribbon-view-workbook-group,
+.ribbon.ribbon-layout-single .ribbon-view-sheetview-group,
+.ribbon.ribbon-layout-single .ribbon-view-show-group,
+.ribbon.ribbon-layout-single .ribbon-view-options-group,
+.ribbon.ribbon-layout-single .ribbon-view-zoom-group,
+.ribbon.ribbon-layout-single .ribbon-view-window-group,
+.ribbon.ribbon-layout-single .ribbon-view-macro-group {
+  grid-template-columns: none;
+  grid-template-rows: none;
+  display: flex;
+  align-items: center;
+  align-content: center;
+  gap: 3px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-group > *,
+.ribbon.ribbon-layout-single .ribbon-data-get-group > *,
+.ribbon.ribbon-layout-single .ribbon-data-sort-filter-group > *,
+.ribbon.ribbon-layout-single .ribbon-data-tools-group > *,
+.ribbon.ribbon-layout-single .ribbon-data-forecast-group > *,
+.ribbon.ribbon-layout-single .ribbon-data-outline-group > *,
+.ribbon.ribbon-layout-single .ribbon-data-analysis-group > *,
+.ribbon.ribbon-layout-single .ribbon-formula-library-group > *,
+.ribbon.ribbon-layout-single .ribbon-formula-names-group > *,
+.ribbon.ribbon-layout-single .ribbon-formula-audit-group > *,
+.ribbon.ribbon-layout-single .ribbon-formula-calc-group > *,
+.ribbon.ribbon-layout-single .ribbon-view-workbook-group > *,
+.ribbon.ribbon-layout-single .ribbon-view-sheetview-group > *,
+.ribbon.ribbon-layout-single .ribbon-view-show-group > *,
+.ribbon.ribbon-layout-single .ribbon-view-options-group > *,
+.ribbon.ribbon-layout-single .ribbon-view-zoom-group > *,
+.ribbon.ribbon-layout-single .ribbon-view-window-group > *,
+.ribbon.ribbon-layout-single .ribbon-view-macro-group > * {
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.ribbon.ribbon-layout-single .ribbon-alignment-layout,
+.ribbon.ribbon-layout-single .ribbon-align-grid,
+.ribbon.ribbon-layout-single .ribbon-alignment-actions,
+.ribbon.ribbon-layout-single .ribbon-stack,
+.ribbon.ribbon-layout-single .ribbon-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-input-row,
+.ribbon.ribbon-layout-single .ribbon-command-row {
+  min-height: 22px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-tool,
+.ribbon.ribbon-layout-single .ribbon-large-tool,
+.ribbon.ribbon-layout-single .ribbon-compact-tool,
+.ribbon.ribbon-layout-single .ribbon-data-panel .ribbon-tool,
+.ribbon.ribbon-layout-single .ribbon-formula-panel .ribbon-compact-tool,
+.ribbon.ribbon-layout-single .ribbon-view-panel .ribbon-compact-tool,
+.ribbon.ribbon-layout-single .ribbon-view-panel .ribbon-large-tool {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  flex-direction: row;
+  justify-content: center;
+  gap: 0;
+  white-space: nowrap;
+}
+
+.ribbon.ribbon-layout-single .ribbon-icon-tool,
+.ribbon.ribbon-layout-single .ribbon-menu-button,
+.ribbon.ribbon-layout-single .ribbon-color-main,
+.ribbon.ribbon-layout-single .ribbon-color-arrow,
+.ribbon.ribbon-layout-single .ribbon-underline-main,
+.ribbon.ribbon-layout-single .ribbon-underline-arrow,
+.ribbon.ribbon-layout-single .ribbon-border-main,
+.ribbon.ribbon-layout-single .ribbon-border-arrow {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-large-tool svg,
+.ribbon.ribbon-layout-single .ribbon-compact-tool svg,
+.ribbon.ribbon-layout-single .ribbon-icon-tool svg,
+.ribbon.ribbon-layout-single .ribbon-data-panel .ribbon-tool svg,
+.ribbon.ribbon-layout-single .ribbon-view-panel .ribbon-large-tool svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-command-caret,
+.ribbon.ribbon-layout-single .ribbon-inline-chevron {
+  display: none;
+}
+
+.ribbon.ribbon-layout-single .ribbon-view-freeze-split,
+.ribbon.ribbon-layout-single .ribbon-view-macro-split {
+  width: auto;
+  height: 22px;
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+}
+
+.ribbon.ribbon-layout-single .ribbon-view-freeze-split .ribbon-freeze-main,
+.ribbon.ribbon-layout-single .ribbon-view-macro-split .ribbon-macro-main {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-view-freeze-split .ribbon-freeze-arrow,
+.ribbon.ribbon-layout-single .ribbon-view-macro-split .ribbon-macro-arrow {
+  width: 18px;
+  min-width: 18px;
+  height: 22px;
+  min-height: 22px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-view-option-icon {
+  display: block;
+}
+
+.ribbon.ribbon-layout-single .ribbon-view-show-group .ribbon-check-box,
+.ribbon.ribbon-layout-single .ribbon-view-options-group .ribbon-check-box {
+  display: none;
 }
 
 body.is-websheet-fullscreen .ribbon-tab-row {
@@ -1696,6 +2094,31 @@ body.is-dragging-print-area * {
   display: block;
 }
 
+.ribbon-line-weight-icon {
+  width: 16px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #111827;
+}
+
+.ribbon-line-weight-icon::before {
+  content: "";
+  display: block;
+  width: 14px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.ribbon-line-weight-thin::before {
+  height: 1px;
+}
+
+.ribbon-line-weight-thick::before {
+  height: 4px;
+}
+
 .ribbon-draw-convert-group {
   width: 112px;
   display: grid;
@@ -1974,6 +2397,107 @@ body.is-dragging-print-area * {
   padding-top: 4px;
 }
 
+.ribbon.ribbon-layout-single .ribbon-insert-panel .ribbon-group,
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-group {
+  width: auto;
+  height: 27px;
+  min-height: 27px;
+  padding: 1px 4px;
+  display: flex;
+  align-items: center;
+  align-content: center;
+  gap: 3px;
+  overflow: visible;
+}
+
+.ribbon.ribbon-layout-single .ribbon-insert-tables-group,
+.ribbon.ribbon-layout-single .ribbon-insert-illustrations-group,
+.ribbon.ribbon-layout-single .ribbon-insert-addins-group,
+.ribbon.ribbon-layout-single .ribbon-insert-charts-group,
+.ribbon.ribbon-layout-single .ribbon-insert-sparklines-group,
+.ribbon.ribbon-layout-single .ribbon-insert-filter-group,
+.ribbon.ribbon-layout-single .ribbon-insert-links-group,
+.ribbon.ribbon-layout-single .ribbon-insert-text-group,
+.ribbon.ribbon-layout-single .ribbon-insert-symbols-group,
+.ribbon.ribbon-layout-single .ribbon-layout-theme-group,
+.ribbon.ribbon-layout-single .ribbon-layout-page-group,
+.ribbon.ribbon-layout-single .ribbon-layout-scale-group,
+.ribbon.ribbon-layout-single .ribbon-layout-sheet-options-group,
+.ribbon.ribbon-layout-single .ribbon-layout-arrange-group {
+  width: auto;
+  grid-template-columns: none;
+  grid-template-rows: none;
+  display: flex;
+  align-items: center;
+  align-content: center;
+  gap: 3px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-insert-panel .ribbon-stack,
+.ribbon.ribbon-layout-single .ribbon-insert-panel .ribbon-insert-stack,
+.ribbon.ribbon-layout-single .ribbon-insert-chart-grid,
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-stack {
+  width: auto;
+  min-width: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-insert-panel .ribbon-large-tool,
+.ribbon.ribbon-layout-single .ribbon-insert-panel .ribbon-compact-tool,
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-large-tool,
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-compact-tool {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  flex-direction: row;
+  justify-content: center;
+  gap: 0;
+}
+
+.ribbon.ribbon-layout-single .ribbon-insert-panel .ribbon-group + .ribbon-group,
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-group + .ribbon-group {
+  margin-left: 2px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-data-sort-icon {
+  display: inline-grid;
+}
+
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-layout-scale-group {
+  gap: 10px;
+  padding-inline: 6px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-layout-field {
+  width: auto;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-layout-field span {
+  min-width: auto;
+  overflow: visible;
+}
+
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-layout-field select {
+  width: 86px;
+  height: 20px;
+}
+
+.ribbon.ribbon-layout-single .ribbon-layout-panel .ribbon-layout-field input {
+  width: 58px;
+  height: 20px;
+}
+
 .ribbon-group-label {
   position: absolute;
   left: 5px;
@@ -2046,16 +2570,16 @@ body.is-dragging-print-area * {
 .ribbon-underline-arrow:hover,
 .ribbon-border-main:hover,
 .ribbon-border-arrow:hover {
-  background: #eef6ff;
-  border-color: #c9dfff;
+  background: var(--selection-tint);
+  border-color: var(--selection-focus);
 }
 
 .ribbon-tool.is-active,
 .ribbon-icon-tool.is-active,
 .ribbon-underline-main.is-active {
-  background: #dbeafe;
-  border-color: #93c5fd;
-  color: #1d4ed8;
+  background: var(--selection-soft);
+  border-color: var(--selection);
+  color: var(--selection-dark);
 }
 
 .ribbon-tool:disabled,
@@ -2752,8 +3276,8 @@ body.is-dragging-print-area * {
 .ribbon-shape-choice:hover,
 .ribbon-shape-choice:focus-visible,
 .ribbon-shape-choice.is-active {
-  background: #eef6ff;
-  border-color: #8ebdff;
+  background: var(--selection-tint);
+  border-color: var(--selection);
   outline: none;
 }
 
@@ -2808,8 +3332,8 @@ body.is-dragging-print-area * {
 
 .shape-format-menu-command:hover,
 .shape-format-menu-command:focus-visible {
-  background: #eef6ff;
-  border-color: #8ebdff;
+  background: var(--selection-tint);
+  border-color: var(--selection);
   outline: none;
 }
 
@@ -3097,8 +3621,8 @@ body.is-dragging-print-area * {
 }
 
 .shape-format-pane-close:hover {
-  border-color: #c9dfff;
-  background: #eef6ff;
+  border-color: var(--selection-focus);
+  background: var(--selection-tint);
 }
 
 .shape-format-pane-tabs {
@@ -3225,8 +3749,8 @@ body.is-dragging-print-area * {
 }
 
 .shape-format-pane-command:hover {
-  border-color: #7aa7e8;
-  background: #eef6ff;
+  border-color: var(--selection);
+  background: var(--selection-tint);
 }
 
 .shape-selection-pane {
@@ -3268,8 +3792,8 @@ body.is-dragging-print-area * {
 }
 
 .shape-selection-pane-close:hover {
-  border-color: #c9dfff;
-  background: #eef6ff;
+  border-color: var(--selection-focus);
+  background: var(--selection-tint);
 }
 
 .shape-selection-pane-toolbar {
@@ -3498,8 +4022,8 @@ body.is-dragging-print-area * {
 
 .ribbon-data-menu button:hover,
 .ribbon-data-menu button:focus-visible {
-  background: #eef6ff;
-  border-color: #8ebdff;
+  background: var(--selection-tint);
+  border-color: var(--selection);
   outline: none;
 }
 
@@ -3585,8 +4109,8 @@ body.is-dragging-print-area * {
 .web-navigator-list button:hover,
 .web-navigator-list button:focus-visible,
 .web-navigator-list button.is-active {
-  border-color: #9cc2e5;
-  background: #dbeafe;
+  border-color: var(--selection);
+  background: var(--selection-soft);
   outline: none;
 }
 
@@ -3865,8 +4389,8 @@ body.is-dragging-print-area * {
 .ribbon-underline-choice:hover,
 .ribbon-underline-choice:focus-visible,
 .ribbon-underline-choice.is-active {
-  background: #eef6ff;
-  border-color: #c9dfff;
+  background: var(--selection-tint);
+  border-color: var(--selection-focus);
   outline: none;
 }
 
@@ -3888,8 +4412,8 @@ body.is-dragging-print-area * {
 .ribbon-border-choice:hover,
 .ribbon-border-choice:focus-visible,
 .ribbon-border-choice.is-active {
-  background: #eef6ff;
-  border-color: #c9dfff;
+  background: var(--selection-tint);
+  border-color: var(--selection-focus);
   outline: none;
 }
 
@@ -3912,8 +4436,8 @@ body.is-dragging-print-area * {
 .ribbon-ink-eraser-choice:hover,
 .ribbon-ink-eraser-choice:focus-visible,
 .ribbon-ink-eraser-choice.is-active {
-  background: #eef6ff;
-  border-color: #c9dfff;
+  background: var(--selection-tint);
+  border-color: var(--selection-focus);
   outline: none;
 }
 
@@ -4007,7 +4531,7 @@ body.is-dragging-print-area * {
 
 .ribbon-color-choice:hover,
 .ribbon-color-choice:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--selection);
   outline-offset: 1px;
 }
 
@@ -4029,7 +4553,7 @@ body.is-dragging-print-area * {
 
 .ribbon-color-command:hover,
 .ribbon-color-command:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -4217,7 +4741,7 @@ body.is-dragging-print-area * {
 .sheet-tab-menu-item:focus-visible:not(:disabled),
 .sheet-tab-color-choice:hover,
 .sheet-tab-color-choice:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -4317,7 +4841,7 @@ body.is-dragging-print-area * {
 .cell-context-menu-item:focus-visible:not(:disabled),
 .cell-paste-option:hover,
 .cell-paste-option:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -4427,8 +4951,8 @@ body.is-dragging-print-area * {
 .quick-analysis-tab:hover,
 .quick-analysis-tab:focus-visible,
 .quick-analysis-tab.is-active {
-  border-color: #9fc5f8;
-  background: #e8f0fe;
+  border-color: var(--selection);
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -4469,8 +4993,8 @@ body.is-dragging-print-area * {
 
 .quick-analysis-action:hover,
 .quick-analysis-action:focus-visible {
-  border-color: #9fc5f8;
-  background: #e8f0fe;
+  border-color: var(--selection);
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -4565,8 +5089,8 @@ body.is-dragging-print-area * {
 
 .workbook-window-chip-wrap:hover,
 .workbook-window-chip-wrap:focus-within {
-  border-color: #60a5fa;
-  background: #eef6ff;
+  border-color: var(--selection);
+  background: var(--selection-tint);
 }
 
 .workbook-window-chip-wrap.is-active {
@@ -4576,7 +5100,7 @@ body.is-dragging-print-area * {
 }
 
 .workbook-window-chip-wrap.is-compared {
-  background: #eef6ff;
+  background: var(--selection-tint);
 }
 
 .workbook-window-chip {
@@ -4603,7 +5127,7 @@ body.is-dragging-print-area * {
 
 .workbook-window-preview-slot:hover,
 .workbook-window-preview-slot:focus-visible {
-  border-color: #60a5fa;
+  border-color: var(--selection);
 }
 
 .workbook-window-chip.is-active {
@@ -4630,7 +5154,7 @@ body.is-dragging-print-area * {
 
 .workbook-window-close:hover,
 .workbook-window-close:focus-visible {
-  background: #dbeafe;
+  background: var(--selection-soft);
   color: #1f2937;
   outline: none;
   opacity: 1;
@@ -4773,7 +5297,7 @@ body.is-dragging-print-area * {
 
 .name-box-menu button:hover,
 .name-box-menu button:focus-visible {
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -4861,8 +5385,8 @@ body.is-dragging-print-area * {
 .formula-autocomplete-item:hover,
 .formula-autocomplete-item.is-active,
 .formula-autocomplete-item:focus-visible {
-  background: #dcebff;
-  outline: 1px solid #4f8cff;
+  background: var(--selection-tint);
+  outline: 1px solid var(--selection);
   outline-offset: -1px;
 }
 
@@ -5311,7 +5835,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 
 .sheet-zoom-button:hover {
   color: var(--accent-strong);
-  border-color: #93c5fd;
+  border-color: var(--selection);
 }
 
 .sheet-zoom-slider {
@@ -5375,7 +5899,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 
 .status-bar-menu-item:hover,
 .status-bar-menu-item:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -5448,7 +5972,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 }
 
 .zoom-dialog-input:focus {
-  outline: 2px solid #bfdbfe;
+  outline: 2px solid var(--selection-focus);
   outline-offset: -1px;
 }
 
@@ -5471,7 +5995,7 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 .zoom-dialog-button:hover,
 .zoom-dialog-button:focus-visible {
   border-color: var(--accent);
-  outline: 2px solid #bfdbfe;
+  outline: 2px solid var(--selection-focus);
   outline-offset: -1px;
 }
 
@@ -6749,7 +7273,7 @@ body.is-drawing-ink .sheet-host {
 
 .auto-fill-options-menu-item:hover,
 .auto-fill-options-menu-item:focus {
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -7380,8 +7904,8 @@ body.is-drawing-ink .sheet-host {
 
 .cell-filter-button:hover,
 .cell-filter-button:focus-visible {
-  background: #e8f0fe;
-  outline: 1px solid #7aa7d9;
+  background: var(--selection-tint);
+  outline: 1px solid var(--selection);
   outline-offset: -1px;
 }
 
@@ -7594,7 +8118,7 @@ body.is-drawing-ink .sheet-host {
 
 .home-command-menu button:hover,
 .home-command-menu button:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -7633,7 +8157,7 @@ body.is-drawing-ink .sheet-host {
 .auto-filter-submenu-toggle:hover,
 .auto-filter-submenu-toggle:focus-visible,
 .auto-filter-submenu-toggle.is-filtered {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -7664,7 +8188,7 @@ body.is-drawing-ink .sheet-host {
 
 .auto-filter-submenu button:hover,
 .auto-filter-submenu button:focus-visible {
-  background: #e8f0fe;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -9725,7 +10249,7 @@ body.is-drawing-ink .sheet-host {
 
 .insert-function-list button.is-active,
 .insert-function-list button:focus-visible {
-  background: #dcebff;
+  background: var(--selection-tint);
   outline: 1px solid #0078d7;
   outline-offset: -1px;
 }
@@ -10769,7 +11293,7 @@ body.is-drawing-ink .sheet-host {
 
 .go-to-list button:hover,
 .go-to-list button:focus-visible {
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -11132,7 +11656,7 @@ body.is-drawing-ink .sheet-host {
 .symbol-choice:hover,
 .symbol-choice:focus-visible {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -11207,7 +11731,7 @@ body.is-drawing-ink .sheet-host {
 .insert-gallery-card:hover,
 .insert-gallery-card:focus-visible {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: none;
 }
 
@@ -11420,7 +11944,7 @@ body.is-drawing-ink .sheet-host {
 .excel-mini-button:hover,
 .excel-mini-button:focus-visible {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: 1px solid #0078d7;
   outline-offset: -1px;
 }
@@ -11437,7 +11961,7 @@ body.is-drawing-ink .sheet-host {
 
 .excel-mini-button.is-primary {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
 }
 
 .help-dialog {
@@ -11846,14 +12370,14 @@ body.is-drawing-ink .sheet-host {
 .format-dialog-button:hover,
 .format-dialog-button:focus-visible {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: 1px solid #0078d7;
   outline-offset: -1px;
 }
 
 .format-dialog-button.is-primary {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
 }
 
 .cell-structure-dialog-overlay {
@@ -11967,14 +12491,14 @@ body.is-drawing-ink .sheet-host {
 .cell-structure-button:hover,
 .cell-structure-button:focus-visible {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
   outline: 1px solid #0078d7;
   outline-offset: -1px;
 }
 
 .cell-structure-button.is-primary {
   border-color: #0078d7;
-  background: #e5f1fb;
+  background: var(--selection-tint);
 }
 
 .hidden {
@@ -12011,6 +12535,7 @@ body.is-object-selection-mode .sheet-host {
 }
 
 .file-side-menu,
+.ribbon-display-menu,
 .ribbon-color-palette,
 .ribbon-border-menu,
 .ribbon-ink-eraser-menu,
