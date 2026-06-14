@@ -2,19 +2,19 @@
   "appName": "Cht WebSheet",
   "company": "株式会社CHT",
   "version": "0.1.0",
-  "runtimeVersion": "0.1.8",
-  "runtimeUpdatedAt": "2026-06-14T10:50:51.353Z",
-  "updatedAt": "2026-06-14T10:50:51.353Z",
+  "runtimeVersion": "0.1.9",
+  "runtimeUpdatedAt": "2026-06-14T15:47:27.855Z",
+  "updatedAt": "2026-06-14T15:47:27.855Z",
   "runtimeChannel": "current",
   "downloadPage": "https://chtec.co.jp/cws/manual/",
   "packages": {
     "windows": {
       "label": "Windows ランタイム パッケージ (.zip)",
-      "href": "/cws/download/packages/ChtWebSheet-runtime-0.1.8-windows.zip"
+      "href": "/cws/download/packages/ChtWebSheet-runtime-0.1.9-windows.zip"
     },
     "macos": {
       "label": "macOS ランタイム パッケージ (.zip)",
-      "href": "/cws/download/packages/ChtWebSheet-runtime-0.1.8-macos.zip"
+      "href": "/cws/download/packages/ChtWebSheet-runtime-0.1.9-macos.zip"
     }
   }
 }
