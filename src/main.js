@@ -281,6 +281,7 @@ const PERSISTENCE_DB_VERSION = 1;
 const PERSISTENCE_STORE_NAME = "snapshots";
 const PERSISTENCE_CURRENT_KEY = "current-workbook";
 const PERSISTENCE_SNAPSHOT_VERSION = 1;
+const PENDING_FILE_LOAD_RECOVERY_STORAGE_KEY = "websheet.pendingFileLoadRecovery.v1";
 const WORKBOOK_OPEN_TRANSFER_DB_NAME = "cht-websheet-open-transfers";
 const WORKBOOK_OPEN_TRANSFER_DB_VERSION = 1;
 const WORKBOOK_OPEN_TRANSFER_STORE_NAME = "files";
@@ -10206,6 +10207,10 @@ const cellStyleInternPools = {
 const formulaSpillAnchorCacheBySheet = new WeakMap();
 const sheetUsedRangeCacheBySheet = new WeakMap();
 const sheetStyleRangeCacheBySheet = new WeakMap();
+const sheetMergeMapsCacheByMerges = new WeakMap();
+const sheetMinimumExtentCacheBySheet = new WeakMap();
+const sheetBorderCellCacheBySheet = new WeakMap();
+const sheetPersistentNoteCellCacheBySheet = new WeakMap();
 
 function resetCellStyleInternPools() {
   cellStyleInternPools.css.clear();
@@ -10263,6 +10268,8 @@ const state = {
   editAutoScroll: null,
   editAutoScrollFrame: null,
   cellEditSelection: null,
+  cellEditDirectTyping: null,
+  selectionKeyboardSink: null,
   cellEditComposing: false,
   formulaBarComposing: false,
   formulaEdit: null,
@@ -10517,6 +10524,7 @@ const $workbookNameDisplayText = $("#workbookNameDisplayText");
 const $workbookWindowBar = $("#workbookWindowBar");
 const $warnings = $("#warnings");
 const $appAlert = $("#appAlert");
+const $selectionKeyboardSink = $("#selectionKeyboardSink");
 const $formulaBar = $(".formula-bar");
 const $formulaInput = $("#formulaInput");
 const $formulaExpandButton = $("#formulaExpandButton");
@@ -10624,6 +10632,7 @@ function init() {
   document.addEventListener("dragover", handleWorkbookFileDragOver, true);
   document.addEventListener("drop", handleWorkbookFileDrop, true);
 
+  $sheetTabs[0]?.addEventListener("pointerdown", markFormulaReferenceSheetTabPointerDownCapture, true);
   $sheetTabs.on("pointerdown", ".sheet-tab", handleFormulaReferenceSheetTabPointerDown);
   $sheetTabs.on("pointerdown", ".sheet-tab", startSheetTabDrag);
   $sheetTabs.on("click", ".sheet-tab", handleSheetTabClick);
@@ -10709,6 +10718,7 @@ function init() {
 
   $sheetHost.on("scroll", () => {
     syncHorizontalScrollbarFromHost();
+    positionSelectionKeyboardSink();
     if (state.restoringViewportScroll) return;
     updateActiveWorkbookWindowScrollState();
     syncPairedWorkbookWindowScrollState();
@@ -10769,6 +10779,7 @@ function init() {
     $sheetHost[0].addEventListener("pointerdown", handleLineShapePointerDownCapture, true);
     $sheetHost[0].addEventListener("contextmenu", handleLineShapeContextMenuCapture, true);
   }
+  $sheetHost.on("click", ".cell-link", handleCellHyperlinkClick);
   $sheetHost.on("click", handleSheetHostCellClick);
   $sheetHost.on("dblclick", ".sheet-image:not(.sheet-shape), .sheet-image-link, .sheet-image-selection-frame:not(.is-shape)", handlePictureFormatDoubleClick);
   $sheetHost.on("dblclick", ".sheet-image.sheet-shape, .sheet-image-selection-frame.is-shape", startShapeTextEdit);
@@ -10856,6 +10867,13 @@ function init() {
   $(document).on("keydown", "#messageBoxOverlay", handleMessageBoxKeydown);
   $(document).on("compositionstart", "input, textarea, [contenteditable='true']", handleTextInputImeCompositionStart);
   $(document).on("compositionend", "input, textarea, [contenteditable='true']", handleTextInputImeCompositionEnd);
+  $selectionKeyboardSink.on("keydown", handleSelectionKeyboardSinkKeydown);
+  $selectionKeyboardSink.on("beforeinput", handleSelectionKeyboardSinkBeforeInput);
+  $selectionKeyboardSink.on("input", handleSelectionKeyboardSinkInput);
+  $selectionKeyboardSink.on("compositionstart", handleSelectionKeyboardSinkCompositionStart);
+  $selectionKeyboardSink.on("compositionupdate", handleSelectionKeyboardSinkCompositionUpdate);
+  $selectionKeyboardSink.on("compositionend", handleSelectionKeyboardSinkCompositionEnd);
+  $selectionKeyboardSink.on("blur", handleSelectionKeyboardSinkBlur);
   $(document).on("click", "[data-format-dialog-tab]", handleFormatDialogTabClick);
   $(document).on("click", "[data-format-dialog-action]", handleFormatDialogAction);
   $(document).on("click", "[data-page-setup-tab]", handlePageSetupTabClick);
@@ -11122,6 +11140,13 @@ function init() {
     updateFormulaReferenceUi();
     updateFormulaAutocompleteForEditor(event.currentTarget);
   });
+  $sheetHost.on("beforeinput", ".sheet-cell[contenteditable='true']", (event) => {
+    const nativeEvent = event.originalEvent || event;
+    const inputType = String(nativeEvent.inputType || "");
+    if (inputType.toLowerCase().includes("composition") || nativeEvent.isComposing) {
+      recordDirectTypingCompositionData(event.currentTarget, nativeEvent.data || "");
+    }
+  });
   $sheetHost.on("keyup pointerup click", ".sheet-cell[contenteditable='true']", (event) => {
     saveCellEditSelection(event.currentTarget);
     scheduleFormulaAutocompleteRefreshForEditor(event.currentTarget, { keepSelection: true, event });
@@ -11160,15 +11185,22 @@ function init() {
     }
   });
   $sheetHost.on("compositionstart", ".sheet-cell[contenteditable='true']", (event) => {
+    markDirectTypingComposition(event.currentTarget, true);
+    recordDirectTypingCompositionData(event.currentTarget, event.originalEvent?.data || event.data || "");
     markImeComposition(event.currentTarget, "cell", true);
+  });
+  $sheetHost.on("compositionupdate", ".sheet-cell[contenteditable='true']", (event) => {
+    recordDirectTypingCompositionData(event.currentTarget, event.originalEvent?.data || event.data || "");
   });
   $sheetHost.on("compositionend", ".sheet-cell[contenteditable='true']", (event) => {
     markImeComposition(event.currentTarget, "cell", false);
+    reconcileDirectTypingImeCommit(event.currentTarget, event.originalEvent?.data || event.data || "");
     updateFormulaAutocompleteForEditor(event.currentTarget);
   });
 
   $sheetHost.on("blur", ".sheet-cell[contenteditable='true']", (event) => {
     const $cell = $(event.currentTarget);
+    clearCellEditDirectTyping(event.currentTarget);
     if ($cell.data("skipBlurCommit")) {
       $cell.removeData("skipBlurCommit");
       return;
@@ -11179,6 +11211,10 @@ function init() {
     const beforeRichText = $cell.data("beforeRichText") || null;
     const after = editablePlainText(event.currentTarget);
     const afterRichText = cellEditRichTextForCommit(event.currentTarget, after);
+    if (cellEditBlurStartsFormulaSheetNavigation(event, after)) {
+      preserveCellFormulaEditForSheetNavigation(event.currentTarget, row, col, before, after);
+      return;
+    }
     closeFormulaAutocomplete({ restoreFocus: false });
     clearFormulaReferenceState({ update: false });
     event.currentTarget.removeAttribute("contenteditable");
@@ -11211,6 +11247,12 @@ function init() {
 
   $formulaInput.on("keydown", (event) => {
     if (handleWorkbookPaneFocusShortcut(event, String(event.key || "").toLowerCase())) return;
+    if (isEnterKeyEvent(event) && isAltModifierEvent(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      insertLineBreakInTextControl(event.currentTarget);
+      return;
+    }
     if (handleFormulaAutocompleteKeydown(event, event.currentTarget)) return;
     if (event.key === "F4" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
       if (cycleFormulaReferenceInFormulaBar()) {
@@ -11218,12 +11260,6 @@ function init() {
         event.stopPropagation();
         return;
       }
-    }
-    if (isEnterKeyEvent(event) && isAltModifierEvent(event)) {
-      event.preventDefault();
-      event.stopPropagation();
-      insertLineBreakInTextControl(event.currentTarget);
-      return;
     }
     if (event.key === "Enter") {
       if (isImeCompositionEvent(event, event.currentTarget, "formula")) return;
@@ -11593,6 +11629,16 @@ function init() {
       );
       return applyCellStructureOperation(kind, option, range);
     };
+    window.__webSheetDevApplyHeaderStructure = (kind, option, index, endIndex = index) => {
+      if (!state.model) return false;
+      const start = Number(index);
+      const end = Number(endIndex);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+      const range = option === "entire-column"
+        ? columnSelectionRange(start, end)
+        : rowSelectionRange(start, end);
+      return applyCellStructureOperation(kind, option, range);
+    };
     window.__webSheetDevRefreshCharts = () => refreshWorkbookChartsFromSources();
     window.__webSheetDevShiftFormulaReferences = (formula, rowOffset = 0, colOffset = 0) =>
       shiftFormulaReferences(formula, Number(rowOffset) || 0, Number(colOffset) || 0);
@@ -11835,9 +11881,23 @@ function showFileOpenEmptyState() {
 async function restorePersistedWorkbookOrCreateBlank() {
   showStartupLoadingState();
   const restoreVersion = state.workbookLoadVersion;
+  if (consumePendingFileLoadRecoveryMarker()) {
+    try {
+      await deletePersistedWorkbookSnapshot();
+    } catch (error) {
+      console.warn("Failed to clear workbook snapshot after interrupted file load.", error);
+    }
+    if (!state.model && restoreVersion === state.workbookLoadVersion) {
+      openBlankWorkbook({ status: "前回のファイル読み込みが完了しなかったため、新しいブックを作成しました。" });
+      showAppAlert("前回のファイル読み込みが完了しなかったため、自動復元をスキップしました。", "warning");
+      void flushWorkbookPersistence();
+    }
+    return;
+  }
   const restored = await restorePersistedWorkbook();
   if (!restored && !state.model && restoreVersion === state.workbookLoadVersion) {
     openBlankWorkbook({ status: "新しいブックを作成しました。" });
+    void flushWorkbookPersistence();
   }
 }
 
@@ -12826,6 +12886,8 @@ async function createExcelJsWorkbookForImport(buffer, file, excelJsLoad) {
 
 async function loadExcelFile(file, options = {}) {
   const loadVersion = ++state.workbookLoadVersion;
+  markPendingFileLoadRecovery(file);
+  const previousWorkbookState = captureWorkbookRecoveryState();
   revokeWorksheetImageRenderObjectUrls();
   const sourceFileSignature = workbookFileSignature(file);
   closeHeaderSizeDialog({ restoreFocus: false });
@@ -12871,6 +12933,7 @@ async function loadExcelFile(file, options = {}) {
       workbookWindowViews,
       workbookCustomViews,
       workbookMetadata,
+      workbookCellHyperlinks,
     ] = await Promise.all([
       extractWorkbookPhonetics(metadataBuffer),
       extractWorkbookDrawingShapes(metadataBuffer, themeColors),
@@ -12882,6 +12945,7 @@ async function loadExcelFile(file, options = {}) {
       extractWorkbookWindowViews(metadataBuffer),
       extractWorkbookCustomViews(metadataBuffer),
       extractWorkbookMetadata(metadataBuffer),
+      extractWorkbookCellHyperlinks(metadataBuffer),
     ]);
     debugWorkbookLoadTrace("metadata-extract:done");
     debugWorkbookLoadTrace("ooxml-preserve:start");
@@ -12907,6 +12971,7 @@ async function loadExcelFile(file, options = {}) {
       workbookCustomViews,
       workbookMetadata,
     );
+    applyWorkbookCellHyperlinksToModel(state.model, workbookCellHyperlinks);
     if (excelJsLoad.convertedFromLegacyXls) {
       debugWorkbookLoadTrace("legacy-xls-styles:start");
       applyLegacyXlsCellStylesToModel(state.model, buffer);
@@ -12986,47 +13051,74 @@ async function loadExcelFile(file, options = {}) {
     debugWorkbookLoadTrace("persistence:start");
     await flushWorkbookPersistence();
     debugWorkbookLoadTrace("persistence:done");
+    clearPendingFileLoadRecoveryMarker();
   } catch (error) {
     console.error(error);
-    state.model = null;
-    state.hf = null;
-    state.currentSaveType = "";
-    state.openedFileSignature = null;
-    resetCellStyleInternPools();
-    state.selectedSheetIndexes = [];
-    state.sheetContextMenu = null;
-    state.cellContextMenu = null;
-    state.headerSizeDialog = null;
-    state.nameDialog = null;
-    state.linkDialog = null;
-    state.translationPane = null;
-    state.symbolDialog = null;
-    state.annotationEditor = null;
-    state.shapeSelectionPane = null;
-    state.shapeSelectionPaneDrag = null;
-    state.undoStack = [];
-    state.redoStack = [];
-    state.workbookRevision = 0;
-    markWorkbookSavedClean();
-    clearWorkbookClipboardState();
-    state.selected = null;
-    state.selectedImage = null;
-    state.selectedImages = [];
-    state.selectionRange = null;
-    state.selectionRanges = [];
-    state.selectionAnchor = null;
-    state.selectionStart = null;
-    state.selectionDrag = null;
-    state.autoFillOptions = null;
-    state.formulaEdit = null;
-    document.title = APP_TITLE;
-    showFileOpenEmptyState();
-    $exportHtmlButton.prop("disabled", true);
-    $toggleFormulasButton.prop("disabled", true);
+    if (loadVersion !== state.workbookLoadVersion) return;
     const message = readableLoadError(error);
-    setStatus("読み込みに失敗しました。有効な .xlsx / .xlsm / .xls ブックか確認してください。");
+    recoverWorkbookAfterFailedFileLoad(previousWorkbookState);
+    setStatus(previousWorkbookState?.snapshot?.model
+      ? "読み込みに失敗しました。元のブックに戻しました。"
+      : "読み込みに失敗しました。新しいブックを作成しました。");
     showAppAlert(`読み込みに失敗しました: ${message}`, "error");
+    clearPendingFileLoadRecoveryMarker();
   }
+}
+
+function captureWorkbookRecoveryState() {
+  if (!state.model) return null;
+  let snapshot = null;
+  try {
+    snapshot = currentWorkbookSnapshot();
+  } catch (error) {
+    console.warn("Failed to capture workbook state before loading a new file.", error);
+    return null;
+  }
+  return {
+    snapshot,
+    workbookRevision: Math.max(0, Number(state.workbookRevision) || 0),
+    workbookSavedRevision: Math.max(0, Number(state.workbookSavedRevision) || 0),
+    currentSaveType: state.currentSaveType,
+    currentSaveFileHandle: state.currentSaveFileHandle,
+    currentSaveDirectoryHandle: state.currentSaveDirectoryHandle,
+    currentSaveFileName: state.currentSaveFileName,
+    openedFileSignature: normalizeWorkbookFileSignature(state.openedFileSignature),
+  };
+}
+
+function recoverWorkbookAfterFailedFileLoad(previousWorkbookState = null) {
+  cancelWorkbookPersistenceIdleCallback();
+  if (state.persistenceTimer) {
+    window.clearTimeout(state.persistenceTimer);
+    state.persistenceTimer = null;
+  }
+
+  if (previousWorkbookState?.snapshot?.model) {
+    try {
+      applyPersistedWorkbookSnapshot(previousWorkbookState.snapshot);
+      state.workbookRevision = previousWorkbookState.workbookRevision;
+      state.workbookSavedRevision = previousWorkbookState.workbookSavedRevision;
+      state.currentSaveType = previousWorkbookState.currentSaveType || state.currentSaveType;
+      state.currentSaveFileHandle = previousWorkbookState.currentSaveFileHandle || null;
+      state.currentSaveDirectoryHandle = previousWorkbookState.currentSaveDirectoryHandle || null;
+      state.currentSaveFileName = previousWorkbookState.currentSaveFileName || "";
+      state.openedFileSignature = previousWorkbookState.openedFileSignature || normalizeWorkbookFileSignature(state.model?.sourceFileSignature);
+      return;
+    } catch (restoreError) {
+      console.warn("Failed to restore workbook after load failure.", restoreError);
+    }
+  }
+
+  state.model = null;
+  state.hf = null;
+  state.currentSaveType = "";
+  state.openedFileSignature = null;
+  resetCellStyleInternPools();
+  state.workbookRevision = 0;
+  markWorkbookSavedClean();
+  clearWorkbookClipboardState();
+  openBlankWorkbook({ status: "読み込みに失敗しました。新しいブックを作成しました。" });
+  void flushWorkbookPersistence();
 }
 
 async function excelJsWorkbookFromFile(file) {
@@ -13796,6 +13888,16 @@ async function restorePersistedWorkbook() {
     return true;
   } catch (error) {
     console.warn("Failed to restore workbook snapshot.", error);
+    state.model = null;
+    state.hf = null;
+    state.currentSaveType = "";
+    state.openedFileSignature = null;
+    resetCellStyleInternPools();
+    try {
+      await deletePersistedWorkbookSnapshot();
+    } catch (deleteError) {
+      console.warn("Failed to delete broken workbook snapshot.", deleteError);
+    }
     return false;
   } finally {
     state.persistenceLoading = false;
@@ -15088,6 +15190,41 @@ function persistenceAvailable() {
   return !state.isStandalone && typeof globalThis.indexedDB !== "undefined";
 }
 
+function markPendingFileLoadRecovery(file) {
+  if (!persistenceAvailable() || typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(PENDING_FILE_LOAD_RECOVERY_STORAGE_KEY, JSON.stringify({
+      startedAt: Date.now(),
+      name: String(file?.name || ""),
+      size: Number(file?.size) || 0,
+      lastModified: Number(file?.lastModified) || 0,
+    }));
+  } catch {
+    // If localStorage is blocked, the normal load failure recovery still applies.
+  }
+}
+
+function clearPendingFileLoadRecoveryMarker() {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(PENDING_FILE_LOAD_RECOVERY_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function consumePendingFileLoadRecoveryMarker() {
+  if (!persistenceAvailable() || typeof localStorage === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(PENDING_FILE_LOAD_RECOVERY_STORAGE_KEY);
+    if (!raw) return false;
+    localStorage.removeItem(PENDING_FILE_LOAD_RECOVERY_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function openPersistenceDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(PERSISTENCE_DB_NAME, PERSISTENCE_DB_VERSION);
@@ -15117,6 +15254,17 @@ async function writePersistedWorkbookSnapshot(snapshot) {
   try {
     const tx = db.transaction(PERSISTENCE_STORE_NAME, "readwrite");
     tx.objectStore(PERSISTENCE_STORE_NAME).put(snapshot, PERSISTENCE_CURRENT_KEY);
+    await idbTransactionDone(tx);
+  } finally {
+    db.close();
+  }
+}
+
+async function deletePersistedWorkbookSnapshot() {
+  const db = await openPersistenceDb();
+  try {
+    const tx = db.transaction(PERSISTENCE_STORE_NAME, "readwrite");
+    tx.objectStore(PERSISTENCE_STORE_NAME).delete(PERSISTENCE_CURRENT_KEY);
     await idbTransactionDone(tx);
   } finally {
     db.close();
@@ -15601,6 +15749,110 @@ function parseDataValidationShowDropDownAttribute(value) {
   if (text === "1" || text === "true") return false;
   if (text === "0" || text === "false") return true;
   return null;
+}
+
+async function extractWorkbookCellHyperlinks(buffer) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const [workbookXml, workbookRelsXml] = await Promise.all([
+      zip.file("xl/workbook.xml")?.async("text"),
+      zip.file("xl/_rels/workbook.xml.rels")?.async("text"),
+    ]);
+    if (!workbookXml || !workbookRelsXml) return {};
+    const entries = await Promise.all(
+      workbookSheetPaths(workbookXml, workbookRelsXml).map(async ({ name, path }) => ({
+        name,
+        hyperlinks: await extractWorksheetCellHyperlinks(zip, path),
+      })),
+    );
+    return Object.fromEntries(entries.filter((entry) => entry.hyperlinks.length).map((entry) => [entry.name, entry.hyperlinks]));
+  } catch (error) {
+    console.warn("Failed to extract workbook hyperlinks.", error);
+    return {};
+  }
+}
+
+async function extractWorksheetCellHyperlinks(zip, worksheetPath) {
+  const worksheetXml = await zip.file(worksheetPath)?.async("text");
+  if (!worksheetXml || !/<hyperlink\b/i.test(worksheetXml)) return [];
+  const worksheetDoc = parseXmlDocument(worksheetXml);
+  const relationships = await worksheetRelationshipTargets(zip, worksheetPath);
+  return xmlElements(worksheetDoc.documentElement, "hyperlink")
+    .map((node) => worksheetHyperlinkToModel(node, relationships))
+    .filter(Boolean);
+}
+
+async function worksheetRelationshipTargets(zip, worksheetPath) {
+  const parts = String(worksheetPath || "").split("/");
+  const fileName = parts.pop();
+  if (!fileName) return new Map();
+  const relsPath = `${parts.join("/")}/_rels/${fileName}.rels`.replace(/^\/+/, "");
+  const relsXml = await zip.file(relsPath)?.async("text");
+  if (!relsXml) return new Map();
+  const relsDoc = parseXmlDocument(relsXml);
+  return new Map(
+    xmlChildren(relsDoc.documentElement, "Relationship")
+      .filter((rel) => /\/hyperlink$/i.test(rel.getAttribute("Type") || ""))
+      .map((rel) => [rel.getAttribute("Id") || "", rel.getAttribute("Target") || ""])
+      .filter(([id, target]) => id && target),
+  );
+}
+
+function worksheetHyperlinkToModel(node, relationships) {
+  const ref = String(node.getAttribute("ref") || "").trim();
+  if (!ref) return null;
+  const relationshipId =
+    node.getAttribute("r:id") ||
+    node.getAttribute("id") ||
+    node.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ||
+    "";
+  const relationshipTarget = relationshipId ? relationships.get(relationshipId) || "" : "";
+  const location = String(node.getAttribute("location") || "").trim();
+  const hyperlink = normalizeWorksheetHyperlinkTarget(relationshipTarget, location);
+  if (!hyperlink) return null;
+  return {
+    ref,
+    hyperlink,
+    display: node.getAttribute("display") || "",
+    tooltip: node.getAttribute("tooltip") || "",
+  };
+}
+
+function normalizeWorksheetHyperlinkTarget(target, location) {
+  const targetText = String(target || "").trim();
+  const locationText = String(location || "").trim();
+  if (!targetText && locationText) return locationText.startsWith("#") ? locationText : `#${locationText}`;
+  if (!targetText) return "";
+  if (!locationText) return targetText;
+  if (targetText.startsWith("#")) return targetText;
+  if (/^(?:https?|ftp|file):/i.test(targetText)) return `${targetText}#${locationText.replace(/^#/, "")}`;
+  return targetText;
+}
+
+function applyWorkbookCellHyperlinksToModel(model, workbookCellHyperlinks = {}) {
+  if (!model?.sheets?.length || !workbookCellHyperlinks || typeof workbookCellHyperlinks !== "object") return;
+  model.sheets.forEach((sheet) => {
+    const hyperlinks = workbookCellHyperlinks[sheet.name] || [];
+    if (!hyperlinks.length) return;
+    hyperlinks.forEach((hyperlink) => applyWorksheetCellHyperlinkToModel(sheet, hyperlink));
+  });
+}
+
+function applyWorksheetCellHyperlinkToModel(sheet, hyperlink) {
+  const range = decodeRange(String(hyperlink?.ref || "").replace(/\$/g, "")) || rangeFromCellLabel(hyperlink?.ref);
+  if (!range || !hyperlink?.hyperlink) return;
+  for (let row = range.top; row <= range.bottom; row += 1) {
+    for (let col = range.left; col <= range.right; col += 1) {
+      const cell = ensureCellModel(sheet, row, col);
+      cell.hyperlink = hyperlink.hyperlink;
+      const display = String(hyperlink.display || "").trim();
+      if (display && cell.raw == null && !cell.formula) {
+        cell.raw = display;
+        cell.cached = display;
+        cell.display = display;
+      }
+    }
+  }
 }
 
 function dataValidationRuleFromXmlElement(node, options = {}) {
@@ -22747,12 +22999,165 @@ function structuredReferenceA1(sheet, range) {
   return `${sheetName}!${start === end ? start : `${start}:${end}`}`;
 }
 
+const FORMULA_ENGINE_STATIC_CELL_INFO_TYPES = new Set(["address", "col", "row"]);
+
+function rewriteStaticCellInfoFormulaReferencesForFormulaEngine(formula, context = {}) {
+  if (typeof formula !== "string" || !formula.startsWith("=") || !/cell\s*\(/i.test(formula)) return formula;
+  let output = "";
+  let index = 0;
+  while (index < formula.length) {
+    const char = formula[index];
+    if (char === '"') {
+      const end = consumeFormulaDoubleQuotedText(formula, index);
+      output += formula.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (char === "'") {
+      const end = consumeFormulaSingleQuotedSheetName(formula, index);
+      output += formula.slice(index, end);
+      index = end;
+      continue;
+    }
+    const match = formula.slice(index).match(/^(?:_xlfn\.)?cell\s*\(/i);
+    if (match && !isDefinedNameTokenChar(formula[index - 1])) {
+      const openIndex = index + match[0].lastIndexOf("(");
+      const closeIndex = formulaEngineFindClosingParen(formula, openIndex);
+      if (closeIndex > openIndex) {
+        const replacement = formulaEngineStaticCellInfoReplacement(formula.slice(openIndex + 1, closeIndex), context);
+        if (replacement != null) {
+          output += replacement;
+          index = closeIndex + 1;
+          continue;
+        }
+      }
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
+}
+
+function formulaEngineFindClosingParen(formula, openIndex) {
+  let depth = 0;
+  for (let index = openIndex; index < formula.length; index += 1) {
+    const char = formula[index];
+    if (char === '"') {
+      index = consumeFormulaDoubleQuotedText(formula, index) - 1;
+      continue;
+    }
+    if (char === "'") {
+      index = consumeFormulaSingleQuotedSheetName(formula, index) - 1;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function formulaEngineStaticCellInfoReplacement(argsSource, context = {}) {
+  const args = splitFormulaArguments(argsSource);
+  if (args.length < 1 || args.length > 2) return null;
+  const infoType = formulaEngineStaticStringLiteral(args[0]);
+  if (!FORMULA_ENGINE_STATIC_CELL_INFO_TYPES.has(infoType)) return null;
+  const range = args.length > 1
+    ? formulaEngineStaticA1ReferenceRange(args[1], context)
+    : formulaEngineContextCellRange(context);
+  if (!range) return null;
+  if (infoType === "row") return String(range.top);
+  if (infoType === "col") return String(range.left);
+  if (infoType === "address") return formulaEngineStringLiteral(`$${columnName(range.left)}$${range.top}`);
+  return null;
+}
+
+function formulaEngineStaticStringLiteral(value) {
+  const text = String(value || "").trim();
+  if (!/^"(?:[^"]|"")*"$/.test(text)) return "";
+  return text.slice(1, -1).replace(/""/g, '"').trim().toLocaleLowerCase("ja-JP");
+}
+
+function formulaEngineStringLiteral(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function formulaEngineContextCellRange(context = {}) {
+  const row = Number(context.row);
+  const col = Number(context.col);
+  if (!Number.isInteger(row) || !Number.isInteger(col) || row < 1 || col < 1) return null;
+  return { top: row, left: col, bottom: row, right: col };
+}
+
+function formulaEngineStaticA1ReferenceRange(expression, context = {}) {
+  let text = formulaEngineStripOuterParentheses(String(expression || "").trim());
+  if (!text) return null;
+  const bangIndex = formulaEngineLastSheetBangIndex(text);
+  if (bangIndex >= 0) {
+    const sheetName = formulaEngineReferenceSheetName(text.slice(0, bangIndex));
+    if (sheetName && context.model?.sheets?.length && !formulaEngineReferenceSheetExists(sheetName, context.model)) return null;
+    text = text.slice(bangIndex + 1).trim();
+  }
+  if (!/^\$?[A-Za-z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Za-z]{1,3}\$?[1-9][0-9]{0,6})?$/.test(text)) return null;
+  return decodeRange(text);
+}
+
+function formulaEngineReferenceSheetName(prefix) {
+  let text = String(prefix || "").trim();
+  if (!text) return "";
+  if (text.startsWith("'") && text.endsWith("'")) text = text.slice(1, -1).replace(/''/g, "'");
+  const bracketIndex = text.lastIndexOf("]");
+  if (bracketIndex >= 0) text = text.slice(bracketIndex + 1);
+  return text.trim();
+}
+
+function formulaEngineReferenceSheetExists(sheetName, model) {
+  const target = normalizeFormulaSheetName(sheetName);
+  return (model?.sheets || []).some((sheet) => normalizeFormulaSheetName(sheet.name) === target);
+}
+
+function formulaEngineStripOuterParentheses(expression) {
+  let text = String(expression || "").trim();
+  while (text.startsWith("(") && formulaEngineFindClosingParen(text, 0) === text.length - 1) {
+    text = text.slice(1, -1).trim();
+  }
+  return text;
+}
+
+function formulaEngineLastSheetBangIndex(expression) {
+  let last = -1;
+  let doubleQuoted = false;
+  let singleQuoted = false;
+  const text = String(expression || "");
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (doubleQuoted) {
+      if (char === '"' && next === '"') index += 1;
+      else if (char === '"') doubleQuoted = false;
+      continue;
+    }
+    if (singleQuoted) {
+      if (char === "'" && next === "'") index += 1;
+      else if (char === "'") singleQuoted = false;
+      continue;
+    }
+    if (char === '"') doubleQuoted = true;
+    else if (char === "'") singleQuoted = true;
+    else if (char === "!") last = index;
+  }
+  return last;
+}
+
 function translateFormulaForFormulaEngine(formula, options = {}) {
   if (typeof formula !== "string" || !formula.startsWith("=")) return formula;
   const model = options.model || state.model;
   const sheetIndex = options.sheetIndex ?? state.activeSheetIndex;
   const structured = translateStructuredReferencesForFormulaEngine(formula, model, sheetIndex, { row: options.row, col: options.col });
-  return translateDefinedNamesForFormulaEngine(structured, options.definedNameAliases || formulaEngineDefinedNameAliases(model), sheetIndex);
+  const definedNames = translateDefinedNamesForFormulaEngine(structured, options.definedNameAliases || formulaEngineDefinedNameAliases(model), sheetIndex);
+  return rewriteStaticCellInfoFormulaReferencesForFormulaEngine(definedNames, { row: options.row, col: options.col, model });
 }
 
 function translateFormulaForCurrentFormulaEngine(formula, sheetIndex = state.activeSheetIndex, context = {}) {
@@ -23434,6 +23839,7 @@ function switchActiveSheetForFormulaReference(index) {
     ...(state.formulaReferenceSheetNavigation || {}),
     sourceSheetIndex: context.sourceSheetIndex,
   };
+  detachFormulaReferenceCellEditor(context);
   state.activeSheetIndex = index;
   state.selectedSheetIndexes = [];
   state.selectedImage = null;
@@ -23451,6 +23857,18 @@ function switchActiveSheetForFormulaReference(index) {
   setStatus(`${state.model.sheets[index].name} で参照するセルを選択してください。`);
   scheduleWorkbookPersistence();
   return true;
+}
+
+function detachFormulaReferenceCellEditor(context) {
+  if (!context || context.isArgumentInput || context.editor === $formulaInput[0]) return;
+  const editor = context.editor?.closest?.(".sheet-cell[contenteditable='true']");
+  if (!editor) return;
+  const $editor = $(editor);
+  $editor.data("skipBlurCommit", true);
+  editor.removeAttribute("contenteditable");
+  editor.classList.remove("is-formula-editing");
+  clearCellEditSelection(editor);
+  stopEditAutoScroll();
 }
 
 function restoreFormulaReferenceNavigationEditor(context) {
@@ -27957,9 +28375,17 @@ function notePopupHtml(text) {
   `;
 }
 
+function persistentNoteCellsForSheet(sheet) {
+  const revision = Math.max(0, Number(state.workbookRevision) || 0);
+  const cached = sheetPersistentNoteCellCacheBySheet.get(sheet);
+  if (cached?.revision === revision && cached.cells === sheet.cells) return cached.cellsWithNotes;
+  const cellsWithNotes = Object.values(sheet.cells || {}).filter((cell) => cell?.noteVisible && cellHasNote(cell));
+  sheetPersistentNoteCellCacheBySheet.set(sheet, { revision, cells: sheet.cells, cellsWithNotes });
+  return cellsWithNotes;
+}
+
 function renderPersistentNotePopups(sheet, visibleRange) {
-  return Object.values(sheet.cells || {})
-    .filter((cell) => cell?.noteVisible && cellHasNote(cell))
+  return persistentNoteCellsForSheet(sheet)
     .map((cell) => {
       const row = Number(cell.row);
       const col = Number(cell.col);
@@ -29168,10 +29594,11 @@ function applyFormatDialogChangesToSheetGroup(targetRanges, activeRange, values)
 
 function applyFormatDialogValuesToSheetRanges(sheet, ranges, values) {
   const border = borderModelFromDialog(values);
+  const numFmt = numberFormatFromDialog(values);
   ranges.forEach((range) => {
     forEachCellInRange(range, (row, col) => {
       const cell = ensureCellModel(sheet, row, col);
-      cell.numFmt = numberFormatFromDialog(values);
+      applyCellNumberFormat(cell, numFmt);
       cell.css = cell.css || {};
       applyDialogCss(cell, values);
       applyDialogBorders(cell, range, row, col, values, border);
@@ -29318,12 +29745,72 @@ function openSelectedHyperlink(row, col) {
     setStatus("現在のセルにはリンクがありません。");
     return;
   }
-  if (openInternalHyperlink(cell.hyperlink)) {
-    setStatus(`リンク先へ移動しました：${cell.hyperlink}`);
+  openHyperlinkTarget(cell.hyperlink);
+}
+
+function handleCellHyperlinkClick(event) {
+  const hyperlink = event.currentTarget?.getAttribute?.("href") || event.currentTarget?.dataset?.hyperlink || "";
+  if (shouldDeferCellHyperlinkClick()) {
+    event.preventDefault();
     return;
   }
-  window.open(cell.hyperlink, "_blank", "noopener,noreferrer");
-  setStatus(`リンクを開きました：${cell.hyperlink}`);
+  if (!openHyperlinkTarget(hyperlink)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+}
+
+function openHyperlinkTarget(hyperlink) {
+  const text = String(hyperlink || "").trim();
+  if (!text) return false;
+  if (openInternalHyperlink(text)) {
+    setStatus(`リンク先へ移動しました：${text}`);
+    return true;
+  }
+  window.open(text, "_blank", "noopener,noreferrer");
+  setStatus(`リンクを開きました：${text}`);
+  return true;
+}
+
+function hyperlinkFromCellClickEvent(event) {
+  if (event.defaultPrevented || event.button > 0) return "";
+  if (shouldDeferCellHyperlinkClick()) return "";
+  const target = event.target;
+  if (!target?.closest) return "";
+  if (target.closest(".cell-select,.cell-filter-button")) return "";
+  const cellElement = target.closest(".sheet-cell[data-row][data-col]") || cellElementFromClientPoint(event.clientX, event.clientY);
+  if (!cellElement) return "";
+  if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
+  const link = cellElement.querySelector(".cell-link");
+  if (!link || !pointIsInsideElementClientRects(link, event.clientX, event.clientY)) return "";
+  return link.getAttribute("href") || link.dataset?.hyperlink || "";
+}
+
+function shouldDeferCellHyperlinkClick() {
+  return Boolean(state.formatPainter || state.formulaEdit || activeSheetEditElement());
+}
+
+function cellElementFromClientPoint(clientX, clientY) {
+  const hitElements = typeof document.elementsFromPoint === "function"
+    ? document.elementsFromPoint(clientX, clientY)
+    : [];
+  const hitCell = hitElements.find((element) => element.matches?.(".sheet-cell[data-row][data-col]"));
+  if (hitCell) return hitCell;
+  const point = cellPointFromClientPosition(clientX, clientY);
+  if (!point) return null;
+  return $sheetHost[0]?.querySelector?.(`.sheet-cell[data-row="${point.row}"][data-col="${point.col}"]`) || null;
+}
+
+function pointIsInsideElementClientRects(element, clientX, clientY) {
+  if (!element || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+  const rects = element.getClientRects?.();
+  if (!rects?.length) return false;
+  return Array.from(rects).some((rect) => (
+    clientX >= rect.left - 1 &&
+    clientX <= rect.right + 1 &&
+    clientY >= rect.top - 1 &&
+    clientY <= rect.bottom + 1
+  ));
 }
 
 function openDefineNameDialog(row, col, options = {}) {
@@ -30189,7 +30676,7 @@ function quoteSheetNameForFormula(name) {
 
 function hyperlinkKind(hyperlink) {
   const text = String(hyperlink || "").trim();
-  if (text.startsWith("#")) return "document";
+  if (isInternalHyperlinkValue(text)) return "document";
   if (/^mailto:/i.test(text)) return "email";
   return "web";
 }
@@ -30220,12 +30707,17 @@ function normalizedDocumentSheetIndex(index) {
 }
 
 function defaultLinkDialogValue(kind, point) {
-  if (kind === "document" && point) return `${columnName(point.col)}${point.row}`;
+  if (kind === "document") return "A1";
   return "";
 }
 
 function stripInternalHyperlinkPrefix(hyperlink) {
-  return decodeURIComponent(String(hyperlink || "").replace(/^#/, ""));
+  const text = String(hyperlink || "").replace(/^#/, "");
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 function stripMailtoPrefix(hyperlink) {
@@ -30271,7 +30763,7 @@ function normalizeEmailHyperlinkUrl(value) {
 
 function openInternalHyperlink(hyperlink) {
   const text = String(hyperlink || "").trim();
-  if (!text.startsWith("#") || !state.model) return false;
+  if (!state.model || !isInternalHyperlinkValue(text)) return false;
   const target = parseInternalHyperlinkTarget(stripInternalHyperlinkPrefix(text));
   if (!target) return false;
   const sheetIndex = target.sheetName
@@ -30281,6 +30773,14 @@ function openInternalHyperlink(hyperlink) {
   if (sheetIndex !== state.activeSheetIndex) setActiveSheet(sheetIndex);
   selectCellByKeyboard(target.row, target.col);
   return true;
+}
+
+function isInternalHyperlinkValue(hyperlink) {
+  const text = String(hyperlink || "").trim();
+  if (!text) return false;
+  if (text.startsWith("#")) return true;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(text)) return false;
+  return Boolean(parseInternalHyperlinkTarget(stripInternalHyperlinkPrefix(text)));
 }
 
 function parseInternalHyperlinkTarget(target) {
@@ -30560,6 +31060,23 @@ function indexForPixelExtent(sheet, axis, pixel) {
 }
 
 function minimumSheetExtent(sheet) {
+  const revision = Math.max(0, Number(state.workbookRevision) || 0);
+  const cached = sheetMinimumExtentCacheBySheet.get(sheet);
+  if (
+    cached &&
+    cached.revision === revision &&
+    cached.cells === sheet.cells &&
+    cached.merges === sheet.merges &&
+    cached.rows === sheet.rows &&
+    cached.columns === sheet.columns &&
+    cached.baseRowCount === sheet.baseRowCount &&
+    cached.baseColCount === sheet.baseColCount &&
+    cached.defaultRowHeight === sheet.defaultRowHeight &&
+    cached.defaultColumnWidth === sheet.defaultColumnWidth
+  ) {
+    return cached.extent;
+  }
+
   let rows = Math.max(1, Number(sheet.baseRowCount || 1));
   let cols = Math.max(1, Number(sheet.baseColCount || 1));
   const defaultRowHeight = sheet.defaultRowHeight || rowHeightToPixels(15);
@@ -30591,7 +31108,20 @@ function minimumSheetExtent(sheet) {
     if (column.hidden || Math.abs((column.width || 0) - defaultColumnWidth) > 0.01) cols = Math.max(cols, index + 1);
   });
 
-  return { rows, cols };
+  const extent = { rows, cols };
+  sheetMinimumExtentCacheBySheet.set(sheet, {
+    revision,
+    cells: sheet.cells,
+    merges: sheet.merges,
+    rows: sheet.rows,
+    columns: sheet.columns,
+    baseRowCount: sheet.baseRowCount,
+    baseColCount: sheet.baseColCount,
+    defaultRowHeight: sheet.defaultRowHeight,
+    defaultColumnWidth: sheet.defaultColumnWidth,
+    extent,
+  });
+  return extent;
 }
 
 function isPersistentCell(cell) {
@@ -35759,9 +36289,78 @@ function formulaEditorTextOffsetForBoundary(editor, container, offset) {
   }
 }
 
+function markFormulaReferenceSheetTabPointerDownCapture(event) {
+  if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) return;
+  const tab = event.target?.closest?.(".sheet-tab");
+  if (!tab || tab.closest?.(".sheet-tab-rename-input")) return;
+  const editor = document.activeElement?.closest?.(".sheet-cell[contenteditable='true']");
+  if (!editor) return;
+  const text = editablePlainText(editor);
+  if (!formulaTextStartsFormula(text)) return;
+  const index = Number(tab.dataset.sheetIndex);
+  if (!Number.isInteger(index)) return;
+  state.pendingFormulaReferenceSheetTabIndex = index;
+  if (state.pendingFormulaReferenceSheetTabTimer) {
+    window.clearTimeout(state.pendingFormulaReferenceSheetTabTimer);
+  }
+  state.pendingFormulaReferenceSheetTabTimer = window.setTimeout(() => {
+    state.pendingFormulaReferenceSheetTabIndex = null;
+    state.pendingFormulaReferenceSheetTabTimer = null;
+  }, 0);
+}
+
+function clearPendingFormulaReferenceSheetTab() {
+  if (state.pendingFormulaReferenceSheetTabTimer) {
+    window.clearTimeout(state.pendingFormulaReferenceSheetTabTimer);
+  }
+  state.pendingFormulaReferenceSheetTabIndex = null;
+  state.pendingFormulaReferenceSheetTabTimer = null;
+}
+
+function cellEditBlurStartsFormulaSheetNavigation(event, text) {
+  const relatedTarget = event.relatedTarget || event.originalEvent?.relatedTarget || null;
+  return formulaTextStartsFormula(text) && (
+    Number.isInteger(state.pendingFormulaReferenceSheetTabIndex) ||
+    Boolean(relatedTarget?.closest?.(".sheet-tab"))
+  );
+}
+
+function preserveCellFormulaEditForSheetNavigation(cellElement, row, col, before, text) {
+  const point = cellPointFromElement(cellElement) || { sheetIndex: state.activeSheetIndex, row, col };
+  state.formulaEdit = {
+    sheetIndex: point.sheetIndex,
+    row,
+    col,
+    before,
+  };
+  state.selected = { sheetIndex: point.sheetIndex, row, col };
+  state.selectionRange = selectionRangeFromPoints(state.selected, state.selected);
+  state.selectionRanges = [state.selectionRange];
+  state.selectionAnchor = state.selected;
+  state.selectionStart = state.selected;
+  state.selectionDrag = null;
+  closeFormulaAutocomplete({ restoreFocus: false });
+  const $cell = $(cellElement);
+  cellElement.removeAttribute("contenteditable");
+  cellElement.classList.remove("is-formula-editing");
+  $cell.removeData("beforeEdit");
+  $cell.removeData("beforeRichText");
+  $cell.removeData("cancelEdit");
+  clearCellEditSelection(cellElement);
+  stopEditAutoScroll();
+  const value = String(text ?? "");
+  $formulaInput.val(value);
+  const input = $formulaInput[0];
+  if (input) input.setSelectionRange?.(value.length, value.length);
+  clearPendingFormulaReferenceSheetTab();
+}
+
 function activeFormulaReferenceEditor() {
   const formulaInput = $formulaInput[0];
   if (document.activeElement === formulaInput) return formulaInput;
+  if (state.formulaEdit && formulaInput && formulaTextStartsFormula(String($formulaInput.val() ?? ""))) {
+    return formulaInput;
+  }
   const argumentInput = activeFunctionArgumentReferenceInput();
   if (argumentInput) return argumentInput;
   const editable = document.activeElement?.closest?.(".sheet-cell[contenteditable='true']");
@@ -41422,10 +42021,14 @@ function updateWorkbookNameDisplay() {
   const displayNode = $workbookNameDisplay[0];
   const textNode = $workbookNameDisplayText[0];
   displayNode.style.width = "";
+  displayNode.style.maxWidth = "";
   textNode.textContent = fullName;
   const style = window.getComputedStyle(displayNode);
   const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
-  const measuredWidth = Math.ceil(displayNode.getBoundingClientRect().width);
+  const availableWidth = workbookNameDisplayAvailableWidth(displayNode);
+  if (availableWidth > 0) displayNode.style.maxWidth = `${availableWidth}px`;
+  const desiredWidth = Math.ceil(measureWorkbookNameText(fullName, style.font) + padding + 2);
+  const measuredWidth = Math.max(0, Math.min(desiredWidth, availableWidth || desiredWidth));
   if (measuredWidth > 0) displayNode.style.width = `${measuredWidth}px`;
   $workbookNameDisplay.attr("title", fullName);
   const naturalAvailableWidth = Math.max(0, displayNode.clientWidth - padding);
@@ -41440,6 +42043,30 @@ function updateWorkbookNameDisplay() {
     textNode.textContent = displayName;
     safety += 8;
   } while (textNode.scrollWidth > textNode.clientWidth && safety <= 80);
+}
+
+function workbookNameDisplayAvailableWidth(displayNode) {
+  const row = displayNode.closest?.(".ribbon-tab-row");
+  if (!row) return Math.max(120, Math.floor(window.innerWidth * 0.72));
+  const rowRect = row.getBoundingClientRect();
+  const centerX = rowRect.left + rowRect.width / 2;
+  const edgeGap = 8;
+  let leftLimit = rowRect.left + edgeGap;
+  let rightLimit = rowRect.right - edgeGap;
+  const tabs = row.querySelector(".ribbon-tabs");
+  const tabsRect = tabs?.getBoundingClientRect?.();
+  if (tabsRect && tabsRect.width > 0 && tabsRect.right > leftLimit) {
+    leftLimit = Math.min(tabsRect.right + edgeGap, centerX - 48);
+  }
+  const status = row.querySelector(".ribbon-status");
+  const statusStyle = status ? window.getComputedStyle(status) : null;
+  const statusRect = status?.getBoundingClientRect?.();
+  if (statusRect && statusStyle?.display !== "none" && statusRect.width > 0 && statusRect.left < rightLimit) {
+    rightLimit = Math.max(statusRect.left - edgeGap, centerX + 48);
+  }
+  const centeredWidth = Math.floor(Math.min(centerX - leftLimit, rightLimit - centerX) * 2);
+  if (centeredWidth > 0) return centeredWidth;
+  return Math.max(96, Math.floor(rowRect.width * 0.36));
 }
 
 function compactWorkbookNameForWidth(name, availableWidth, font) {
@@ -84151,15 +84778,17 @@ function firstPointForActiveSelection() {
 
 function handleSelectionDirectTyping(event) {
   if (!state.selected || state.selected.sheetIndex !== state.activeSheetIndex) return false;
+  if (isSelectionKeyboardSink(event.target)) return false;
   if (event.ctrlKey || event.metaKey || event.altKey || isElementImeCompositionEvent(event)) return false;
   if (document.querySelector("#messageBoxOverlay")) return false;
 
   const text = directTypingText(event);
   if (text == null) return false;
 
-  event.preventDefault();
   state.internalClipboard = null;
-  startSelectedCellEdit({ initialText: text, replaceText: true });
+  const editor = startSelectedCellEdit({ initialText: "", replaceText: true, caretAtEnd: true });
+  if (!editor) return false;
+  markCellEditDirectTyping(editor, text);
   return true;
 }
 
@@ -84168,6 +84797,330 @@ function directTypingText(event) {
   if (key.length !== 1) return null;
   if (/[\u0000-\u001f\u007f]/.test(key)) return null;
   return key;
+}
+
+function markCellEditDirectTyping(editor, text) {
+  if (!editor) return;
+  const token = {
+    editor,
+    text: String(text ?? ""),
+    startedAt: nowMs(),
+    composing: false,
+    compositionData: "",
+  };
+  state.cellEditDirectTyping = token;
+  window.setTimeout(() => {
+    if (state.cellEditDirectTyping === token && !token.composing) state.cellEditDirectTyping = null;
+  }, 800);
+}
+
+function clearCellEditDirectTyping(editor = null) {
+  if (!state.cellEditDirectTyping) return;
+  if (editor && state.cellEditDirectTyping.editor !== editor) return;
+  state.cellEditDirectTyping = null;
+}
+
+function markDirectTypingComposition(editor, active) {
+  const directTyping = state.cellEditDirectTyping;
+  if (!directTyping || directTyping.editor !== editor) return;
+  directTyping.composing = Boolean(active);
+}
+
+function recordDirectTypingCompositionData(editor, data) {
+  const directTyping = state.cellEditDirectTyping;
+  if (!directTyping || directTyping.editor !== editor) return;
+  directTyping.compositionData = String(data ?? "");
+}
+
+function reconcileDirectTypingImeCommit(editor, data) {
+  const directTyping = state.cellEditDirectTyping;
+  if (!directTyping || directTyping.editor !== editor) return;
+  directTyping.composing = false;
+  const initialText = directTyping.text;
+  const compositionText = String(directTyping.compositionData || "");
+  const committedText = String(data || directTyping.compositionData || "");
+  if (!initialText || !committedText || !editor?.isConnected || editor.getAttribute("contenteditable") !== "true") {
+    clearCellEditDirectTyping(editor);
+    return;
+  }
+  window.setTimeout(() => {
+    if (!editor.isConnected || editor.getAttribute("contenteditable") !== "true") {
+      clearCellEditDirectTyping(editor);
+      return;
+    }
+    const text = editablePlainText(editor);
+    const residuePrefixes = Array.from(new Set([compositionText, initialText]))
+      .filter((prefix) => prefix && prefix !== committedText)
+      .sort((a, b) => b.length - a.length);
+    const residuePrefix = residuePrefixes.find((prefix) => {
+      const residue = prefix + committedText;
+      return text === residue || text.startsWith(residue);
+    });
+    if (residuePrefix) {
+      editor.textContent = text.slice(residuePrefix.length);
+      placeCaretAtEnd(editor);
+      syncEditableCellAlignment(editor);
+      saveCellEditSelection(editor);
+      updateFormulaReferenceUi();
+    }
+    clearCellEditDirectTyping(editor);
+  }, 0);
+}
+
+function selectionKeyboardSinkState() {
+  if (!state.selectionKeyboardSink) {
+    state.selectionKeyboardSink = {
+      composing: false,
+      focusFrame: 0,
+      suppressInputUntil: 0,
+      edit: null,
+    };
+  }
+  return state.selectionKeyboardSink;
+}
+
+function selectedPointForKeyboardSink() {
+  if (!state.model || !state.selected || state.selected.sheetIndex !== state.activeSheetIndex) return null;
+  if (state.selectedImage || selectedImageObjects().length) return null;
+  return state.selected;
+}
+
+function isSelectionKeyboardSinkEligibleActiveElement(element = document.activeElement) {
+  if (!element || element === document.body || element === document.documentElement) return true;
+  if (isSelectionKeyboardSink(element)) return true;
+  if (element === $sheetHost[0]) return true;
+  if (element.closest?.(".sheet-cell[data-row][data-col], .sheet-grid")) return true;
+  return false;
+}
+
+function shouldFocusSelectionKeyboardSink() {
+  if (!$selectionKeyboardSink[0]) return false;
+  if (!selectedPointForKeyboardSink()) return false;
+  if (activeSheetEditElement()) return false;
+  if (state.formulaEdit || state.isSelecting || state.selectionDrag || state.fillDrag) return false;
+  if (document.querySelector("#messageBoxOverlay, #dataDialog, #findDialog, #goToDialog, #specialDialog, #formatCellsDialog, #linkDialog")) return false;
+  return isSelectionKeyboardSinkEligibleActiveElement();
+}
+
+function scheduleSelectionKeyboardSinkFocus() {
+  const sinkState = selectionKeyboardSinkState();
+  if (sinkState.focusFrame) return;
+  sinkState.focusFrame = requestAnimationFrame(() => {
+    sinkState.focusFrame = 0;
+    if (!shouldFocusSelectionKeyboardSink()) {
+      hideSelectionKeyboardSink();
+      return;
+    }
+    syncSelectionKeyboardSinkEditWithSelection();
+    positionSelectionKeyboardSink();
+    const sink = $selectionKeyboardSink[0];
+    if (!sink) return;
+    sink.classList.add("is-active");
+    if (document.activeElement !== sink) {
+      sink.focus({ preventScroll: true });
+    }
+    try {
+      const length = String(sink.value || "").length;
+      sink.setSelectionRange(length, length);
+    } catch {
+      // Selection can fail during some IME transitions. Focus is enough.
+    }
+  });
+}
+
+function hideSelectionKeyboardSink() {
+  const sink = $selectionKeyboardSink[0];
+  if (!sink) return;
+  sink.classList.remove("is-active");
+  sink.style.left = "-10000px";
+  sink.style.top = "-10000px";
+  sink.style.width = "1px";
+  sink.style.height = "1px";
+}
+
+function positionSelectionKeyboardSink() {
+  const sink = $selectionKeyboardSink[0];
+  const point = selectedPointForKeyboardSink();
+  if (!sink || !point || activeSheetEditElement()) {
+    hideSelectionKeyboardSink();
+    return;
+  }
+  const cell = cellElementForPoint(point);
+  if (!cell?.isConnected) {
+    hideSelectionKeyboardSink();
+    return;
+  }
+  const rect = cell.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    hideSelectionKeyboardSink();
+    return;
+  }
+  const computed = getComputedStyle(cell);
+  sink.style.left = `${Math.round(rect.left)}px`;
+  sink.style.top = `${Math.round(rect.top)}px`;
+  sink.style.width = `${Math.max(1, Math.round(rect.width))}px`;
+  sink.style.height = `${Math.max(1, Math.round(rect.height))}px`;
+  sink.style.font = computed.font;
+  sink.style.lineHeight = computed.lineHeight;
+  sink.style.textAlign = computed.textAlign;
+  sink.style.padding = computed.padding;
+}
+
+function syncSelectionKeyboardSinkEditWithSelection() {
+  const sinkState = selectionKeyboardSinkState();
+  const edit = sinkState.edit;
+  const point = selectedPointForKeyboardSink();
+  if (!edit || !point || sinkState.composing) return;
+  if (edit.sheetIndex !== point.sheetIndex || edit.row !== point.row || edit.col !== point.col) {
+    sinkState.edit = null;
+    resetSelectionKeyboardSinkValue();
+  }
+}
+
+function resetSelectionKeyboardSinkValue() {
+  const sink = $selectionKeyboardSink[0];
+  if (!sink) return;
+  sink.value = "";
+}
+
+function ensureSelectionKeyboardImeEdit() {
+  const sinkState = selectionKeyboardSinkState();
+  const point = selectedPointForKeyboardSink();
+  if (!point) return null;
+  const edit = sinkState.edit;
+  if (edit && edit.sheetIndex === point.sheetIndex && edit.row === point.row && edit.col === point.col) {
+    return edit;
+  }
+  const before = getCellRawInput(activeSheet(), point.row, point.col);
+  sinkState.edit = {
+    sheetIndex: point.sheetIndex,
+    row: point.row,
+    col: point.col,
+    before,
+    value: "",
+  };
+  return sinkState.edit;
+}
+
+function promoteSelectionKeyboardImeEditToCellEditor(edit) {
+  if (!edit || edit.sheetIndex !== state.activeSheetIndex) return;
+  const sinkState = selectionKeyboardSinkState();
+  sinkState.edit = null;
+  resetSelectionKeyboardSinkValue();
+  hideSelectionKeyboardSink();
+  state.selected = { sheetIndex: edit.sheetIndex, row: edit.row, col: edit.col };
+  state.selectionRange = selectionRangeFromPoints(state.selected, state.selected);
+  state.selectionRanges = [state.selectionRange];
+  state.selectionStart = state.selected;
+  state.selectionAnchor = state.selected;
+  state.selectionDrag = null;
+  const cellElement = ensureCellElementForPoint(state.selected, { select: true });
+  if (!cellElement) return;
+  beginCellEdit(cellElement, { initialText: edit.value, replaceText: true, caretAtEnd: true });
+  $(cellElement).data("beforeEdit", edit.before);
+}
+
+function appendSelectionKeyboardImeText(text) {
+  const committedText = String(text ?? "");
+  if (!committedText) return;
+  const edit = ensureSelectionKeyboardImeEdit();
+  if (!edit) return;
+  edit.value += committedText;
+  promoteSelectionKeyboardImeEditToCellEditor(edit);
+}
+
+function cancelSelectionKeyboardImeEdit() {
+  const sinkState = selectionKeyboardSinkState();
+  sinkState.edit = null;
+  resetSelectionKeyboardSinkValue();
+  scheduleSelectionKeyboardSinkFocus();
+}
+
+function handleSelectionKeyboardSinkKeydown(event) {
+  const sinkState = selectionKeyboardSinkState();
+  if (isElementImeCompositionEvent(event, event.currentTarget) || sinkState.composing) {
+    event.stopPropagation();
+    return;
+  }
+  if (event.key === "Escape" && sinkState.edit) {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelSelectionKeyboardImeEdit();
+    return;
+  }
+  if (isEnterKeyEvent(event) && sinkState.edit) {
+    event.preventDefault();
+    event.stopPropagation();
+    const edit = sinkState.edit;
+    sinkState.edit = null;
+    resetSelectionKeyboardSinkValue();
+    selectCellByKeyboard(edit.row + (event.shiftKey ? -1 : 1), edit.col, { rowStep: event.shiftKey ? -1 : 1, colStep: 0 });
+    return;
+  }
+  if (event.key === "Backspace" && sinkState.edit && !event.currentTarget.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    const edit = sinkState.edit;
+    edit.value = Array.from(String(edit.value || "")).slice(0, -1).join("");
+    if (edit.value) promoteSelectionKeyboardImeEditToCellEditor(edit);
+  }
+}
+
+function handleSelectionKeyboardSinkBeforeInput(event) {
+  const nativeEvent = event.originalEvent || event;
+  if (String(nativeEvent.inputType || "") === "insertLineBreak") {
+    event.preventDefault();
+  }
+}
+
+function handleSelectionKeyboardSinkInput(event) {
+  const sinkState = selectionKeyboardSinkState();
+  if (sinkState.composing || nowMs() < Number(sinkState.suppressInputUntil || 0)) return;
+  const sink = event.currentTarget;
+  const text = String(sink.value || "");
+  if (!text) return;
+  resetSelectionKeyboardSinkValue();
+  if (sinkState.edit) {
+    appendSelectionKeyboardImeText(text);
+    return;
+  }
+  state.internalClipboard = null;
+  const editor = startSelectedCellEdit({ initialText: text, replaceText: true, caretAtEnd: true });
+  if (!editor) return;
+  clearCellEditDirectTyping(editor);
+}
+
+function handleSelectionKeyboardSinkCompositionStart(event) {
+  const sinkState = selectionKeyboardSinkState();
+  sinkState.composing = true;
+  ensureSelectionKeyboardImeEdit();
+  positionSelectionKeyboardSink();
+  markElementImeComposition(event.currentTarget, true);
+}
+
+function handleSelectionKeyboardSinkCompositionUpdate(event) {
+  positionSelectionKeyboardSink();
+}
+
+function handleSelectionKeyboardSinkCompositionEnd(event) {
+  const sinkState = selectionKeyboardSinkState();
+  sinkState.composing = false;
+  sinkState.suppressInputUntil = nowMs() + 120;
+  markElementImeComposition(event.currentTarget, false);
+  const committedFromEvent = String(event.originalEvent?.data || event.data || "");
+  window.setTimeout(() => {
+    const sink = $selectionKeyboardSink[0];
+    const committedText = committedFromEvent || String(sink?.value || "");
+    resetSelectionKeyboardSinkValue();
+    appendSelectionKeyboardImeText(committedText);
+    scheduleSelectionKeyboardSinkFocus();
+  }, 0);
+}
+
+function handleSelectionKeyboardSinkBlur() {
+  const sinkState = selectionKeyboardSinkState();
+  if (sinkState.composing) return;
+  resetSelectionKeyboardSinkValue();
 }
 
 function isSpaceKeyEvent(event) {
@@ -84493,8 +85446,14 @@ function isTextEditingTarget(target) {
   if (!target) return false;
   const element = target.nodeType === Node.TEXT_NODE ? target.parentElement : target;
   if (!element) return false;
+  if (isSelectionKeyboardSink(element)) return false;
   if (element.closest?.(".sheet-cell[contenteditable='true']")) return true;
   return Boolean(element.closest?.("input, textarea, select, [contenteditable='true']"));
+}
+
+function isSelectionKeyboardSink(element) {
+  const target = element?.nodeType === Node.TEXT_NODE ? element.parentElement : element;
+  return Boolean(target?.closest?.("#selectionKeyboardSink"));
 }
 
 function handleTextInputImeCompositionStart(event) {
@@ -85704,6 +86663,7 @@ function insertEntireRows(sheet, startRow, amount) {
     sheet.rows[row - 1] = defaultRowModel(sheet);
   }
   shiftMergesForRowInsert(sheet, startRow, amount);
+  shiftStyleRangesForRows(sheet, startRow, amount, "insert");
   shiftImagesForRows(sheet, startRow, amount, "insert");
   shiftTablesForRows(sheet, startRow, amount, "insert");
   shiftSheetFilterAndSortForRows(sheet, startRow, amount, "insert");
@@ -85725,6 +86685,7 @@ function insertEntireColumns(sheet, startCol, amount) {
     sheet.columns[col - 1] = defaultColumnModel(sheet);
   }
   shiftMergesForColumnInsert(sheet, startCol, amount);
+  shiftStyleRangesForColumns(sheet, startCol, amount, "insert");
   shiftImagesForColumns(sheet, startCol, amount, "insert");
   shiftTablesForColumns(sheet, startCol, amount, "insert");
   shiftSheetFilterAndSortForColumns(sheet, startCol, amount, "insert");
@@ -85747,6 +86708,7 @@ function deleteEntireRows(sheet, startRow, amount) {
     sheet.rows[row - 1] = defaultRowModel(sheet);
   }
   shiftMergesForRowDelete(sheet, startRow, actualAmount);
+  shiftStyleRangesForRows(sheet, startRow, actualAmount, "delete");
   shiftImagesForRows(sheet, startRow, actualAmount, "delete");
   shiftTablesForRows(sheet, startRow, actualAmount, "delete");
   shiftSheetFilterAndSortForRows(sheet, startRow, actualAmount, "delete");
@@ -85769,6 +86731,7 @@ function deleteEntireColumns(sheet, startCol, amount) {
     sheet.columns[col - 1] = defaultColumnModel(sheet);
   }
   shiftMergesForColumnDelete(sheet, startCol, actualAmount);
+  shiftStyleRangesForColumns(sheet, startCol, actualAmount, "delete");
   shiftImagesForColumns(sheet, startCol, actualAmount, "delete");
   shiftTablesForColumns(sheet, startCol, actualAmount, "delete");
   shiftSheetFilterAndSortForColumns(sheet, startCol, actualAmount, "delete");
@@ -85825,6 +86788,26 @@ function shiftMergesForColumnDelete(sheet, startCol, amount) {
       return { ...merge, left: startCol, right: merge.right - amount };
     })
     .filter((merge) => merge && merge.top <= merge.bottom && merge.left <= merge.right);
+}
+
+function shiftStyleRangesForRows(sheet, startRow, amount, action) {
+  const ranges = Array.isArray(sheet?.styleRanges) ? sheet.styleRanges : [];
+  if (!ranges.length) return;
+  sheet.styleRanges = ranges
+    .map((range) => shiftRangeRows(range, startRow, amount, action))
+    .filter(Boolean);
+  normalizeSheetStyleRanges(sheet);
+  invalidateSheetUsedRangeCache(sheet);
+}
+
+function shiftStyleRangesForColumns(sheet, startCol, amount, action) {
+  const ranges = Array.isArray(sheet?.styleRanges) ? sheet.styleRanges : [];
+  if (!ranges.length) return;
+  sheet.styleRanges = ranges
+    .map((range) => shiftRangeColumns(range, startCol, amount, action))
+    .filter(Boolean);
+  normalizeSheetStyleRanges(sheet);
+  invalidateSheetUsedRangeCache(sheet);
 }
 
 function shiftImagesForRows(sheet, startRow, amount, action) {
@@ -86259,6 +87242,8 @@ function normalizeSheetModelAfterStructureChange(sheet) {
       delete sheet.cells[key];
     }
   });
+  normalizeSheetStyleRanges(sheet);
+  invalidateSheetUsedRangeCache(sheet);
   internSheetCellStyles(sheet);
   syncHfDataFromCells(sheet);
 }
@@ -88076,7 +89061,7 @@ function applyNumberFormatToSheetGroup(numFmt, label, targetRanges, activeRange)
       item.ranges.forEach((range) => {
         forEachCellInRange(range, (row, col) => {
           const cell = ensureCellModel(item.sheet, row, col);
-          cell.numFmt = numFmt || "";
+          applyCellNumberFormat(cell, numFmt);
         });
       });
       internCellsInRanges(item.sheet, item.ranges);
@@ -88119,7 +89104,7 @@ function applyNumberFormatToSelection(numFmt, label) {
   targetRanges.forEach((range) => {
     forEachCellInRange(range, (row, col) => {
       const cell = ensureCellModel(sheet, row, col);
-      cell.numFmt = numFmt || "";
+      applyCellNumberFormat(cell, numFmt);
     });
   });
   internCellsInRanges(sheet, targetRanges);
@@ -88138,6 +89123,20 @@ function applyNumberFormatToSelection(numFmt, label) {
   renderSheet();
   updateFormulaBarForSelection();
   setStatus(`${labelText} に表示形式を適用しました：${label}`);
+}
+
+function applyCellNumberFormat(cell, numFmt) {
+  if (!cell) return;
+  const nextNumFmt = String(numFmt || "");
+  const previousNumFmt = String(cell.numFmt || "");
+  cell.numFmt = nextNumFmt;
+  if (nextNumFmt !== previousNumFmt && cellCanRecomputeDisplayText(cell)) {
+    cell.display = "";
+  }
+}
+
+function cellCanRecomputeDisplayText(cell) {
+  return Boolean(cell && (cell.formula || cell.raw != null || cell.cached != null));
 }
 
 function numberFormatForRibbon(value) {
@@ -88695,6 +89694,7 @@ function renderSheet(scrollOverride = null, options = {}) {
   );
   html.push(renderSheetBackgroundLayer(sheet));
   html.push(CanvasRenderer.renderLayer(sheet, visibleRange));
+  html.push(renderFrozenPaneBackgroundLayer(sheet, visibleRange, renderedRows, renderedColumns));
   html.push(renderCornerHeader(sheet, outlineControls));
   renderedColumns.forEach((col) => {
     const columnModel = sheet.columns[col - 1] || {};
@@ -88740,6 +89740,7 @@ function renderSheet(scrollOverride = null, options = {}) {
     if (!renderedCells.has(key)) appendCell(merge.top, merge.left);
   });
 
+  html.push(renderFrozenPaneBorderLayer(sheet, mergeMaps, visibleRange));
   html.push(renderViewPaneGuides(sheet, visibleRange));
   html.push(renderFormulaAuditOverlay(sheet, visibleRange));
   html.push(renderImageLayer(sheet, visibleRange));
@@ -88904,12 +89905,107 @@ function frozenCellClassNames(sheet, row, col) {
   return classes;
 }
 
-function applyFrozenCellBorderCss(css, borders = {}) {
-  Object.entries(borders || {}).forEach(([edge, border]) => {
-    if (!border) return;
-    const side = edge.charAt(0).toUpperCase() + edge.slice(1);
-    css[`border${side}`] = `${border.width || 1}px ${border.style || "solid"} ${border.color || "#000000"}`;
-  });
+function isFrozenPaneCell(sheet, row, col) {
+  return row <= frozenPaneRowCount(sheet) || col <= frozenPaneColumnCount(sheet);
+}
+
+function renderFrozenPaneBackgroundLayer(sheet, visibleRange, renderedRows, renderedColumns) {
+  const freezeRows = frozenPaneRowCount(sheet);
+  const freezeColumns = frozenPaneColumnCount(sheet);
+  if (!freezeRows && !freezeColumns) return "";
+  const parts = [];
+  const rowHeaderWidth = rowHeaderWidthForSheet(sheet);
+  const headerHeight = sheetHeadingsVisible(sheet) ? COLUMN_HEADER_HEIGHT : 0;
+  const dataLeft = sheetHeadingsVisible(sheet) ? rowHeaderWidth : 0;
+  const dataTop = headerHeight;
+
+  if (freezeRows > 0) {
+    const height = Math.max(0, coordinateToPixels(sheet, "row", freezeRows) - dataTop);
+    const lines = [];
+    (renderedColumns || []).forEach((col) => {
+      if (col < 1 || col > sheet.colCount) return;
+      const column = sheet.columns[col - 1] || {};
+      if (column.hidden) return;
+      const x = coordinateToPixels(sheet, "col", col) - dataLeft;
+      lines.push(`<span class="sheet-frozen-bg-line is-vertical" style="${escapeAttr(`left:${roundCssPx(x)}px;top:0;height:${roundCssPx(height)}px`)}"></span>`);
+    });
+    for (let row = 1; row <= freezeRows; row += 1) {
+      const rowModel = sheet.rows[row - 1] || {};
+      if (rowModel.hidden) continue;
+      const y = coordinateToPixels(sheet, "row", row) - dataTop;
+      lines.push(`<span class="sheet-frozen-bg-line is-horizontal" style="${escapeAttr(`top:${roundCssPx(y)}px;left:0;width:100%`)}"></span>`);
+    }
+    const directionStyle = sheetColumnsRightToLeft(sheet) ? "" : `left:${roundCssPx(dataLeft)}px`;
+    parts.push(`<div class="sheet-frozen-pane-background is-frozen-rows" aria-hidden="true" style="${escapeAttr(`grid-column:2 / span ${sheet.colCount};grid-row:2 / span ${freezeRows};top:${roundCssPx(dataTop)}px;${directionStyle}`)}">${lines.join("")}</div>`);
+  }
+
+  if (freezeColumns > 0) {
+    const width = Math.max(0, coordinateToPixels(sheet, "col", freezeColumns) - dataLeft);
+    const lines = [];
+    (renderedRows || []).forEach((row) => {
+      if (row < 1 || row > sheet.rowCount) return;
+      const rowModel = sheet.rows[row - 1] || {};
+      if (rowModel.hidden) return;
+      const y = coordinateToPixels(sheet, "row", row) - dataTop;
+      lines.push(`<span class="sheet-frozen-bg-line is-horizontal" style="${escapeAttr(`top:${roundCssPx(y)}px;left:0;width:${roundCssPx(width)}px`)}"></span>`);
+    });
+    for (let col = 1; col <= freezeColumns; col += 1) {
+      const column = sheet.columns[col - 1] || {};
+      if (column.hidden) continue;
+      const x = coordinateToPixels(sheet, "col", col) - dataLeft;
+      lines.push(`<span class="sheet-frozen-bg-line is-vertical" style="${escapeAttr(`left:${roundCssPx(x)}px;top:0;height:100%`)}"></span>`);
+    }
+    const horizontalSticky = sheetColumnsRightToLeft(sheet)
+      ? `right:${roundCssPx(frozenColumnStickyRight(sheet, 1))}px`
+      : `left:${roundCssPx(dataLeft)}px`;
+    parts.push(`<div class="sheet-frozen-pane-background is-frozen-columns" aria-hidden="true" style="${escapeAttr(`grid-column:2 / span ${freezeColumns};grid-row:2 / span ${sheet.rowCount};${horizontalSticky};width:${roundCssPx(width)}px`)}">${lines.join("")}</div>`);
+  }
+  return parts.join("");
+}
+
+function renderFrozenPaneBorderLayer(sheet, mergeMaps, visibleRange) {
+  const freezeRows = frozenPaneRowCount(sheet);
+  const freezeColumns = frozenPaneColumnCount(sheet);
+  if (!freezeRows && !freezeColumns) return "";
+  const dataLeft = sheetHeadingsVisible(sheet) ? rowHeaderWidthForSheet(sheet) : 0;
+  const dataTop = sheetHeadingsVisible(sheet) ? COLUMN_HEADER_HEIGHT : 0;
+  const parts = [];
+  const renderLines = (range) => borderLinesForSheet(sheet, mergeMaps, range)
+    .map((line) => borderLineHtml(line, "sheet-border-line sheet-frozen-border-line", dataLeft, dataTop))
+    .join("");
+
+  if (freezeRows > 0) {
+    const range = {
+      top: 1,
+      bottom: freezeRows,
+      left: Math.max(1, Number(visibleRange.left) || 1),
+      right: Math.min(Number(sheet.colCount || visibleRange.right || 1), Math.max(1, Number(visibleRange.right) || 1)),
+    };
+    const lines = renderLines(range);
+    if (lines) {
+      const directionStyle = sheetColumnsRightToLeft(sheet) ? "" : `left:${roundCssPx(dataLeft)}px`;
+      parts.push(`<div class="sheet-frozen-border-layer is-frozen-rows" aria-hidden="true" style="${escapeAttr(`grid-column:2 / span ${sheet.colCount};grid-row:2 / span ${freezeRows};top:${roundCssPx(dataTop)}px;${directionStyle}`)}">${lines}</div>`);
+    }
+  }
+
+  if (freezeColumns > 0) {
+    const range = {
+      top: Math.max(1, Number(visibleRange.top) || 1),
+      bottom: Math.min(Number(sheet.rowCount || visibleRange.bottom || 1), Math.max(1, Number(visibleRange.bottom) || 1)),
+      left: 1,
+      right: freezeColumns,
+    };
+    const lines = renderLines(range);
+    if (lines) {
+      const width = Math.max(0, coordinateToPixels(sheet, "col", freezeColumns) - dataLeft);
+      const horizontalSticky = sheetColumnsRightToLeft(sheet)
+        ? `right:${roundCssPx(frozenColumnStickyRight(sheet, 1))}px`
+        : `left:${roundCssPx(dataLeft)}px`;
+      parts.push(`<div class="sheet-frozen-border-layer is-frozen-columns" aria-hidden="true" style="${escapeAttr(`grid-column:2 / span ${freezeColumns};grid-row:2 / span ${sheet.rowCount};${horizontalSticky};width:${roundCssPx(width)}px`)}">${lines}</div>`);
+    }
+  }
+
+  return parts.join("");
 }
 
 function renderViewPaneGuides(sheet, visibleRange) {
@@ -89853,23 +90949,32 @@ function paintSheetCanvas(sheet, mergeMaps, sheetId, visibleRange) {
 function paintCanvasCells(context, sheet, mergeMaps, sheetId, visibleRange, pixelCache = null, phase = "all") {
   const showGridLines = sheet.showGridLines !== false;
   const rendered = new Set();
+  const editedCellKey = phase === "base" ? "" : canvasEditedCellKey();
 
   for (let row = visibleRange.top; row <= visibleRange.bottom; row += 1) {
     for (let col = visibleRange.left; col <= visibleRange.right; col += 1) {
       const key = cellKey(row, col);
-      const masterKey = mergeMaps.coveredToMaster.get(key) || key;
+      const coveredMasterKey = mergeMaps.coveredToMaster.get(key);
+      const masterKey = coveredMasterKey || key;
       if (rendered.has(masterKey)) continue;
-      const [masterRow, masterCol] = parseCellKey(masterKey);
       const merge = mergeMaps.master.get(masterKey);
-      const range = merge || { top: masterRow, left: masterCol, bottom: masterRow, right: masterCol };
+      let range = null;
+      if (merge) {
+        range = merge;
+      } else if (coveredMasterKey) {
+        const [masterRow, masterCol] = parseCellKey(masterKey);
+        range = { top: masterRow, left: masterCol, bottom: masterRow, right: masterCol };
+      } else {
+        range = { top: row, left: col, bottom: row, right: col };
+      }
       if (!rangeIntersects(range, visibleRange)) continue;
       rendered.add(masterKey);
-      paintCanvasCell(context, sheet, mergeMaps, sheetId, range.top, range.left, range, showGridLines, pixelCache, phase);
+      paintCanvasCell(context, sheet, mergeMaps, sheetId, range.top, range.left, range, showGridLines, pixelCache, phase, editedCellKey);
     }
   }
 }
 
-function paintCanvasCell(context, sheet, mergeMaps, sheetId, row, col, range, showGridLines, pixelCache = null, phase = "all") {
+function paintCanvasCell(context, sheet, mergeMaps, sheetId, row, col, range, showGridLines, pixelCache = null, phase = "all", editedCellKey = "") {
   const key = cellKey(row, col);
   const sourceCell = sheet.cells[key] || null;
   const cell = sheetDisplayCell(sheet, row, col, sourceCell) || { row, col };
@@ -89904,9 +91009,27 @@ function paintCanvasCell(context, sheet, mergeMaps, sheetId, row, col, range, sh
   }
 
   if (phase === "base") return;
+  if (editedCellKey && editedCellKey === key) return;
   if (cellHasCanvasTextCandidate(cell) || (sourceCell && getCellFormula(sheetId, row, col))) {
     paintCanvasCellText(context, sheet, mergeMaps, sheetId, row, col, range, cell, rect);
   }
+}
+
+function canvasEditedCellKey() {
+  if (state.formulaEdit?.sheetIndex === state.activeSheetIndex) {
+    return cellKey(state.formulaEdit.row, state.formulaEdit.col);
+  }
+  const editor = $sheetHost.find(".sheet-cell[contenteditable='true']")[0];
+  if (!editor?.isConnected) return "";
+  const row = Number(editor.dataset.row);
+  const col = Number(editor.dataset.col);
+  return row && col ? cellKey(row, col) : "";
+}
+
+function repaintActiveSheetCanvas() {
+  const sheet = activeSheet();
+  if (!sheet) return;
+  CanvasRenderer.paint(sheet, buildMergeMaps(sheet.merges), getSheetId(sheet.name), visibleGridRange(sheet));
 }
 
 function rangePixelRect(sheet, range, pixelCache = null) {
@@ -90115,7 +91238,7 @@ function crispCanvasLine(context, x1, y1, x2, y2) {
 }
 
 function cellShowsValidationDropdown(cell, sheet = activeSheet()) {
-  return Boolean(cell?.validation?.type === "list" && cell.validation.showDropDown !== false && validationListOptions(sheet, cell.validation).length);
+  return Boolean(cell?.validation?.type === "list" && cell.validation.showDropDown !== false);
 }
 
 function paintCanvasCellText(context, sheet, mergeMaps, sheetId, row, col, range, cell, rect) {
@@ -90557,10 +91680,10 @@ function renderCellHtml(sheet, mergeMaps, sheetId, row, col, visibleRange, rende
   }, canvasFontDisplayScale(sheet));
   Object.assign(css, frozenCellStickyCss(sheet, row, col));
   const frozenClasses = frozenCellClassNames(sheet, row, col);
-  if (frozenClasses.length) applyFrozenCellBorderCss(css, cell.borders);
   const column = sheet.columns[col - 1];
   if (column?.hidden || rowModel.hidden) css.display = "none";
   const attrs = [
+    `data-sheet-index="${state.activeSheetIndex}"`,
     `data-row="${row}"`,
     `data-col="${col}"`,
     `data-address="${columnName(col)}${row}"`,
@@ -90573,12 +91696,16 @@ function renderCellHtml(sheet, mergeMaps, sheetId, row, col, visibleRange, rende
   const classNames = ["sheet-cell"];
   if (overflowWidth) classNames.push("text-overflow");
   if (cellHasFill(cell)) classNames.push("has-fill");
-  if (shouldHideGridRight(sheet, mergeMaps, row, col, rowSpan, colSpan, cell)) classNames.push("hide-grid-right");
-  if (shouldHideGridBottom(sheet, mergeMaps, row, col, rowSpan, colSpan, cell)) classNames.push("hide-grid-bottom");
+  if (merge) classNames.push("is-merged-cell");
+  const hideGridRight = shouldHideGridRight(sheet, mergeMaps, row, col, rowSpan, colSpan, cell);
+  const hideGridBottom = shouldHideGridBottom(sheet, mergeMaps, row, col, rowSpan, colSpan, cell);
+  if (hideGridRight) classNames.push("hide-grid-right");
+  if (hideGridBottom) classNames.push("hide-grid-bottom");
   if (cellHasComment(cell)) classNames.push("has-comment");
   if (cellHasNote(cell)) classNames.push("has-note");
   if (cellHasPhonetics(cell)) classNames.push("has-phonetic");
   if (isAutoFilterHeaderCell(sheet, row, col)) classNames.push("has-filter-button");
+  if (cell?.hyperlink) classNames.push("has-hyperlink");
   if (cell?.sparkline) classNames.push("has-sparkline");
   if (cell?.showPhonetic) classNames.push("show-phonetic");
   if (hasValidationInvalidMark(state.activeSheetIndex, row, col)) classNames.push("has-validation-invalid");
@@ -90603,6 +91730,7 @@ function renderCellHtml(sheet, mergeMaps, sheetId, row, col, visibleRange, rende
 
 function cellNeedsDomOverlay(sheet, mergeMaps, row, col, cell, merge = null) {
   if (merge) return true;
+  if (isFrozenPaneCell(sheet, row, col)) return true;
   if (isActiveCell(row, col)) return true;
   if (
     state.formulaEdit?.sheetIndex === state.activeSheetIndex &&
@@ -90679,8 +91807,9 @@ function shouldHideGridBottom(sheet, mergeMaps, row, col, rowSpan, colSpan, cell
 function gridPositionHasFill(sheet, mergeMaps, row, col) {
   if (row < 1 || col < 1 || row > sheet.rowCount || col > sheet.colCount) return false;
   const key = cellKey(row, col);
-  const masterKey = mergeMaps.coveredToMaster.get(key) || key;
-  const [masterRow, masterCol] = parseCellKey(masterKey);
+  const coveredMasterKey = mergeMaps.coveredToMaster.get(key);
+  const masterKey = coveredMasterKey || key;
+  const [masterRow, masterCol] = coveredMasterKey ? parseCellKey(masterKey) : [row, col];
   return cellHasFill(sheetDisplayCell(sheet, masterRow, masterCol, sheet.cells[masterKey] || null));
 }
 
@@ -91688,6 +92817,12 @@ function handleSheetHostCellClick(event) {
     applyFormatPainterAtPoint(formatPoint);
     return;
   }
+  const hyperlink = hyperlinkFromCellClickEvent(event);
+  if (hyperlink && openHyperlinkTarget(hyperlink)) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   const point = cellPointFromPointerEvent(event);
   if (!point) return;
   selectCellPoint(point);
@@ -92566,17 +93701,38 @@ function syncDataRibbonControls() {
   const sheet = state.model ? activeSheet() : null;
   const hasWorkbook = Boolean(state.model && sheet);
   const rawSelectionRange = hasWorkbook ? activeSelectionRange() : null;
-  const dataContext = hasWorkbook ? dataRibbonSelectionContext(sheet, { expandCurrentRegion: true }) : null;
   const directContext = hasWorkbook ? dataRibbonSelectionContext(sheet) : null;
+  const dataContext = directContext;
   const dataRange = dataContext?.range || null;
   const directRange = directContext?.range || null;
   const hasDataRange = Boolean(dataRange && dataRibbonRangeHasData(sheet, dataRange));
   const hasDirectSelection = Boolean(directRange);
   const directSingleColumn = Boolean(directRange && directRange.left === directRange.right && !directRange.fullRow);
   const directHasData = Boolean(directRange && dataRibbonRangeHasData(sheet, directRange));
-  const flashFillTargetRange = directRange ? flashFillTargetRangeForSelection(sheet, directRange) : null;
-  const canFlashFill = Boolean(flashFillTargetRange && flashFillRangeHasSourceData(sheet, flashFillTargetRange));
-  const forecastable = Boolean(dataRange && dataRibbonForecastPointCount(sheet, dataRange) >= 2);
+  const directSingleCell = Boolean(directRange && isSingleCellRange(directRange));
+  const shouldResolveFlashFillTarget = Boolean(
+    directRange &&
+      directSingleColumn &&
+      !directSingleCell &&
+      !directRange.fullColumn &&
+      rangeCellCount(directRange) <= 10000
+  );
+  const flashFillTargetRange = shouldResolveFlashFillTarget ? flashFillTargetRangeForSelection(sheet, directRange) : directRange;
+  const canFlashFill = Boolean(
+    flashFillTargetRange &&
+      directSingleColumn &&
+      flashFillTargetRange.left > 1 &&
+      !flashFillTargetRange.fullColumn &&
+      (directSingleCell || flashFillRangeHasSourceData(sheet, flashFillTargetRange))
+  );
+  const forecastable = Boolean(
+    dataRange &&
+      !isSingleCellRange(dataRange) &&
+      !dataRange.fullRow &&
+      !dataRange.fullColumn &&
+      rangeCellCount(dataRange) <= 10000 &&
+      dataRibbonForecastPointCount(sheet, dataRange) >= 2
+  );
   const protectedSheet = Boolean(hasWorkbook && isSheetProtected(sheet));
   const protectionAllowsSort = !protectedSheet || sheetProtectionAllows(sheet, "allowSort");
   const protectionAllowsFilter = !protectedSheet || sheetProtectionAllows(sheet, "allowAutoFilter");
@@ -92765,16 +93921,20 @@ function startCellEdit(event) {
 }
 
 function startSelectedCellEdit(options = {}) {
-  if (!state.selected || state.selected.sheetIndex !== state.activeSheetIndex) return;
+  if (!state.selected || state.selected.sheetIndex !== state.activeSheetIndex) return null;
   const sheet = activeSheet();
-  if (!ensureEditableRangeForProtection(sheet, selectionRangeFromPoints(state.selected, state.selected), "編集")) return;
+  if (!ensureEditableRangeForProtection(sheet, selectionRangeFromPoints(state.selected, state.selected), "編集")) return null;
   const range = activeSelectionRange() || selectionRangeFromPoints(state.selected, state.selected);
   ensureSheetSize(sheet, range?.bottom || state.selected.row, range?.right || state.selected.col);
   scrollRangeIntoView(range);
   renderSheet();
   updateSelectionUi();
   const cellElement = cellElementForPoint(state.selected);
-  if (cellElement) beginCellEdit(cellElement, { caretAtEnd: true, ...options });
+  if (cellElement) {
+    beginCellEdit(cellElement, { caretAtEnd: true, ...options });
+    return cellElement;
+  }
+  return null;
 }
 
 function beginCellEditAtPoint(point, options = {}) {
@@ -92831,6 +93991,7 @@ function beginCellEdit(cellElement, options = {}) {
     cellElement.innerHTML = cellEditHtmlForCell(cell, beforeEdit);
   }
   syncEditableCellAlignment(cellElement);
+  repaintActiveSheetCanvas();
   cellElement.focus({ preventScroll: true });
   if (options.caretAtEnd) {
     placeCaretAtEnd(cellElement);
@@ -92857,22 +94018,38 @@ function cellEditRunHtml(run) {
 
 function syncEditableCellAlignment(cellElement) {
   if (!cellElement || cellElement.getAttribute("contenteditable") !== "true") return;
+  const overlay = editableCellOverlayMetrics(cellElement);
   cellElement.style.setProperty("--cell-edit-padding-top", "2px");
+  cellElement.style.setProperty("--cell-edit-overlay-left", `${overlay.left}px`);
+  cellElement.style.setProperty("--cell-edit-overlay-width", `${overlay.width}px`);
   cellElement.style.removeProperty("--cell-edit-overlay-height");
-  cellElement.style.setProperty("--cell-edit-overlay-height", `${editableCellOverlayHeight(cellElement)}px`);
+  cellElement.style.setProperty("--cell-edit-overlay-height", `${overlay.height}px`);
   cellElement.scrollTop = 0;
 }
 
 function editableCellOverlayHeight(cellElement) {
+  return editableCellOverlayMetrics(cellElement).height;
+}
+
+function editableCellOverlayMetrics(cellElement) {
   const cellRect = cellElement.getBoundingClientRect();
   const baseHeight = Math.max(cellElement.offsetHeight || 0, cellElement.clientHeight || 0, cellRect.height || 0);
+  const baseWidth = Math.max(cellElement.offsetWidth || 0, cellElement.clientWidth || 0, cellRect.width || 0);
   const range = document.createRange();
   range.selectNodeContents(cellElement);
   const rects = [...range.getClientRects()].filter((rect) => rect.width > 0 || rect.height > 0);
   range.detach?.();
-  if (!rects.length) return Math.ceil(baseHeight);
+  if (!rects.length) return { left: 0, width: Math.ceil(baseWidth), height: Math.ceil(baseHeight) };
+  const textLeft = Math.min(...rects.map((rect) => rect.left)) - cellRect.left;
+  const textRight = Math.max(...rects.map((rect) => rect.right)) - cellRect.left;
   const textBottom = Math.max(...rects.map((rect) => rect.bottom)) - cellRect.top;
-  return Math.ceil(Math.max(baseHeight, textBottom + 3));
+  const left = Math.min(0, Math.floor(textLeft) - 3);
+  const right = Math.max(baseWidth, Math.ceil(textRight) + 3);
+  return {
+    left,
+    width: Math.ceil(right - left),
+    height: Math.ceil(Math.max(baseHeight, textBottom + 3)),
+  };
 }
 
 function applyValidationImeModeToEditable(element, rule = {}) {
@@ -99499,7 +100676,12 @@ function cellPointFromElement(element) {
   const row = Number($cell.data("row"));
   const col = Number($cell.data("col"));
   if (!row || !col) return null;
-  return { sheetIndex: state.activeSheetIndex, row, col };
+  const sheetIndex = Number($cell.data("sheetIndex"));
+  return {
+    sheetIndex: Number.isInteger(sheetIndex) ? sheetIndex : state.activeSheetIndex,
+    row,
+    col,
+  };
 }
 
 function cellPointFromPointerEvent(event, options = {}) {
@@ -99684,7 +100866,17 @@ function selectableCellPoint(row, col) {
 }
 
 function findMergeForCell(sheet, row, col) {
-  return (sheet?.merges || []).find((merge) => row >= merge.top && row <= merge.bottom && col >= merge.left && col <= merge.right) || null;
+  if (!sheet?.merges?.length) return null;
+  return mergeForCellFromMaps(buildMergeMaps(sheet.merges), row, col);
+}
+
+function mergeForCellFromMaps(mergeMaps, row, col) {
+  if (!mergeMaps) return null;
+  const key = cellKey(row, col);
+  const directMerge = mergeMaps.master.get(key);
+  if (directMerge) return directMerge;
+  const masterKey = mergeMaps.coveredToMaster.get(key);
+  return masterKey ? mergeMaps.master.get(masterKey) || null : null;
 }
 
 function normalizeRange(start, end) {
@@ -99905,8 +101097,10 @@ function selectionStatusStats() {
   if (!sheet || !ranges.length || state.selectedImage) return emptyStats;
 
   const sheetId = getSheetId(sheet.name);
+  const mergeMaps = sheet?.merges?.length ? buildMergeMaps(sheet.merges) : null;
   const seen = new Set();
   const selectedCellCount = selectionStatusSelectedCellCount(ranges);
+  if (selectedCellCount <= 1) return { ...emptyStats, selectedCellCount };
   let count = 0;
   let numericCount = 0;
   let sum = 0;
@@ -99917,7 +101111,7 @@ function selectionStatusStats() {
     if (!statusBarCellMayHaveData(cell)) return;
     const point = cellPointFromKey(key);
     if (!point) return;
-    const merge = findMergeForCell(sheet, point.row, point.col);
+    const merge = mergeForCellFromMaps(mergeMaps, point.row, point.col);
     const targetRange = merge || { top: point.row, left: point.col, bottom: point.row, right: point.col };
     if (!ranges.some((range) => rangeIntersects(range, targetRange))) return;
     const masterRow = merge?.top || point.row;
@@ -100118,6 +101312,7 @@ function updateSelectionUi(options = {}) {
   updateContextualRibbonTabs();
   syncShapeFormatControls();
   syncShapeSelectionPane();
+  scheduleSelectionKeyboardSinkFocus();
 }
 
 function updateValidationInputMessagePopup() {
@@ -100481,6 +101676,16 @@ function commitEditableCellToSelection(cellElement) {
 
 function beginFormulaBarEdit() {
   if (!state.model || !state.selected || state.selected.sheetIndex !== state.activeSheetIndex || $formulaInput.prop("disabled")) {
+    if (state.formulaReferenceSheetNavigation?.sourceSheetIndex != null && state.formulaEdit) {
+      updateFormulaReferenceUi();
+      repaintActiveSheetCanvas();
+    }
+    return;
+  }
+
+  if (state.formulaReferenceSheetNavigation?.sourceSheetIndex != null && state.formulaEdit) {
+    updateFormulaReferenceUi();
+    repaintActiveSheetCanvas();
     return;
   }
 
@@ -100492,6 +101697,8 @@ function beginFormulaBarEdit() {
     state.formulaEdit.col === col
   ) {
     markFormulaEditCell();
+    syncFormulaEditPreview();
+    repaintActiveSheetCanvas();
     return;
   }
 
@@ -100502,6 +101709,8 @@ function beginFormulaBarEdit() {
     before: getCellRawInput(activeSheet(), row, col),
   };
   markFormulaEditCell();
+  syncFormulaEditPreview();
+  repaintActiveSheetCanvas();
   updateFormulaReferenceUi();
 }
 
@@ -100518,6 +101727,7 @@ function markFormulaEditCell() {
 function formulaEditCellElement() {
   const edit = state.formulaEdit;
   if (!edit) return null;
+  if (edit.sheetIndex !== state.activeSheetIndex) return null;
   return $sheetHost.find(`.sheet-cell[data-row="${edit.row}"][data-col="${edit.col}"]`)[0] || null;
 }
 
@@ -101087,7 +102297,19 @@ function getDisplayForCell(sheet, sheetId, row, col) {
 
 function renderDisplayCacheKey(sheet, sheetId, row, col) {
   const sheetIndex = state.model?.sheets?.indexOf(sheet) ?? -1;
-  return `${sheetIndex}:${sheetId ?? ""}:${row}:${col}:${state.showFormulas ? 1 : 0}`;
+  const cell = sheet?.cells?.[cellKey(row, col)] || null;
+  return [
+    sheetIndex,
+    sheetId ?? "",
+    row,
+    col,
+    state.showFormulas ? 1 : 0,
+    cell?.numFmt ?? "",
+    cell?.raw ?? "",
+    cell?.cached ?? "",
+    cell?.display ?? "",
+    cell?.formula ?? "",
+  ].join(":");
 }
 
 function computeDisplayForCell(sheet, sheetId, row, col) {
@@ -101155,6 +102377,9 @@ function formulaSpillRenderCacheForSheet(sheet) {
 function invalidateSheetUsedRangeCache(sheet) {
   if (!sheet || typeof sheet !== "object") return;
   sheetUsedRangeCacheBySheet.delete(sheet);
+  sheetMinimumExtentCacheBySheet.delete(sheet);
+  sheetBorderCellCacheBySheet.delete(sheet);
+  sheetPersistentNoteCellCacheBySheet.delete(sheet);
 }
 
 function invalidateFormulaSpillAnchorCache(sheet) {
@@ -102533,10 +103758,19 @@ function activeSheet() {
 }
 
 function buildMergeMaps(merges) {
+  const mergeList = Array.isArray(merges) ? merges : [];
+  if (!mergeList.length) {
+    return { master: new Map(), covered: new Set(), coveredToMaster: new Map() };
+  }
+  const cached = sheetMergeMapsCacheByMerges.get(mergeList);
+  if (cached?.length === mergeList.length) return cached.maps;
+  const signature = mergeRangesSignature(mergeList);
+  if (cached?.signature === signature) return cached.maps;
+
   const master = new Map();
   const covered = new Set();
   const coveredToMaster = new Map();
-  merges.forEach((merge) => {
+  mergeList.forEach((merge) => {
     const masterKey = cellKey(merge.top, merge.left);
     master.set(masterKey, merge);
     for (let row = merge.top; row <= merge.bottom; row += 1) {
@@ -102549,7 +103783,25 @@ function buildMergeMaps(merges) {
       }
     }
   });
-  return { master, covered, coveredToMaster };
+  const maps = { master, covered, coveredToMaster };
+  sheetMergeMapsCacheByMerges.set(mergeList, { length: mergeList.length, signature, maps });
+  return maps;
+}
+
+function mergeRangesSignature(merges) {
+  let hash = 2166136261;
+  merges.forEach((merge) => {
+    hash = mergeRangeHashStep(hash, merge?.top);
+    hash = mergeRangeHashStep(hash, merge?.left);
+    hash = mergeRangeHashStep(hash, merge?.bottom);
+    hash = mergeRangeHashStep(hash, merge?.right);
+  });
+  return `${merges.length}:${hash >>> 0}`;
+}
+
+function mergeRangeHashStep(hash, value) {
+  const number = Math.max(0, Math.round(Number(value) || 0));
+  return Math.imul((hash ^ number) >>> 0, 16777619) >>> 0;
 }
 
 function visibleGridRange(sheet, scrollOverride = null) {
@@ -102774,39 +104026,53 @@ function canvasBorderDash(style) {
   return [];
 }
 
-function borderLinesForSheet(sheet, mergeMaps, visibleRange = null, pixelCache = null) {
-  const xPosition = (columnBoundary) => cachedCoordinateToPixels(sheet, pixelCache, "col", columnBoundary - 1);
-  const yPosition = (rowBoundary) => cachedCoordinateToPixels(sheet, pixelCache, "row", rowBoundary - 1);
-  const lines = new Map();
-  const addCellBorders = (cell) => {
+function sheetBorderCellsByRow(sheet) {
+  const revision = Math.max(0, Number(state.workbookRevision) || 0);
+  const cached = sheetBorderCellCacheBySheet.get(sheet);
+  if (cached?.revision === revision && cached.cells === sheet.cells) return cached;
+
+  const byRow = new Map();
+  const byKey = new Map();
+  Object.values(sheet.cells || {}).forEach((cell) => {
     const borders = cell?.borders || {};
     if (!Object.keys(borders).length) return;
+    const row = Math.max(1, Math.floor(Number(cell.row) || 0));
+    const col = Math.max(1, Math.floor(Number(cell.col) || 0));
+    if (!row || !col) return;
+    if (!byRow.has(row)) byRow.set(row, []);
+    byRow.get(row).push(cell);
+    byKey.set(cellKey(row, col), cell);
+  });
+  const next = { revision, cells: sheet.cells, byRow, byKey };
+  sheetBorderCellCacheBySheet.set(sheet, next);
+  return next;
+}
 
+function borderLinesForSheet(sheet, mergeMaps, visibleRange = null, pixelCache = null) {
+  const lines = new Map();
+  const addCellBorders = (cell) => {
     const key = cellKey(cell.row, cell.col);
-    if (mergeMaps.covered.has(key)) return;
-
     const merge = mergeMaps.master.get(key);
     if (visibleRange && !rangeIntersects(merge || { top: cell.row, left: cell.col, bottom: cell.row, right: cell.col }, visibleRange)) {
       return;
     }
-    const leftCol = cell.col;
-    const rightCol = merge ? merge.right : cell.col;
-    const topRow = cell.row;
-    const bottomRow = merge ? merge.bottom : cell.row;
-    const leftX = xPosition(leftCol);
-    const rightX = xPosition(rightCol + 1);
-    const x1 = Math.min(leftX, rightX);
-    const x2 = Math.max(leftX, rightX);
-    const y1 = yPosition(topRow);
-    const y2 = yPosition(bottomRow + 1);
-
-    addBorderLine(lines, "h", y1, x1, x2, borders.top);
-    addBorderLine(lines, "h", y2, x1, x2, borders.bottom);
-    addBorderLine(lines, "v", x1, y1, y2, borders.left);
-    addBorderLine(lines, "v", x2, y1, y2, borders.right);
+    addCellBorderLines(lines, sheet, mergeMaps, cell, pixelCache);
   };
 
-  Object.values(sheet.cells).forEach(addCellBorders);
+  const borderCellCache = sheetBorderCellsByRow(sheet);
+  if (visibleRange) {
+    for (let row = visibleRange.top; row <= visibleRange.bottom; row += 1) {
+      (borderCellCache.byRow.get(row) || []).forEach(addCellBorders);
+    }
+    (sheet.merges || []).forEach((merge) => {
+      if (merge.top >= visibleRange.top && merge.top <= visibleRange.bottom) return;
+      if (!rangeIntersects(merge, visibleRange)) return;
+      const master = borderCellCache.byKey.get(cellKey(merge.top, merge.left));
+      if (master) addCellBorders(master);
+    });
+  } else {
+    borderCellCache.byRow.forEach((cells) => cells.forEach(addCellBorders));
+  }
 
   if (visibleRange && Array.isArray(sheet.styleRanges) && sheet.styleRanges.length) {
     for (let row = visibleRange.top; row <= visibleRange.bottom; row += 1) {
@@ -102820,6 +104086,33 @@ function borderLinesForSheet(sheet, mergeMaps, visibleRange = null, pixelCache =
   }
 
   return [...lines.values()];
+}
+
+function addCellBorderLines(lines, sheet, mergeMaps, cell, pixelCache = null) {
+  const borders = cell?.borders || {};
+  if (!Object.keys(borders).length) return;
+
+  const key = cellKey(cell.row, cell.col);
+  if (mergeMaps.covered.has(key)) return;
+
+  const xPosition = (columnBoundary) => cachedCoordinateToPixels(sheet, pixelCache, "col", columnBoundary - 1);
+  const yPosition = (rowBoundary) => cachedCoordinateToPixels(sheet, pixelCache, "row", rowBoundary - 1);
+  const merge = mergeMaps.master.get(key);
+  const leftCol = cell.col;
+  const rightCol = merge ? merge.right : cell.col;
+  const topRow = cell.row;
+  const bottomRow = merge ? merge.bottom : cell.row;
+  const leftX = xPosition(leftCol);
+  const rightX = xPosition(rightCol + 1);
+  const x1 = Math.min(leftX, rightX);
+  const x2 = Math.max(leftX, rightX);
+  const y1 = yPosition(topRow);
+  const y2 = yPosition(bottomRow + 1);
+
+  addBorderLine(lines, "h", y1, x1, x2, borders.top);
+  addBorderLine(lines, "h", y2, x1, x2, borders.bottom);
+  addBorderLine(lines, "v", x1, y1, y2, borders.left);
+  addBorderLine(lines, "v", x2, y1, y2, borders.right);
 }
 
 function textOverflowWidth(sheet, mergeMaps, row, col, colSpan, cell, display) {
@@ -102903,15 +104196,15 @@ function compareBorder(a, b) {
   return (a.width || 0) - (b.width || 0);
 }
 
-function borderLineHtml(line) {
+function borderLineHtml(line, className = "sheet-border-line", offsetLeft = 0, offsetTop = 0) {
   const width = line.border.width || 1;
   const style = line.border.style || "solid";
   const color = line.border.color || "#000000";
   const css =
     line.orientation === "h"
-      ? `left:${line.start}px;top:${line.position - width / 2}px;width:${line.end - line.start}px;border-top:${width}px ${style} ${color}`
-      : `left:${line.position - width / 2}px;top:${line.start}px;height:${line.end - line.start}px;border-left:${width}px ${style} ${color}`;
-  return `<div class="sheet-border-line" style="${escapeAttr(css)}"></div>`;
+      ? `left:${roundCssPx(line.start - offsetLeft)}px;top:${roundCssPx(line.position - offsetTop - width / 2)}px;width:${roundCssPx(line.end - line.start)}px;border-top:${width}px ${style} ${color}`
+      : `left:${roundCssPx(line.position - offsetLeft - width / 2)}px;top:${roundCssPx(line.start - offsetTop)}px;height:${roundCssPx(line.end - line.start)}px;border-left:${width}px ${style} ${color}`;
+  return `<div class="${escapeAttr(className)}" style="${escapeAttr(css)}"></div>`;
 }
 
 function displayValue(value, numFmt = "") {
@@ -102936,7 +104229,26 @@ function displayValue(value, numFmt = "") {
     return trimNumber(value);
   }
 
+  if (typeof value === "string") {
+    const numericValue = numericStringValueForNumberFormat(value, numFmt);
+    if (numericValue != null) return displayValue(numericValue, numFmt);
+  }
+
   return String(value);
+}
+
+function numericStringValueForNumberFormat(value, numFmt = "") {
+  const primaryFormat = primaryExcelFormatSection(numFmt).trim();
+  if (!primaryFormat || primaryFormat === "@") return null;
+  if (!numberFormatCanApplyToNumericString(primaryFormat)) return null;
+  const text = String(value ?? "").trim().replace(/,/g, "");
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
+function numberFormatCanApplyToNumericString(format) {
+  return isDateFormat(format) || /%/.test(format) || Boolean(currencySymbol(format)) || /[0#?]/.test(format);
 }
 
 function formatDateForFormat(date, numFmt = "") {
@@ -107180,6 +108492,7 @@ function standaloneRuntime() {
   const $zoomIn = $("#wx-zoom-in");
   let syncingScroll = false;
   let canvasPaintFrame = 0;
+  const standaloneMergeMapsCacheByMerges = new WeakMap();
 
   function applyDefinedNamesToFormulaEngine(engine, aliases) {
     (model.definedNames || []).forEach(function (definition) {
@@ -107439,13 +108752,256 @@ function standaloneRuntime() {
     return Boolean(char && /[A-Za-z0-9_.\\\u0080-\uffff]/.test(char));
   }
 
+  function standaloneRewriteStaticCellInfoFormulaReferencesForFormulaEngine(formula, context) {
+    if (typeof formula !== "string" || !formula.startsWith("=") || !/cell\s*\(/i.test(formula)) return formula;
+    let output = "";
+    let index = 0;
+    while (index < formula.length) {
+      const char = formula[index];
+      if (char === '"') {
+        const end = standaloneConsumeFormulaDoubleQuotedText(formula, index);
+        output += formula.slice(index, end);
+        index = end;
+        continue;
+      }
+      if (char === "'") {
+        const end = standaloneConsumeFormulaSingleQuotedSheetName(formula, index);
+        output += formula.slice(index, end);
+        index = end;
+        continue;
+      }
+      const match = formula.slice(index).match(/^(?:_xlfn\.)?cell\s*\(/i);
+      if (match && !standaloneIsDefinedNameTokenChar(formula[index - 1])) {
+        const openIndex = index + match[0].lastIndexOf("(");
+        const closeIndex = standaloneFindFormulaClosingParen(formula, openIndex);
+        if (closeIndex > openIndex) {
+          const replacement = standaloneStaticCellInfoFormulaReplacement(formula.slice(openIndex + 1, closeIndex), context);
+          if (replacement != null) {
+            output += replacement;
+            index = closeIndex + 1;
+            continue;
+          }
+        }
+      }
+      output += char;
+      index += 1;
+    }
+    return output;
+  }
+
+  function standaloneFindFormulaClosingParen(formula, openIndex) {
+    let depth = 0;
+    for (let index = openIndex; index < formula.length; index += 1) {
+      const char = formula[index];
+      if (char === '"') {
+        index = standaloneConsumeFormulaDoubleQuotedText(formula, index) - 1;
+        continue;
+      }
+      if (char === "'") {
+        index = standaloneConsumeFormulaSingleQuotedSheetName(formula, index) - 1;
+        continue;
+      }
+      if (char === "(") depth += 1;
+      else if (char === ")") {
+        depth -= 1;
+        if (depth === 0) return index;
+      }
+    }
+    return -1;
+  }
+
+  function standaloneStaticCellInfoFormulaReplacement(argsSource, context) {
+    const args = standaloneSplitFormulaArguments(argsSource);
+    if (args.length < 1 || args.length > 2) return null;
+    const infoType = standaloneFormulaStaticStringLiteral(args[0]);
+    if (!["address", "col", "row"].includes(infoType)) return null;
+    const range = args.length > 1
+      ? standaloneFormulaStaticA1ReferenceRange(args[1])
+      : standaloneFormulaContextCellRange(context);
+    if (!range) return null;
+    if (infoType === "row") return String(range.top);
+    if (infoType === "col") return String(range.left);
+    if (infoType === "address") return standaloneFormulaStringLiteral("$" + columnName(range.left) + "$" + range.top);
+    return null;
+  }
+
+  function standaloneSplitFormulaArguments(source) {
+    return standaloneSplitFormulaTopLevel(source, { ",": true, ";": true });
+  }
+
+  function standaloneSplitFormulaTopLevel(source, separators) {
+    const parts = [];
+    let current = "";
+    let depth = 0;
+    let singleQuoted = false;
+    let doubleQuoted = false;
+    const text = String(source || "");
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      const next = text[index + 1];
+      if (doubleQuoted) {
+        current += char;
+        if (char === '"' && next === '"') {
+          current += next;
+          index += 1;
+        } else if (char === '"') {
+          doubleQuoted = false;
+        }
+        continue;
+      }
+      if (singleQuoted) {
+        current += char;
+        if (char === "'" && next === "'") {
+          current += next;
+          index += 1;
+        } else if (char === "'") {
+          singleQuoted = false;
+        }
+        continue;
+      }
+      if (char === '"') {
+        doubleQuoted = true;
+        current += char;
+        continue;
+      }
+      if (char === "'") {
+        singleQuoted = true;
+        current += char;
+        continue;
+      }
+      if ("([{".includes(char)) {
+        depth += 1;
+        current += char;
+        continue;
+      }
+      if (")]}".includes(char)) {
+        depth = Math.max(0, depth - 1);
+        current += char;
+        continue;
+      }
+      if (separators[char] && depth === 0) {
+        parts.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    parts.push(current.trim());
+    return parts;
+  }
+
+  function standaloneFormulaStaticStringLiteral(value) {
+    const text = String(value || "").trim();
+    if (!/^"(?:[^"]|"")*"$/.test(text)) return "";
+    return text.slice(1, -1).replace(/""/g, '"').trim().toLocaleLowerCase("ja-JP");
+  }
+
+  function standaloneFormulaStringLiteral(value) {
+    return '"' + String(value ?? "").replace(/"/g, '""') + '"';
+  }
+
+  function standaloneFormulaContextCellRange(context) {
+    const row = Number(context?.row);
+    const col = Number(context?.col);
+    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 1 || col < 1) return null;
+    return { top: row, left: col, bottom: row, right: col };
+  }
+
+  function standaloneFormulaStaticA1ReferenceRange(expression) {
+    let text = standaloneStripFormulaOuterParentheses(String(expression || "").trim());
+    if (!text) return null;
+    const bangIndex = standaloneLastFormulaSheetBangIndex(text);
+    if (bangIndex >= 0) {
+      const sheetName = standaloneFormulaReferenceSheetName(text.slice(0, bangIndex));
+      if (sheetName && model?.sheets?.length && !standaloneFormulaReferenceSheetExists(sheetName)) return null;
+      text = text.slice(bangIndex + 1).trim();
+    }
+    if (!/^\$?[A-Za-z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Za-z]{1,3}\$?[1-9][0-9]{0,6})?$/.test(text)) return null;
+    return standaloneDecodeA1Range(text);
+  }
+
+  function standaloneFormulaReferenceSheetName(prefix) {
+    let text = String(prefix || "").trim();
+    if (!text) return "";
+    if (text.startsWith("'") && text.endsWith("'")) text = text.slice(1, -1).replace(/''/g, "'");
+    const bracketIndex = text.lastIndexOf("]");
+    if (bracketIndex >= 0) text = text.slice(bracketIndex + 1);
+    return text.trim();
+  }
+
+  function standaloneFormulaReferenceSheetExists(sheetName) {
+    const target = standaloneNormalizeFormulaSheetName(sheetName);
+    return (model?.sheets || []).some(function (sheet) {
+      return standaloneNormalizeFormulaSheetName(sheet.name) === target;
+    });
+  }
+
+  function standaloneStripFormulaOuterParentheses(expression) {
+    let text = String(expression || "").trim();
+    while (text.startsWith("(") && standaloneFindFormulaClosingParen(text, 0) === text.length - 1) {
+      text = text.slice(1, -1).trim();
+    }
+    return text;
+  }
+
+  function standaloneLastFormulaSheetBangIndex(expression) {
+    let last = -1;
+    let doubleQuoted = false;
+    let singleQuoted = false;
+    const text = String(expression || "");
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      const next = text[index + 1];
+      if (doubleQuoted) {
+        if (char === '"' && next === '"') index += 1;
+        else if (char === '"') doubleQuoted = false;
+        continue;
+      }
+      if (singleQuoted) {
+        if (char === "'" && next === "'") index += 1;
+        else if (char === "'") singleQuoted = false;
+        continue;
+      }
+      if (char === '"') doubleQuoted = true;
+      else if (char === "'") singleQuoted = true;
+      else if (char === "!") last = index;
+    }
+    return last;
+  }
+
+  function standaloneColumnNumber(name) {
+    return String(name || "")
+      .toUpperCase()
+      .split("")
+      .reduce(function (total, char) { return total * 26 + char.charCodeAt(0) - 64; }, 0);
+  }
+
+  function standaloneDecodeA1Cell(address) {
+    const match = String(address || "").match(/^\$?([A-Z]+)\$?(\d+)$/i);
+    return match ? { col: standaloneColumnNumber(match[1]), row: Number(match[2]) } : null;
+  }
+
+  function standaloneDecodeA1Range(range) {
+    const parts = String(range || "").split(":");
+    const start = standaloneDecodeA1Cell(parts[0]);
+    const end = standaloneDecodeA1Cell(parts[1] || parts[0]);
+    if (!start || !end) return null;
+    return {
+      top: Math.min(start.row, end.row),
+      left: Math.min(start.col, end.col),
+      bottom: Math.max(start.row, end.row),
+      right: Math.max(start.col, end.col),
+    };
+  }
+
   function translateStandaloneFormulaForFormulaEngine(formula, options) {
     if (typeof formula !== "string" || !formula.startsWith("=")) return formula;
     const structured = translateStandaloneStructuredReferencesForFormulaEngine(formula, options?.sheetIndex || 0, {
       row: options?.row,
       col: options?.col,
     });
-    return translateStandaloneDefinedNamesForFormulaEngine(structured, options?.definedNameAliases, options?.sheetIndex);
+    const definedNames = translateStandaloneDefinedNamesForFormulaEngine(structured, options?.definedNameAliases, options?.sheetIndex);
+    return standaloneRewriteStaticCellInfoFormulaReferencesForFormulaEngine(definedNames, { row: options?.row, col: options?.col });
   }
 
   function translateStandaloneStructuredReferencesForFormulaEngine(formula, sheetIndex, context) {
@@ -107764,6 +109320,7 @@ function standaloneRuntime() {
         if (cellHasComment(cell)) classNames.push("has-comment");
         if (cellHasNote(cell)) classNames.push("has-note");
         if (cellHasPhonetics(cell)) classNames.push("has-phonetic");
+        if (cell?.hyperlink) classNames.push("has-hyperlink");
         if (cell?.showPhonetic) classNames.push("show-phonetic");
         if (formula) classNames.push("formula-cell");
         if (state.selected?.row === row && state.selected?.col === col) classNames.push("selected");
@@ -108380,6 +109937,7 @@ function standaloneRuntime() {
   function paintCanvasCells(context, sheet, maps, sheetId, range, phase) {
     const showGridLines = sheet.showGridLines !== false;
     const rendered = new Set();
+    const editedCellKey = phase === "base" ? "" : standaloneCanvasEditedCellKey();
     for (let row = range.top; row <= range.bottom; row += 1) {
       for (let col = range.left; col <= range.right; col += 1) {
         const key = row + ":" + col;
@@ -108392,12 +109950,12 @@ function standaloneRuntime() {
         const cellRange = merge || { top: masterRow, left: masterCol, bottom: masterRow, right: masterCol };
         if (!rangeIntersects(cellRange, range)) continue;
         rendered.add(masterKey);
-        paintCanvasCell(context, sheet, maps, sheetId, cellRange.top, cellRange.left, cellRange, showGridLines, phase || "all");
+        paintCanvasCell(context, sheet, maps, sheetId, cellRange.top, cellRange.left, cellRange, showGridLines, phase || "all", editedCellKey);
       }
     }
   }
 
-  function paintCanvasCell(context, sheet, maps, sheetId, row, col, range, showGridLines, phase) {
+  function paintCanvasCell(context, sheet, maps, sheetId, row, col, range, showGridLines, phase, editedCellKey) {
     const key = row + ":" + col;
     const cell = sheet.cells[key] || {};
     const rowModel = sheet.rows[row - 1] || {};
@@ -108413,7 +109971,16 @@ function standaloneRuntime() {
       if (showGridLines) paintCanvasGridLines(context, sheet, maps, row, col, range, cell, rect);
     }
     if (phase === "base") return;
+    if (editedCellKey && editedCellKey === key) return;
     paintCanvasCellText(context, sheet, maps, sheetId, row, col, range, cell, rect);
+  }
+
+  function standaloneCanvasEditedCellKey() {
+    const editor = $sheet.find(".sheet-cell[contenteditable='true']")[0];
+    if (!editor?.isConnected) return "";
+    const row = Number(editor.dataset.row);
+    const col = Number(editor.dataset.col);
+    return row && col ? row + ":" + col : "";
   }
 
   function rangePixelRect(sheet, range) {
@@ -109199,6 +110766,126 @@ function standaloneRuntime() {
     $formula.prop("disabled", false).val(cell?.formula || (cell?.raw == null ? "" : String(cell.raw)));
     $apply.prop("disabled", false);
   }
+  function handleStandaloneCellHyperlinkClick(event) {
+    const hyperlink = event.currentTarget?.getAttribute?.("href") || "";
+    if (!openStandaloneHyperlinkTarget(hyperlink)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+  function openStandaloneHyperlinkTarget(hyperlink) {
+    const text = String(hyperlink || "").trim();
+    if (!text) return false;
+    if (openStandaloneInternalHyperlink(text)) {
+      $status.text("リンク先へ移動しました：" + text);
+      return true;
+    }
+    window.open(text, "_blank", "noopener,noreferrer");
+    $status.text("リンクを開きました：" + text);
+    return true;
+  }
+  function standaloneHyperlinkFromCellClickEvent(event) {
+    if (event.defaultPrevented || event.button > 0) return "";
+    const target = event.target;
+    if (!target?.closest) return "";
+    if (target.closest(".cell-select")) return "";
+    const cellElement = target.closest(".sheet-cell[data-row][data-col]") || standaloneCellElementFromClientPoint(event.clientX, event.clientY);
+    if (!cellElement) return "";
+    if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
+    const link = cellElement.querySelector(".cell-link");
+    if (!link || !standalonePointIsInsideElementClientRects(link, event.clientX, event.clientY)) return "";
+    return link.getAttribute("href") || "";
+  }
+  function standaloneCellElementFromClientPoint(clientX, clientY) {
+    const hitElements = typeof document.elementsFromPoint === "function"
+      ? document.elementsFromPoint(clientX, clientY)
+      : [];
+    return Array.prototype.find.call(hitElements, function (element) {
+      return element.matches?.(".sheet-cell[data-row][data-col]");
+    }) || null;
+  }
+  function standalonePointIsInsideElementClientRects(element, clientX, clientY) {
+    if (!element || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+    const rects = element.getClientRects?.();
+    if (!rects?.length) return false;
+    return Array.prototype.some.call(rects, function (rect) {
+      return clientX >= rect.left - 1 &&
+        clientX <= rect.right + 1 &&
+        clientY >= rect.top - 1 &&
+        clientY <= rect.bottom + 1;
+    });
+  }
+  function openStandaloneInternalHyperlink(hyperlink) {
+    const text = String(hyperlink || "").trim();
+    if (!standaloneIsInternalHyperlinkValue(text)) return false;
+    const target = standaloneParseInternalHyperlinkTarget(standaloneStripInternalHyperlinkPrefix(text));
+    if (!target) return false;
+    const sheetIndex = target.sheetName
+      ? model.sheets.findIndex(function (sheet) { return sheet.name === target.sheetName && sheet.hidden !== true; })
+      : state.active;
+    if (sheetIndex < 0 || !model.sheets[sheetIndex]) return false;
+    if (sheetIndex !== state.active) {
+      state.active = sheetIndex;
+      refreshStandaloneWorkbookChartsFromSources();
+      renderTabs();
+      renderSheet();
+    }
+    const $cell = $sheet.find(".sheet-cell[data-row='" + target.row + "'][data-col='" + target.col + "']");
+    if ($cell.length) {
+      select($cell);
+      scrollStandaloneCellIntoView(model.sheets[state.active], target.row, target.col);
+      $cell[0]?.focus?.({ preventScroll: true });
+      return true;
+    }
+    state.selected = { row: target.row, col: target.col };
+    state.selectedRange = { top: target.row, left: target.col, bottom: target.row, right: target.col };
+    state.selectedRanges = [state.selectedRange];
+    renderSheet();
+    scrollStandaloneCellIntoView(model.sheets[state.active], target.row, target.col);
+    return true;
+  }
+  function standaloneIsInternalHyperlinkValue(hyperlink) {
+    const text = String(hyperlink || "").trim();
+    if (!text) return false;
+    if (text.startsWith("#")) return true;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(text)) return false;
+    return Boolean(standaloneParseInternalHyperlinkTarget(standaloneStripInternalHyperlinkPrefix(text)));
+  }
+  function standaloneStripInternalHyperlinkPrefix(hyperlink) {
+    try {
+      return decodeURIComponent(String(hyperlink || "").replace(/^#/, ""));
+    } catch {
+      return String(hyperlink || "").replace(/^#/, "");
+    }
+  }
+  function standaloneParseInternalHyperlinkTarget(target) {
+    const text = String(target || "").trim();
+    if (!text) return null;
+    const bangIndex = text.lastIndexOf("!");
+    const sheetName = bangIndex >= 0 ? standaloneUnquoteSheetName(text.slice(0, bangIndex)) : "";
+    const address = (bangIndex >= 0 ? text.slice(bangIndex + 1) : text).split(":")[0];
+    const cell = decodeCell(address);
+    return cell ? { sheetName, row: cell.row, col: cell.col } : null;
+  }
+  function scrollStandaloneCellIntoView(sheet, row, col) {
+    const host = $sheet[0];
+    if (!host) return;
+    const rect = rangePixelRect(sheet, { top: row, left: col, bottom: row, right: col });
+    if (!rect) return;
+    const margin = 24;
+    if (rect.left < host.scrollLeft + margin) {
+      host.scrollLeft = Math.max(0, rect.left - margin);
+    } else if (rect.left + rect.width > host.scrollLeft + host.clientWidth - margin) {
+      host.scrollLeft = Math.max(0, rect.left + rect.width - host.clientWidth + margin);
+    }
+    if (rect.top < host.scrollTop + margin) {
+      host.scrollTop = Math.max(0, rect.top - margin);
+    } else if (rect.top + rect.height > host.scrollTop + host.clientHeight - margin) {
+      host.scrollTop = Math.max(0, rect.top + rect.height - host.clientHeight + margin);
+    }
+    if ($hscroll[0]) $hscroll[0].scrollLeft = host.scrollLeft;
+    scheduleCanvasPaint();
+  }
   function handleStandaloneKeyboardShortcut(event) {
     if (!isStandaloneWorkbookShortcutTarget(event.target)) return;
     const key = String(event.key || "").toLowerCase();
@@ -109459,25 +111146,41 @@ function standaloneRuntime() {
     $cell.data("before", editValue);
     $cell.attr("contenteditable", "true").text(editValue).focus();
     syncEditableCellAlignment($cell[0]);
+    scheduleCanvasPaint();
     placeCaretAtEnd($cell[0]);
   }
   function syncEditableCellAlignment(cellElement) {
     if (!cellElement || cellElement.getAttribute("contenteditable") !== "true") return;
+    const overlay = editableCellOverlayMetrics(cellElement);
     cellElement.style.setProperty("--cell-edit-padding-top", "2px");
+    cellElement.style.setProperty("--cell-edit-overlay-left", overlay.left + "px");
+    cellElement.style.setProperty("--cell-edit-overlay-width", overlay.width + "px");
     cellElement.style.removeProperty("--cell-edit-overlay-height");
-    cellElement.style.setProperty("--cell-edit-overlay-height", editableCellOverlayHeight(cellElement) + "px");
+    cellElement.style.setProperty("--cell-edit-overlay-height", overlay.height + "px");
     cellElement.scrollTop = 0;
   }
   function editableCellOverlayHeight(cellElement) {
+    return editableCellOverlayMetrics(cellElement).height;
+  }
+  function editableCellOverlayMetrics(cellElement) {
     const cellRect = cellElement.getBoundingClientRect();
     const baseHeight = Math.max(cellElement.offsetHeight || 0, cellElement.clientHeight || 0, cellRect.height || 0);
+    const baseWidth = Math.max(cellElement.offsetWidth || 0, cellElement.clientWidth || 0, cellRect.width || 0);
     const range = document.createRange();
     range.selectNodeContents(cellElement);
     const rects = Array.prototype.slice.call(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
     if (range.detach) range.detach();
-    if (!rects.length) return Math.ceil(baseHeight);
+    if (!rects.length) return { left: 0, width: Math.ceil(baseWidth), height: Math.ceil(baseHeight) };
+    const textLeft = Math.min.apply(null, rects.map((rect) => rect.left)) - cellRect.left;
+    const textRight = Math.max.apply(null, rects.map((rect) => rect.right)) - cellRect.left;
     const textBottom = Math.max.apply(null, rects.map((rect) => rect.bottom)) - cellRect.top;
-    return Math.ceil(Math.max(baseHeight, textBottom + 3));
+    const left = Math.min(0, Math.floor(textLeft) - 3);
+    const right = Math.max(baseWidth, Math.ceil(textRight) + 3);
+    return {
+      left,
+      width: Math.ceil(right - left),
+      height: Math.ceil(Math.max(baseHeight, textBottom + 3)),
+    };
   }
   function placeCaretAtEnd(element) {
     const selection = window.getSelection?.();
@@ -109690,7 +111393,16 @@ function standaloneRuntime() {
   window.addEventListener("pointerup", finishRuntimeEditDrag);
   window.addEventListener("blur", finishRuntimeEditDrag);
   $sheet.on("pointerdown", ".sheet-cell[contenteditable='true']", startRuntimeEditDrag);
-  $sheet.on("click focusin", ".sheet-cell[data-row][data-col]", function () {
+  $sheet.on("click", ".cell-link", handleStandaloneCellHyperlinkClick);
+  $sheet.on("click focusin", ".sheet-cell[data-row][data-col]", function (event) {
+    if (event.type === "click") {
+      const hyperlink = standaloneHyperlinkFromCellClickEvent(event);
+      if (hyperlink && openStandaloneHyperlinkTarget(hyperlink)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
     if (state.suppressCellSelectionUntil && nowMs() < state.suppressCellSelectionUntil) return;
     state.suppressCellSelectionUntil = 0;
     select($(this));
@@ -110217,10 +111929,13 @@ function standaloneRuntime() {
     window.addEventListener("pointerup", up);
   }
   function buildMergeMaps(merges) {
+    const mergeList = Array.isArray(merges) ? merges : [];
+    const cached = standaloneMergeMapsCacheByMerges.get(mergeList);
+    if (cached?.length === mergeList.length) return cached.maps;
     const master = new Map();
     const covered = new Set();
     const coveredToMaster = new Map();
-    merges.forEach((merge) => {
+    mergeList.forEach((merge) => {
       const key = merge.top + ":" + merge.left;
       master.set(key, merge);
       for (let row = merge.top; row <= merge.bottom; row += 1) {
@@ -110233,7 +111948,9 @@ function standaloneRuntime() {
         }
       }
     });
-    return { master, covered, coveredToMaster };
+    const maps = { master, covered, coveredToMaster };
+    standaloneMergeMapsCacheByMerges.set(mergeList, { length: mergeList.length, maps });
+    return maps;
   }
   function borderLinesForSheet(sheet, maps, visibleRange) {
     const xs = columnBoundaryPositions(sheet);
@@ -110387,7 +112104,23 @@ function standaloneRuntime() {
       const currency = currencySymbol(primaryFormat);
       return currency ? currency + text : text;
     }
+    if (typeof value === "string") {
+      var numericValue = numericStringValueForNumberFormat(value, numFmt || "");
+      if (numericValue != null) return displayValue(numericValue, numFmt || "");
+    }
     return String(value);
+  }
+  function numericStringValueForNumberFormat(value, numFmt) {
+    var primaryFormat = primaryExcelFormatSection(numFmt || "").trim();
+    if (!primaryFormat || primaryFormat === "@") return null;
+    if (!numberFormatCanApplyToNumericString(primaryFormat)) return null;
+    var text = String(value == null ? "" : value).trim().replace(/,/g, "");
+    if (!/^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?$/i.test(text)) return null;
+    var number = Number(text);
+    return Number.isFinite(number) ? number : null;
+  }
+  function numberFormatCanApplyToNumericString(format) {
+    return isDateFormat(format) || /%/.test(format) || Boolean(currencySymbol(format)) || /[0#?]/.test(format);
   }
   function formatDateForFormat(date, numFmt) {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
@@ -110564,7 +112297,7 @@ html,body{height:100%;overflow:hidden}body{margin:0;background:#eef2f7;color:#1d
 .grid-header{background:#f3f6fa;color:#526173;text-align:center;font-weight:600;user-select:none;text-overflow:clip}.column-header{position:sticky;top:0;z-index:100000}.row-header{position:sticky;left:0;z-index:100000}.corner-header{position:sticky;top:0;left:0;z-index:100001}.header-label{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:clip;white-space:nowrap;pointer-events:none}.sheet-cell{z-index:1;border-right:1px solid transparent;border-bottom:1px solid transparent;background:transparent;background-clip:padding-box;display:flex;align-items:center;user-select:none}.sheet-cell.has-fill{background-clip:border-box}.sheet-cell.has-fill,.sheet-cell.hide-grid-right{border-right-color:transparent}.sheet-cell.has-fill,.sheet-cell.hide-grid-bottom{border-bottom-color:transparent}.sheet-grid.hide-gridlines .sheet-cell{border-right-color:transparent;border-bottom-color:transparent}.corner-header,.row-header{width:100%;min-width:0;max-width:100%;padding:0}
 .sheet-cell.text-overflow{overflow:visible;z-index:2}.sheet-cell.text-overflow .cell-content{pointer-events:none}.cell-content{display:block;width:100%;flex:0 0 auto;overflow:hidden;text-overflow:clip;white-space:inherit}.sheet-cell:not([contenteditable=true]) .cell-content{opacity:0}
 .sheet-image,.sheet-image-link{position:absolute;display:block;box-sizing:border-box;z-index:3}.sheet-image{object-fit:fill;pointer-events:auto;user-select:none}.sheet-image.sheet-shape:not(.is-line-shape){overflow:visible}.sheet-shape-render{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;user-select:none}.sheet-shape-text-layer{position:absolute;inset:0;box-sizing:border-box;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;line-height:1.22;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;pointer-events:none;user-select:none}.sheet-shape-text-block{width:100%;min-width:0}.sheet-picture-crop{overflow:hidden;object-fit:initial}.sheet-picture-crop-content{position:absolute;display:block;max-width:none;max-height:none;pointer-events:none;user-select:none}.sheet-image-link{pointer-events:auto}.sheet-image-link .sheet-image{position:static;width:100%;height:100%}.sheet-image-link .sheet-picture-crop{position:relative}.sheet-image.selected{outline:2px solid #22c55e;outline-offset:1px}.wx-selection-frame{position:absolute;z-index:5;pointer-events:none;box-sizing:border-box;border:2px solid #22c55e;background:rgba(34,197,94,.08)}.wx-selection-frame.is-active::after{content:"";position:absolute;right:-4px;bottom:-4px;width:7px;height:7px;background:#22c55e;border:1px solid #fff;box-sizing:border-box}
-.sheet-cell[contenteditable=true]{background:transparent;cursor:text;display:block;height:var(--cell-edit-overlay-height,100%);isolation:isolate;min-height:100%;overflow:visible;padding-top:var(--cell-edit-padding-top,2px);text-overflow:clip;white-space:pre;user-select:text;scrollbar-width:none;z-index:40}.sheet-cell[contenteditable=true]::before{content:"";position:absolute;z-index:-1;left:0;top:0;width:100%;height:var(--cell-edit-overlay-height,100%);background:var(--cell-fill-color,#fff);pointer-events:none}.sheet-cell[contenteditable=true]::-webkit-scrollbar{width:0;height:0;display:none}.sheet-cell[contenteditable=true] .cell-content{opacity:1;overflow:visible;pointer-events:auto}.sheet-cell[contenteditable=true]:focus{outline:2px solid #22c55e;outline-offset:-2px;z-index:41}.sheet-cell.selected{outline:2px solid #22c55e;outline-offset:-2px;z-index:4}
+.sheet-cell[contenteditable=true]{background:transparent;cursor:text;display:block;height:var(--cell-edit-overlay-height,100%);isolation:isolate;min-height:100%;overflow:visible;padding-top:var(--cell-edit-padding-top,2px);text-overflow:clip;white-space:pre;user-select:text;scrollbar-width:none;z-index:40}.sheet-cell[contenteditable=true]::before{content:"";position:absolute;z-index:-1;left:var(--cell-edit-overlay-left,0);top:0;width:var(--cell-edit-overlay-width,100%);height:var(--cell-edit-overlay-height,100%);background:var(--cell-fill-color,#fff);pointer-events:none}.sheet-cell[contenteditable=true]::-webkit-scrollbar{width:0;height:0;display:none}.sheet-cell[contenteditable=true] .cell-content{opacity:1;overflow:visible;pointer-events:auto}.sheet-cell[contenteditable=true]:focus{outline:2px solid #22c55e;outline-offset:-2px;z-index:41}.sheet-cell.selected{outline:2px solid #22c55e;outline-offset:-2px;z-index:4}
 .formula-cell:after{content:"";position:absolute;right:3px;top:3px;width:0;height:0;border-left:6px solid transparent;border-top:6px solid #2563eb}
 .cell-annotation-marker{position:absolute;top:0;right:0;z-index:6;width:0;height:0;pointer-events:none;border-left:8px solid transparent}.cell-annotation-marker.is-comment{border-top:8px solid #8064a2}.cell-annotation-marker.is-note{border-top:8px solid #c00000}.sheet-cell.has-comment.has-note .cell-annotation-marker.is-comment{right:9px}
 a{color:#1d4ed8}.cell-select{width:100%;height:100%;border:0;background:transparent;color:inherit}
