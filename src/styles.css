@@ -486,7 +486,7 @@ textarea {
   box-sizing: border-box;
   width: fit-content;
   min-width: 0;
-  max-width: min(42vw, 420px);
+  max-width: min(72vw, 1200px);
   height: 18px;
   padding: 0 12px;
   border: 1px solid #ddc7ff;
@@ -1281,16 +1281,31 @@ textarea {
   min-height: 11px;
 }
 
+.ribbon-view-show-group .ribbon-compact-tool.is-active,
+.ribbon-view-options-group .ribbon-compact-tool.is-active {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+}
+
 .ribbon-check-box {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid #77859a;
+  border-radius: 3px;
   background: #ffffff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.ribbon-view-show-group .ribbon-compact-tool.is-active .ribbon-check-box,
+.ribbon-view-options-group .ribbon-compact-tool.is-active .ribbon-check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: none;
 }
 
 .ribbon-view-show-group .ribbon-compact-tool.is-active .ribbon-check-box::after,
@@ -1298,8 +1313,8 @@ textarea {
   content: "";
   width: 5px;
   height: 3px;
-  border-left: 2px solid #0f6b5f;
-  border-bottom: 2px solid #0f6b5f;
+  border-left: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
   transform: rotate(-45deg) translate(0, -1px);
 }
 
@@ -1307,6 +1322,17 @@ textarea {
 .ribbon-view-options-group .ribbon-compact-tool:disabled .ribbon-check-box {
   border-color: #b9c2d1;
   background: #f1f5f9;
+}
+
+.ribbon-view-show-group .ribbon-compact-tool.is-active:disabled .ribbon-check-box,
+.ribbon-view-options-group .ribbon-compact-tool.is-active:disabled .ribbon-check-box {
+  border-color: #a6b1c1;
+  background: #dbe2ec;
+}
+
+.ribbon-view-show-group .ribbon-compact-tool.is-active:disabled .ribbon-check-box::after,
+.ribbon-view-options-group .ribbon-compact-tool.is-active:disabled .ribbon-check-box::after {
+  border-color: #64748b;
 }
 
 .ribbon-view-zoom-group {
@@ -5583,6 +5609,33 @@ body.is-resizing-formula-bar {
   padding: 0;
 }
 
+.sheet-keyboard-sink {
+  position: fixed;
+  left: -10000px;
+  top: -10000px;
+  width: 1px;
+  height: 1px;
+  min-width: 1px;
+  min-height: 1px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  margin: 0;
+  resize: none;
+  overflow: hidden;
+  opacity: 0.01;
+  color: transparent;
+  caret-color: transparent;
+  background: transparent;
+  pointer-events: none;
+  white-space: pre;
+  z-index: -1;
+}
+
+.sheet-keyboard-sink.is-active {
+  z-index: 1;
+}
+
 .sheet-footer {
   flex: 0 0 auto;
   min-height: 32px;
@@ -6592,10 +6645,16 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 .sheet-cell.is-frozen-pane {
   position: sticky;
   z-index: 4;
-  background: var(--cell-fill-color, #fff);
+  background: transparent;
   background-clip: border-box;
-  border-right-color: #d9e0ea;
-  border-bottom-color: #d9e0ea;
+  border-right-width: 0;
+  border-bottom-width: 0;
+  overflow: visible;
+}
+
+.sheet-cell.is-frozen-pane.has-fill,
+.sheet-cell.is-frozen-pane.is-merged-cell {
+  background: var(--cell-fill-color, #fff);
 }
 
 .sheet-cell.is-frozen-row,
@@ -6614,6 +6673,40 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 .sheet-grid.hide-gridlines .sheet-cell.is-frozen-pane:not(.has-fill) {
   border-right-color: transparent;
   border-bottom-color: transparent;
+}
+
+.sheet-frozen-pane-background {
+  position: sticky;
+  z-index: 3;
+  background: #fff;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.sheet-frozen-bg-line {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  background: var(--line);
+}
+
+.sheet-frozen-bg-line.is-vertical {
+  width: 1px;
+}
+
+.sheet-frozen-bg-line.is-horizontal {
+  height: 1px;
+}
+
+.sheet-frozen-border-layer {
+  position: sticky;
+  z-index: 6;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.sheet-frozen-border-line {
+  z-index: 1;
 }
 
 .sheet-cell.is-frozen-pane:not([contenteditable="true"]) .cell-content {
@@ -6650,6 +6743,10 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
 
 .sheet-cell.text-overflow .cell-content {
   pointer-events: none;
+}
+
+.sheet-cell.has-hyperlink:not([contenteditable="true"]) {
+  cursor: pointer;
 }
 
 .cell-content {
@@ -7111,9 +7208,9 @@ body.is-drawing-ink .sheet-host {
   content: "";
   position: absolute;
   z-index: -1;
-  left: 0;
+  left: var(--cell-edit-overlay-left, 0);
   top: 0;
-  width: 100%;
+  width: var(--cell-edit-overlay-width, 100%);
   height: var(--cell-edit-overlay-height, 100%);
   background: var(--cell-fill-color, #fff);
   pointer-events: none;
@@ -7794,6 +7891,7 @@ body.is-drawing-ink .sheet-host {
 
 .cell-link {
   color: var(--accent-strong);
+  cursor: pointer;
   text-decoration: underline;
 }
 
@@ -12591,7 +12689,7 @@ body.is-object-selection-mode .sheet-host {
   }
 
   .workbook-name-display {
-    max-width: 36vw;
+    max-width: 46vw;
     padding-inline: 8px;
   }
 
