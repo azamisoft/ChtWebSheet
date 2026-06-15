@@ -464,7 +464,7 @@ const assets = {
   appCssPath: extractBuiltAsset(distIndex, "css"),
   iconPath,
 };
-const launcherRemoteBaseUrl = process.env.WEBSHEET_REMOTE_RUNTIME_BASE_URL || `http://127.0.0.1:5173/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`;
+const launcherRemoteBaseUrl = process.env.WEBSHEET_REMOTE_RUNTIME_BASE_URL || `https://chtec.co.jp/cws/download/runtime/${STANDALONE_RUNTIME_CHANNEL}`;
 const launcherHtml = standaloneLauncherHtml({
   localBaseUrl: standaloneRuntimeCurrentBaseUrl(),
   versionedLocalBaseUrl: standaloneRuntimeBaseUrl(),
