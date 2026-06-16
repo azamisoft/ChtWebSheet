@@ -11023,9 +11023,11 @@ function init() {
   $(document).on("click", "[data-name-dialog-action]", handleNameDialogAction);
   $(document).on("click", "[data-link-kind]", handleLinkKindClick);
   $(document).on("click", "[data-link-document-sheet-index]", handleLinkDocumentSheetClick);
+  $(document).on("click", "[data-link-document-name-target]", handleLinkDocumentNameClick);
   $(document).on("click", "[data-link-dialog-action]", handleLinkDialogAction);
   $(document).on("click", "[data-object-link-kind]", handleObjectLinkKindClick);
   $(document).on("click", "[data-object-link-document-sheet-index]", handleObjectLinkDocumentSheetClick);
+  $(document).on("click", "[data-object-link-document-name-target]", handleObjectLinkDocumentNameClick);
   $(document).on("click", "[data-object-link-dialog-action]", handleObjectLinkDialogAction);
   $(document).on("click", "[data-translation-pane-action]", handleTranslationPaneAction);
   $(document).on("change", "[data-translation-pane-field]", handleTranslationPaneFieldChange);
@@ -30067,10 +30069,10 @@ function linkDialogHtml(point, text, hyperlink, kind = "web", values = {}) {
             <div class="link-dialog-document-panel" data-link-document-panel ${kind === "document" ? "" : "hidden"}>
               <div class="excel-dialog-caption">${accessKeyLabelHtml("またはドキュメント内の場所を選択してください(C):")}</div>
               <div class="link-dialog-document-tree" role="tree" aria-label="ドキュメント内の場所">
-                <div class="link-dialog-tree-heading">セル参照</div>
-                <div class="link-dialog-sheet-list" role="group" aria-label="シート">
-                  ${linkDialogDocumentSheetsHtml(documentSheetIndex)}
-                </div>
+                ${linkDialogDocumentTargetsHtml(documentSheetIndex, values.documentName, {
+                  sheetIndexAttribute: "data-link-document-sheet-index",
+                  nameTargetAttribute: "data-link-document-name-target",
+                })}
               </div>
             </div>
           </div>
@@ -30086,14 +30088,61 @@ function linkDialogHtml(point, text, hyperlink, kind = "web", values = {}) {
   `;
 }
 
+function linkDialogDocumentTargetsHtml(selectedSheetIndex, selectedNameTarget = "", options = {}) {
+  const sheetIndexAttribute = options.sheetIndexAttribute || "data-link-document-sheet-index";
+  const nameTargetAttribute = options.nameTargetAttribute || "data-link-document-name-target";
+  const namesHtml = linkDialogDocumentDefinedNamesHtml(selectedNameTarget, nameTargetAttribute);
+  return `
+    <div class="link-dialog-tree-heading">セル参照</div>
+    <div class="link-dialog-sheet-list" role="group" aria-label="シート">
+      ${linkDialogDocumentSheetsHtml(selectedSheetIndex, sheetIndexAttribute)}
+    </div>
+    ${namesHtml
+      ? `<div class="link-dialog-tree-heading">定義された名前</div>
+        <div class="link-dialog-sheet-list" role="group" aria-label="定義された名前">
+          ${namesHtml}
+        </div>`
+      : ""}
+  `;
+}
+
 function linkDialogDocumentSheetsHtml(selectedSheetIndex, sheetIndexAttribute = "data-link-document-sheet-index") {
-  return state.model.sheets
+  return (state.model?.sheets || [])
     .map((sheet, index) => {
       if (!isSheetVisible(sheet)) return "";
       const active = index === selectedSheetIndex;
       return `<button class="${active ? "is-active" : ""}" type="button" ${sheetIndexAttribute}="${index}" role="treeitem" aria-selected="${active ? "true" : "false"}">${escapeHtml(sheet.name)}</button>`;
     })
     .join("");
+}
+
+function linkDialogDocumentDefinedNamesHtml(selectedNameTarget = "", nameTargetAttribute = "data-link-document-name-target") {
+  const selected = normalizeDefinedNameLookup(selectedNameTarget);
+  return linkDialogDocumentDefinedNameTargets()
+    .map((item) => {
+      const active = normalizeDefinedNameLookup(item.target) === selected;
+      return `<button class="${active ? "is-active" : ""}" type="button" ${nameTargetAttribute}="${escapeAttr(item.target)}" role="treeitem" aria-selected="${active ? "true" : "false"}" title="${escapeAttr(item.refersTo || item.target)}">${escapeHtml(item.label)}</button>`;
+    })
+    .join("");
+}
+
+function linkDialogDocumentDefinedNameTargets() {
+  return (state.model?.definedNames || [])
+    .map((definition) => {
+      if (!definition?.name || definition.hidden) return null;
+      const scopeSheet = definition.scope === "sheet" ? state.model?.sheets?.[definition.sheetIndex] : null;
+      if (scopeSheet && !isSheetVisible(scopeSheet)) return null;
+      const reference = definedNameLinkReference(definition, scopeSheet || activeSheet());
+      if (!reference?.sheet || !reference.range || !isSheetVisible(reference.sheet)) return null;
+      const target = scopeSheet ? `${quoteSheetNameForFormula(scopeSheet.name)}!${definition.name}` : definition.name;
+      return {
+        label: scopeSheet ? `${definition.name} - ${scopeSheet.name}` : definition.name,
+        target,
+        refersTo: definition.refersTo || "",
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.label.localeCompare(right.label, "ja", { sensitivity: "base" }));
 }
 
 function handleLinkKindClick(event) {
@@ -30138,15 +30187,49 @@ function handleLinkDocumentSheetClick(event) {
   if (!Number.isInteger(index) || !state.model?.sheets[index] || !isSheetVisible(state.model.sheets[index])) return;
   state.linkDialog.values = state.linkDialog.values || {};
   state.linkDialog.values.documentSheetIndex = index;
+  state.linkDialog.values.documentName = "";
   dialog.querySelectorAll("[data-link-document-sheet-index]").forEach((sheetButton) => {
     const active = Number(sheetButton.dataset.linkDocumentSheetIndex) === index;
     sheetButton.classList.toggle("is-active", active);
     sheetButton.setAttribute("aria-selected", active ? "true" : "false");
   });
+  dialog.querySelectorAll("[data-link-document-name-target]").forEach((nameButton) => {
+    nameButton.classList.remove("is-active");
+    nameButton.setAttribute("aria-selected", "false");
+  });
   const input = dialog.querySelector('[data-link-field="url"]');
   if (input && !input.value.trim()) {
     input.value = defaultLinkDialogValue("document", state.linkDialog.point);
   }
+  input?.focus({ preventScroll: true });
+}
+
+function handleLinkDocumentNameClick(event) {
+  const button = event.currentTarget;
+  const dialog = button.closest("#linkDialog");
+  if (!dialog || !state.linkDialog) return;
+  event.preventDefault();
+  const target = button.dataset.linkDocumentNameTarget || "";
+  if (!target) return;
+  state.linkDialog.values = state.linkDialog.values || {};
+  state.linkDialog.values.documentName = target;
+  const reference = internalHyperlinkReferenceFromDefinedName(target, state.linkDialog.values.documentSheetIndex);
+  if (reference?.sheetName) {
+    const index = state.model.sheets.findIndex((sheet) => sheet.name === reference.sheetName && isSheetVisible(sheet));
+    if (index >= 0) state.linkDialog.values.documentSheetIndex = index;
+  }
+  dialog.querySelectorAll("[data-link-document-name-target]").forEach((nameButton) => {
+    const active = nameButton === button;
+    nameButton.classList.toggle("is-active", active);
+    nameButton.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  dialog.querySelectorAll("[data-link-document-sheet-index]").forEach((sheetButton) => {
+    const active = Number(sheetButton.dataset.linkDocumentSheetIndex) === state.linkDialog.values.documentSheetIndex;
+    sheetButton.classList.toggle("is-active", active);
+    sheetButton.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  const input = dialog.querySelector('[data-link-field="url"]');
+  if (input) input.value = target;
   input?.focus({ preventScroll: true });
 }
 
@@ -30339,10 +30422,10 @@ function objectLinkDialogHtml(image, count, kind = "web", values = {}) {
             <div class="link-dialog-document-panel" data-object-link-document-panel ${kind === "document" ? "" : "hidden"}>
               <div class="excel-dialog-caption">${accessKeyLabelHtml("またはドキュメント内の場所を選択してください(C):")}</div>
               <div class="link-dialog-document-tree" role="tree" aria-label="ドキュメント内の場所">
-                <div class="link-dialog-tree-heading">セル参照</div>
-                <div class="link-dialog-sheet-list" role="group" aria-label="シート">
-                  ${linkDialogDocumentSheetsHtml(documentSheetIndex, "data-object-link-document-sheet-index")}
-                </div>
+                ${linkDialogDocumentTargetsHtml(documentSheetIndex, values.documentName, {
+                  sheetIndexAttribute: "data-object-link-document-sheet-index",
+                  nameTargetAttribute: "data-object-link-document-name-target",
+                })}
               </div>
             </div>
           </div>
@@ -30398,15 +30481,49 @@ function handleObjectLinkDocumentSheetClick(event) {
   if (!Number.isInteger(index) || !state.model?.sheets[index] || !isSheetVisible(state.model.sheets[index])) return;
   state.objectLinkDialog.values = state.objectLinkDialog.values || {};
   state.objectLinkDialog.values.documentSheetIndex = index;
+  state.objectLinkDialog.values.documentName = "";
   dialog.querySelectorAll("[data-object-link-document-sheet-index]").forEach((sheetButton) => {
     const active = Number(sheetButton.dataset.objectLinkDocumentSheetIndex) === index;
     sheetButton.classList.toggle("is-active", active);
     sheetButton.setAttribute("aria-selected", active ? "true" : "false");
   });
+  dialog.querySelectorAll("[data-object-link-document-name-target]").forEach((nameButton) => {
+    nameButton.classList.remove("is-active");
+    nameButton.setAttribute("aria-selected", "false");
+  });
   const input = dialog.querySelector('[data-object-link-field="url"]');
   if (input && !input.value.trim()) {
     input.value = defaultLinkDialogValue("document", state.objectLinkDialog.point);
   }
+  input?.focus({ preventScroll: true });
+}
+
+function handleObjectLinkDocumentNameClick(event) {
+  const button = event.currentTarget;
+  const dialog = button.closest("#objectLinkDialog");
+  if (!dialog || !state.objectLinkDialog) return;
+  event.preventDefault();
+  const target = button.dataset.objectLinkDocumentNameTarget || "";
+  if (!target) return;
+  state.objectLinkDialog.values = state.objectLinkDialog.values || {};
+  state.objectLinkDialog.values.documentName = target;
+  const reference = internalHyperlinkReferenceFromDefinedName(target, state.objectLinkDialog.values.documentSheetIndex);
+  if (reference?.sheetName) {
+    const index = state.model.sheets.findIndex((sheet) => sheet.name === reference.sheetName && isSheetVisible(sheet));
+    if (index >= 0) state.objectLinkDialog.values.documentSheetIndex = index;
+  }
+  dialog.querySelectorAll("[data-object-link-document-name-target]").forEach((nameButton) => {
+    const active = nameButton === button;
+    nameButton.classList.toggle("is-active", active);
+    nameButton.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  dialog.querySelectorAll("[data-object-link-document-sheet-index]").forEach((sheetButton) => {
+    const active = Number(sheetButton.dataset.objectLinkDocumentSheetIndex) === state.objectLinkDialog.values.documentSheetIndex;
+    sheetButton.classList.toggle("is-active", active);
+    sheetButton.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  const input = dialog.querySelector('[data-object-link-field="url"]');
+  if (input) input.value = target;
   input?.focus({ preventScroll: true });
 }
 
@@ -30715,13 +30832,18 @@ function linkKindMeta(kind) {
 }
 
 function linkDialogInitialValues(hyperlink, kind, point) {
-  const documentTarget = kind === "document" ? parseInternalHyperlinkTarget(stripInternalHyperlinkPrefix(hyperlink)) : null;
+  const documentSource = kind === "document" ? stripInternalHyperlinkPrefix(hyperlink) : "";
+  const documentTarget = kind === "document" ? parseInternalHyperlinkTarget(documentSource) : null;
+  const documentIsCellReference = internalHyperlinkTextIsCellReference(documentSource);
   const documentSheetIndex = documentTarget?.sheetName
     ? state.model.sheets.findIndex((sheet) => sheet.name === documentTarget.sheetName && isSheetVisible(sheet))
     : state.activeSheetIndex;
   return {
     web: kind === "web" ? String(hyperlink || "") : "",
-    document: documentTarget ? `${columnName(documentTarget.col)}${documentTarget.row}` : defaultLinkDialogValue("document", point),
+    document: documentTarget && documentIsCellReference
+      ? `${columnName(documentTarget.col)}${documentTarget.row}`
+      : documentSource || defaultLinkDialogValue("document", point),
+    documentName: documentSource && !documentIsCellReference ? documentSource : "",
     documentSheetIndex: normalizedDocumentSheetIndex(documentSheetIndex),
     email: kind === "email" ? stripMailtoPrefix(hyperlink) : "",
   };
@@ -30776,9 +30898,12 @@ function normalizeHyperlinkUrl(value) {
 }
 
 function normalizeInternalHyperlinkUrl(value, documentSheetIndex) {
-  const text = String(value || "").trim();
+  const raw = String(value || "").trim();
+  const text = stripInternalHyperlinkPrefix(raw);
   if (!text) return "";
-  if (text.startsWith("#")) return text;
+  const definedNameTarget = normalizedInternalDefinedNameHyperlinkTarget(text, documentSheetIndex);
+  if (definedNameTarget) return `#${definedNameTarget}`;
+  if (raw.startsWith("#")) return raw;
   if (text.includes("!")) return `#${text}`;
   const sheet = state.model?.sheets[normalizedDocumentSheetIndex(documentSheetIndex)];
   return sheet ? `#${quoteSheetNameForFormula(sheet.name)}!${text}` : `#${text}`;
@@ -30819,7 +30944,58 @@ function parseInternalHyperlinkTarget(target) {
   const sheetName = bangIndex >= 0 ? unquoteFormulaSheetName(text.slice(0, bangIndex)) : "";
   const address = (bangIndex >= 0 ? text.slice(bangIndex + 1) : text).split(":")[0];
   const cell = decodeCell(address);
-  return cell ? { sheetName, row: cell.row, col: cell.col } : null;
+  if (cell) return { sheetName, row: cell.row, col: cell.col };
+  return internalHyperlinkReferenceFromDefinedName(text);
+}
+
+function internalHyperlinkTextIsCellReference(target) {
+  const text = String(target || "").trim();
+  if (!text) return false;
+  const bangIndex = text.lastIndexOf("!");
+  const address = (bangIndex >= 0 ? text.slice(bangIndex + 1) : text).split(":")[0];
+  return Boolean(decodeCell(address));
+}
+
+function normalizedInternalDefinedNameHyperlinkTarget(target, documentSheetIndex) {
+  if (internalHyperlinkTextIsCellReference(target)) return "";
+  const sheet = state.model?.sheets?.[normalizedDocumentSheetIndex(documentSheetIndex)] || activeSheet();
+  const definition = linkDefinedNameFromTarget(target, sheet);
+  if (!definition) return "";
+  const reference = definedNameLinkReference(definition, sheet);
+  if (!reference?.sheet || !reference.range) return "";
+  if (definition.scope === "sheet") {
+    const scopeSheet = state.model?.sheets?.[definition.sheetIndex];
+    return scopeSheet ? `${quoteSheetNameForFormula(scopeSheet.name)}!${definition.name}` : "";
+  }
+  return definition.name;
+}
+
+function internalHyperlinkReferenceFromDefinedName(target, documentSheetIndex = state.activeSheetIndex) {
+  if (internalHyperlinkTextIsCellReference(target)) return null;
+  const sheet = state.model?.sheets?.[normalizedDocumentSheetIndex(documentSheetIndex)] || activeSheet();
+  const definition = linkDefinedNameFromTarget(target, sheet);
+  if (!definition) return null;
+  const reference = definedNameLinkReference(definition, sheet);
+  if (!reference?.sheet || !reference.range) return null;
+  return {
+    sheetName: reference.sheet.name,
+    row: reference.range.top,
+    col: reference.range.left,
+  };
+}
+
+function linkDefinedNameFromTarget(target, baseSheet = activeSheet()) {
+  const text = String(target || "").trim();
+  if (!text) return null;
+  return validationDefinedNameFromFormulaText(text, baseSheet);
+}
+
+function definedNameLinkReference(definition, baseSheet = activeSheet()) {
+  if (!definition?.refersTo) return null;
+  const definitionSheet = definition.scope === "sheet"
+    ? state.model?.sheets?.[definition.sheetIndex] || baseSheet
+    : baseSheet;
+  return validationReferenceFromFormula(definitionSheet, definition.refersTo, new Set());
 }
 
 function unquoteFormulaSheetName(name) {
@@ -111200,11 +111376,100 @@ function standaloneRuntime() {
   function standaloneParseInternalHyperlinkTarget(target) {
     const text = String(target || "").trim();
     if (!text) return null;
+    const direct = standaloneParseDirectInternalHyperlinkTarget(text);
+    if (direct) return direct;
+    return standaloneDefinedNameInternalHyperlinkTarget(text);
+  }
+  function standaloneParseDirectInternalHyperlinkTarget(target) {
+    const text = String(target || "").trim();
     const bangIndex = text.lastIndexOf("!");
     const sheetName = bangIndex >= 0 ? standaloneUnquoteSheetName(text.slice(0, bangIndex)) : "";
     const address = (bangIndex >= 0 ? text.slice(bangIndex + 1) : text).split(":")[0];
     const cell = decodeCell(address);
     return cell ? { sheetName, row: cell.row, col: cell.col } : null;
+  }
+  function standaloneDefinedNameInternalHyperlinkTarget(target) {
+    const reference = standaloneDefinedNameReferenceFromTarget(target, state.active);
+    if (!Number.isInteger(reference?.sheetIndex) || !reference.range) return null;
+    const sheet = model.sheets[reference.sheetIndex];
+    return sheet ? { sheetName: sheet.name, row: reference.range.top, col: reference.range.left } : null;
+  }
+  function standaloneDefinedNameReferenceFromTarget(target, baseSheetIndex = state.active, visitedNames = new Set()) {
+    const definition = standaloneDefinedNameFromTarget(target, baseSheetIndex);
+    if (!definition) return null;
+    return standaloneDefinedNameReference(definition, baseSheetIndex, visitedNames);
+  }
+  function standaloneDefinedNameFromTarget(target, baseSheetIndex = state.active) {
+    const text = String(target || "").trim();
+    if (!text || standaloneParseDirectInternalHyperlinkTarget(text)) return null;
+    const bangIndex = text.lastIndexOf("!");
+    if (bangIndex >= 0) {
+      const sheetName = standaloneUnquoteSheetName(text.slice(0, bangIndex));
+      const name = text.slice(bangIndex + 1).trim();
+      const sheetIndex = standaloneHyperlinkSheetIndexByName(sheetName);
+      if (sheetIndex < 0 || !name || standaloneDecodeA1Range(name.replace(/\$/g, ""))) return null;
+      return (model.definedNames || []).find(function (definition) {
+        return !definition.hidden &&
+          definition.scope === "sheet" &&
+          Number(definition.sheetIndex) === sheetIndex &&
+          standaloneNormalizeDefinedNameLookup(definition.name) === standaloneNormalizeDefinedNameLookup(name);
+      }) || null;
+    }
+    const normalized = standaloneNormalizeDefinedNameLookup(text);
+    const local = (model.definedNames || []).find(function (definition) {
+      return !definition.hidden &&
+        definition.scope === "sheet" &&
+        Number(definition.sheetIndex) === baseSheetIndex &&
+        standaloneNormalizeDefinedNameLookup(definition.name) === normalized;
+    });
+    if (local) return local;
+    return (model.definedNames || []).find(function (definition) {
+      return !definition.hidden &&
+        definition.scope !== "sheet" &&
+        standaloneNormalizeDefinedNameLookup(definition.name) === normalized;
+    }) || null;
+  }
+  function standaloneDefinedNameReference(definition, baseSheetIndex = state.active, visitedNames = new Set()) {
+    if (!definition?.refersTo) return null;
+    const key = [
+      definition.scope || "workbook",
+      definition.sheetIndex == null ? "" : definition.sheetIndex,
+      standaloneNormalizeDefinedNameLookup(definition.name),
+    ].join(":");
+    if (visitedNames.has(key)) return null;
+    visitedNames.add(key);
+    const sheetIndex = definition.scope === "sheet" && Number.isInteger(Number(definition.sheetIndex))
+      ? Number(definition.sheetIndex)
+      : baseSheetIndex;
+    const firstReference = standaloneSplitFormulaArguments(String(definition.refersTo || "").replace(/^=/, ""))[0]?.trim() || "";
+    return standaloneReferenceFromFormula(sheetIndex, firstReference, visitedNames);
+  }
+  function standaloneReferenceFromFormula(baseSheetIndex, formula, visitedNames = new Set()) {
+    const text = String(formula || "").trim().replace(/^=/, "").trim();
+    if (!text) return null;
+    const direct = standaloneDirectReferenceFromFormula(baseSheetIndex, text);
+    if (direct) return direct;
+    return standaloneDefinedNameReferenceFromTarget(text, baseSheetIndex, visitedNames);
+  }
+  function standaloneDirectReferenceFromFormula(baseSheetIndex, formula) {
+    const text = String(formula || "").trim();
+    const bangIndex = text.lastIndexOf("!");
+    const sheetIndex = bangIndex >= 0
+      ? standaloneHyperlinkSheetIndexByName(standaloneUnquoteSheetName(text.slice(0, bangIndex)))
+      : baseSheetIndex;
+    if (sheetIndex < 0 || !model.sheets[sheetIndex]) return null;
+    const rangeText = (bangIndex >= 0 ? text.slice(bangIndex + 1) : text).replace(/\$/g, "");
+    const range = standaloneDecodeA1Range(rangeText);
+    return range ? { sheetIndex, range } : null;
+  }
+  function standaloneHyperlinkSheetIndexByName(sheetName) {
+    const target = String(sheetName || "").trim().toLocaleLowerCase("ja-JP");
+    return (model.sheets || []).findIndex(function (sheet) {
+      return sheet.hidden !== true && String(sheet.name || "").trim().toLocaleLowerCase("ja-JP") === target;
+    });
+  }
+  function standaloneNormalizeDefinedNameLookup(name) {
+    return String(name || "").trim().toLocaleLowerCase("ja-JP");
   }
   function scrollStandaloneCellIntoView(sheet, row, col) {
     const host = $sheet[0];

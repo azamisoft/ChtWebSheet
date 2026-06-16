@@ -72,10 +72,13 @@ function cwsAgentBaseUrl() {
   if (location.protocol === "file:" || location.origin === "null") {
     return CWS_AGENT_DEFAULT_REMOTE_BASE_URL;
   }
-  const pathname = location.pathname || "/";
+  const baseUrl = cwsAgentLocationBaseUrl();
+  if (!baseUrl) return CWS_AGENT_DEFAULT_REMOTE_BASE_URL;
+  const pathname = baseUrl.pathname || "/";
   const cwsMatch = pathname.match(/^(.*\/cws)(?:\/|$)/);
-  if (cwsMatch) return `${location.origin}${cwsMatch[1]}/cws-agent/`;
-  return new URL("./cws-agent/", location.href).href;
+  if (cwsMatch) return `${baseUrl.origin}${cwsMatch[1]}/cws-agent/`;
+  if (location.protocol === "blob:") return CWS_AGENT_DEFAULT_REMOTE_BASE_URL;
+  return new URL("./cws-agent/", baseUrl.href).href;
 }
 
 function cwsAgentApiBaseUrl(agentBaseUrl) {
@@ -104,9 +107,23 @@ function normalizeCwsAgentUrl(value) {
   const text = String(value || "").trim();
   if (!text) return "";
   try {
-    const url = new URL(text, location.href);
+    const url = new URL(text, cwsAgentLocationBaseUrl()?.href || CWS_AGENT_DEFAULT_REMOTE_BASE_URL);
     return url.href.endsWith("/") ? url.href : `${url.href}/`;
   } catch {
     return "";
+  }
+}
+
+function cwsAgentLocationBaseUrl() {
+  try {
+    if (location.protocol === "blob:") {
+      const innerUrl = new URL(String(location.href || "").replace(/^blob:/, ""));
+      if (/^https?:$/i.test(innerUrl.protocol)) return innerUrl;
+      return null;
+    }
+    const url = new URL(location.href);
+    return /^https?:$/i.test(url.protocol) ? url : null;
+  } catch {
+    return null;
   }
 }
