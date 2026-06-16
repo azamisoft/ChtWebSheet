@@ -60,10 +60,12 @@ import {
   Image as ImageIcon,
   Info,
   Italic,
+  KeyRound,
   Link as LinkIcon,
   LogOut,
   ListChecks,
   ListFilter,
+  MailCheck,
   Map as MapIcon,
   Maximize,
   MessageSquareText,
@@ -94,6 +96,7 @@ import {
   Scissors,
   ScatterChart,
   Search,
+  Send,
   Settings,
   Shapes,
   Signature,
@@ -118,6 +121,7 @@ import {
   ZoomIn,
   createIcons,
 } from "lucide";
+import { initCwsAgentBridge } from "./cws-agent-bridge.js";
 import "./styles.css";
 
 const ROW_HEADER_MIN_WIDTH = 28;
@@ -245,6 +249,9 @@ const SERVER_DOWNLOAD_PAGE_PATH = "https://chtec.co.jp/cws/manual/";
 const MERGE_CONTENT_WARNING_MESSAGE = "セルを結合すると、左上の値のみが保持され、他のセルの値は破棄されます。";
 const CWS_CLIPBOARD_RANGE_MIME = "application/x-cht-websheet-range";
 const CWS_CLIPBOARD_RANGE_MARKER = "Cht WebSheet Range";
+const CWS_CLIPBOARD_DATA_MIME = "application/x-cht-websheet-clipboard+json";
+const CWS_CLIPBOARD_DATA_WEB_MIME = `web ${CWS_CLIPBOARD_DATA_MIME}`;
+const CWS_CLIPBOARD_HTML_MARKER = "data-cht-websheet-clipboard";
 const DIALOG_CHROME_ROOT_SELECTOR = [
   ".excel-mini-dialog[role='dialog']",
   ".format-dialog[role='dialog']",
@@ -10434,10 +10441,12 @@ const icons = {
   Image: ImageIcon,
   Info,
   Italic,
+  KeyRound,
   Link: LinkIcon,
   LogOut,
   ListChecks,
   ListFilter,
+  MailCheck,
   Map: MapIcon,
   Maximize,
   MessageSquareText,
@@ -10468,6 +10477,7 @@ const icons = {
   Scissors,
   ScatterChart,
   Search,
+  Send,
   Settings,
   Shapes,
   Signature,
@@ -10593,6 +10603,25 @@ function init() {
   initWorkbookNameDisplay();
   initDialogChromeObserver();
   void refreshServerVersionInfo();
+  initCwsAgentBridge({
+    $,
+    icons,
+    createIcons,
+    state,
+    helpers: {
+      activeSheet,
+      activeSelectionRange,
+      visibleGridRange,
+      materializeSelectionRangeForSheet,
+      getSheetId,
+      getCellRawInput,
+      getDisplayForCell,
+      columnName,
+      rangeToLabel,
+      escapeHtml,
+      escapeAttr,
+    },
+  });
 
   $fileInput.on("change", async (event) => {
     const [file] = event.target.files || [];
@@ -28528,10 +28557,10 @@ async function runCellContextMenuAction(action, row, col, context = null) {
 
   switch (action) {
     case "object-cut":
-      await cutSelectedImages();
+      await cutSelectedImages({ systemClipboard: true });
       break;
     case "object-copy":
-      await copySelectedImages();
+      await copySelectedImages({ systemClipboard: true });
       break;
     case "object-paste":
       pasteObjectClipboard();
@@ -28591,10 +28620,10 @@ async function runCellContextMenuAction(action, row, col, context = null) {
       executeWorkbookClipboardShortcut("copy", () => void copySelectedRange({ systemClipboard: true }));
       break;
     case "paste-keep-format":
-      await pasteFromClipboard({ rich: true });
+      await pasteFromClipboard({ rich: true, allowAsyncClipboard: true, allowAsyncClipboardImages: true });
       break;
     case "paste-match-format":
-      await pasteFromClipboard({ rich: false });
+      await pasteFromClipboard({ rich: false, allowAsyncClipboard: true, allowAsyncClipboardImages: true });
       break;
     case "clear":
       clearSelectionContents();
@@ -32001,10 +32030,16 @@ async function handleRibbonCommand(command, trigger = null, event = null) {
       togglePictureCropMode();
       break;
     case "copy":
-      executeWorkbookClipboardShortcut("copy", () => void copySelectedRange({ systemClipboard: true }));
+      executeWorkbookClipboardShortcut("copy", () => {
+        if (selectedImageObjects().length) void copySelectedImages({ systemClipboard: true });
+        else void copySelectedRange({ systemClipboard: true });
+      });
       break;
     case "cut":
-      executeWorkbookClipboardShortcut("cut", () => void cutSelectedRange({ systemClipboard: true }));
+      executeWorkbookClipboardShortcut("cut", () => {
+        if (selectedImageObjects().length) void cutSelectedImages({ systemClipboard: true });
+        else void cutSelectedRange({ systemClipboard: true });
+      });
       break;
     case "paste":
       await pasteFromRibbonButton();
@@ -83144,10 +83179,96 @@ function writePlainTextToClipboardData(clipboardData, text, options = {}) {
     if (options.cwsRange === true) {
       clipboardData.setData(CWS_CLIPBOARD_RANGE_MIME, CWS_CLIPBOARD_RANGE_MARKER);
     }
+    if (options.cwsPayload) {
+      const payloadJson = cwsClipboardPayloadJson(options.cwsPayload);
+      clipboardData.setData(CWS_CLIPBOARD_DATA_MIME, payloadJson);
+      clipboardData.setData("text/html", cwsClipboardHtmlForPayload(options.cwsPayload, text));
+    }
     return true;
   } catch (error) {
     console.warn("Clipboard event write failed:", error);
     return false;
+  }
+}
+
+function cwsClipboardPayload(kind, clipboard, text = "") {
+  if (!clipboard || !kind) return null;
+  return {
+    format: "ChtWebSheetClipboard",
+    version: 1,
+    kind,
+    text: String(text ?? ""),
+    clipboard: cloneJsonLikeValue(clipboard),
+  };
+}
+
+function cwsClipboardPayloadJson(payload) {
+  return JSON.stringify(payload || {});
+}
+
+function cwsClipboardHtmlForPayload(payload, text = "") {
+  const json = escapeHtml(cwsClipboardPayloadJson(payload));
+  const visibleHtml = payload?.kind === "range"
+    ? cwsClipboardTsvHtmlTable(text)
+    : `<span>${escapeHtml(text || payload?.text || "Cht WebSheet")}</span>`;
+  return `<div ${CWS_CLIPBOARD_HTML_MARKER}="true" style="display:none">${json}</div>${visibleHtml}`;
+}
+
+function cwsClipboardTsvHtmlTable(text = "") {
+  const rows = String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.split("\t"));
+  return `<table><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function parseCwsClipboardPayload(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  try {
+    const payload = JSON.parse(text);
+    if (payload?.format !== "ChtWebSheetClipboard" || Number(payload.version) !== 1) return null;
+    if (!["range", "objects"].includes(payload.kind)) return null;
+    return payload;
+  } catch (error) {
+    return null;
+  }
+}
+
+function cwsClipboardPayloadFromHtml(html) {
+  const text = String(html || "");
+  if (!text.includes(CWS_CLIPBOARD_HTML_MARKER)) return null;
+  try {
+    const doc = new DOMParser().parseFromString(text, "text/html");
+    const holder = doc.querySelector(`[${CWS_CLIPBOARD_HTML_MARKER}]`);
+    return parseCwsClipboardPayload(holder?.textContent || "");
+  } catch (error) {
+    const pattern = new RegExp(`<[^>]+${CWS_CLIPBOARD_HTML_MARKER}=["']?true["']?[^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i");
+    const match = text.match(pattern);
+    if (!match) return null;
+    return parseCwsClipboardPayload(match[1].replace(/&quot;/g, "\"").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+  }
+}
+
+function cwsClipboardPayloadFromData(clipboardData) {
+  if (!clipboardData) return null;
+  try {
+    const direct = parseCwsClipboardPayload(clipboardData.getData(CWS_CLIPBOARD_DATA_MIME));
+    if (direct) return direct;
+  } catch (error) {
+    // Try the HTML fallback below.
+  }
+  try {
+    const webDirect = parseCwsClipboardPayload(clipboardData.getData(CWS_CLIPBOARD_DATA_WEB_MIME));
+    if (webDirect) return webDirect;
+  } catch (error) {
+    // Try the HTML fallback below.
+  }
+  try {
+    return cwsClipboardPayloadFromHtml(clipboardData.getData("text/html"));
+  } catch (error) {
+    return null;
   }
 }
 
@@ -83164,6 +83285,15 @@ function clipboardDataHasCwsRangeMarker(clipboardData) {
 function canUseAsyncClipboardWrite() {
   return Boolean(
     navigator.clipboard?.writeText &&
+      window.isSecureContext &&
+      !isLocalStandaloneDocument(),
+  );
+}
+
+function canUseAsyncClipboardItemWrite() {
+  return Boolean(
+    navigator.clipboard?.write &&
+      typeof ClipboardItem === "function" &&
       window.isSecureContext &&
       !isLocalStandaloneDocument(),
   );
@@ -83260,6 +83390,104 @@ function normalizeRestoredInternalClipboard(clipboard) {
   };
 }
 
+function normalizeRestoredObjectClipboard(clipboard) {
+  if (!clipboard || typeof clipboard !== "object") return null;
+  const sourceObjects = (Array.isArray(clipboard.objects) ? clipboard.objects : [])
+    .filter((item) => item && typeof item === "object");
+  const objects = cloneImages(sourceObjects).filter(Boolean);
+  if (!objects.length) return null;
+  const boxes = Array.isArray(clipboard.boxes)
+    ? clipboard.boxes
+        .map((box) => ({
+          left: Math.round(Number(box?.left) || 0),
+          top: Math.round(Number(box?.top) || 0),
+          width: Math.max(1, Math.round(Number(box?.width) || 1)),
+          height: Math.max(1, Math.round(Number(box?.height) || 1)),
+        }))
+        .filter((box) => box.width > 0 && box.height > 0)
+    : [];
+  return {
+    type: "objects",
+    mode: "copy",
+    sourceSheetIndex: -1,
+    sourceIds: objects.map((image, index) => String(image.id || `object-${index + 1}`)),
+    primaryId: String(clipboard.primaryId || objects[0]?.id || ""),
+    objects,
+    boxes,
+    clipboardText: String(clipboard.clipboardText || selectedObjectSummary(objects)),
+    systemClipboardSynced: true,
+  };
+}
+
+function restoreCwsClipboardPayload(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.kind === "range") {
+    const clipboard = normalizeRestoredInternalClipboard(payload.clipboard);
+    if (!clipboard) return false;
+    clipboard.mode = "copy";
+    clipboard.sourceSheetIndex = -1;
+    state.internalClipboard = clipboard;
+    state.objectClipboard = null;
+    clearConsumedCutObjectClipboardLabel();
+    clearPersistedInternalClipboard();
+    return true;
+  }
+  if (payload.kind === "objects") {
+    const clipboard = normalizeRestoredObjectClipboard(payload.clipboard);
+    if (!clipboard) return false;
+    state.objectClipboard = clipboard;
+    state.internalClipboard = null;
+    clearPersistedInternalClipboard();
+    clearConsumedCutObjectClipboardLabel();
+    return true;
+  }
+  return false;
+}
+
+function cwsRangePayloadMatchesInternalClipboard(payload) {
+  const local = state.internalClipboard;
+  const remote = payload?.kind === "range" ? payload.clipboard : null;
+  if (!local || !remote) return false;
+  return (
+    String(local.text ?? "") === String(remote.text ?? "") &&
+    local.mode === remote.mode &&
+    Number(local.sourceSheetIndex) === Number(remote.sourceSheetIndex) &&
+    Number(local.rowCount) === Number(remote.rowCount) &&
+    Number(local.colCount) === Number(remote.colCount) &&
+    JSON.stringify(local.sourceRange || null) === JSON.stringify(remote.sourceRange || null)
+  );
+}
+
+function cwsObjectPayloadMatchesObjectClipboard(payload) {
+  const local = state.objectClipboard;
+  const remote = payload?.kind === "objects" ? payload.clipboard : null;
+  if (!local?.objects?.length || !remote?.objects?.length) return false;
+  const localIds = (local.sourceIds || []).join("\u001f");
+  const remoteIds = (remote.sourceIds || []).join("\u001f");
+  return (
+    local.mode === remote.mode &&
+    Number(local.sourceSheetIndex) === Number(remote.sourceSheetIndex) &&
+    local.objects.length === remote.objects.length &&
+    localIds === remoteIds &&
+    objectClipboardTextLabel(local) === objectClipboardTextLabel(remote)
+  );
+}
+
+function pasteCwsClipboardPayload(payload, options = {}) {
+  if (!restoreCwsClipboardPayload(payload)) return false;
+  if (payload.kind === "objects") {
+    cancelObjectPasteFallback();
+    return pasteObjectClipboard(options);
+  }
+  const range = options.range || activeSelectionRange();
+  if (!range) {
+    setStatus("貼り付け先のセルを選択してください。");
+    return true;
+  }
+  pasteInternalClipboardAtRange(range, options.keepSourceFormatting === false ? { keepSourceFormatting: false } : undefined);
+  return true;
+}
+
 function restorePersistedInternalClipboard() {
   if (state.internalClipboard || !state.model) return Boolean(state.internalClipboard);
   try {
@@ -83278,6 +83506,61 @@ function restorePersistedInternalClipboard() {
 
 function shouldWriteAsyncClipboard(options, wroteClipboardEvent) {
   return options.systemClipboard === true && !wroteClipboardEvent && canUseAsyncClipboardWrite();
+}
+
+async function writeCwsPayloadToAsyncClipboard(payload, text = "") {
+  const plainText = String(text ?? "");
+  if (payload && canUseAsyncClipboardItemWrite()) {
+    const json = cwsClipboardPayloadJson(payload);
+    const html = cwsClipboardHtmlForPayload(payload, plainText);
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([plainText], { type: "text/plain" }),
+          "text/html": new Blob([html], { type: "text/html" }),
+          [CWS_CLIPBOARD_DATA_WEB_MIME]: new Blob([json], { type: CWS_CLIPBOARD_DATA_MIME }),
+        }),
+      ]);
+      return true;
+    } catch (error) {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([plainText], { type: "text/plain" }),
+            "text/html": new Blob([html], { type: "text/html" }),
+          }),
+        ]);
+        return true;
+      } catch (fallbackError) {
+        console.warn("Rich clipboard write failed:", fallbackError);
+      }
+    }
+  }
+  if (canUseAsyncClipboardWrite()) {
+    await navigator.clipboard.writeText(plainText);
+    return true;
+  }
+  return false;
+}
+
+async function asyncClipboardCwsPayload() {
+  if (!canUseAsyncClipboardItemRead()) return null;
+  const items = await navigator.clipboard.read();
+  for (const item of items || []) {
+    const types = Array.from(item.types || []);
+    const directType = types.find((type) => type === CWS_CLIPBOARD_DATA_MIME || type === CWS_CLIPBOARD_DATA_WEB_MIME);
+    if (directType) {
+      const blob = await item.getType(directType);
+      const payload = parseCwsClipboardPayload(await blob.text());
+      if (payload) return payload;
+    }
+    if (types.includes("text/html")) {
+      const blob = await item.getType("text/html");
+      const payload = cwsClipboardPayloadFromHtml(await blob.text());
+      if (payload) return payload;
+    }
+  }
+  return null;
 }
 
 function scheduleInternalPasteFallback() {
@@ -83397,12 +83680,13 @@ async function copySelectedRange(options = {}) {
   state.objectClipboard = null;
   clearConsumedCutObjectClipboardLabel();
   updateSelectionFrames();
-  const wroteClipboardEvent = writePlainTextToClipboardData(options.clipboardData, text, { cwsRange: true });
+  const payload = cwsClipboardPayload("range", state.internalClipboard, text);
+  const wroteClipboardEvent = writePlainTextToClipboardData(options.clipboardData, text, { cwsRange: true, cwsPayload: payload });
   const statusText = `${rangeToLabel(range)} を${mode === "cut" ? "切り取り" : "コピー"}しました。`;
   setStatus(statusText);
   if (shouldWriteAsyncClipboard(options, wroteClipboardEvent)) {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeCwsPayloadToAsyncClipboard(payload, text);
     } catch (error) {
       console.warn("Clipboard write failed:", error);
       if ($statusText.text() === statusText) {
@@ -83443,6 +83727,22 @@ async function pasteFromClipboard(options = {}) {
       setStatus("貼り付けるテキストがありません。");
     }
     return;
+  }
+
+  if (options.allowAsyncClipboard === true && canUseAsyncClipboardItemRead()) {
+    try {
+      const cwsPayload = await asyncClipboardCwsPayload();
+      if (cwsPayload?.kind === "objects" && !cwsObjectPayloadMatchesObjectClipboard(cwsPayload)) {
+        pasteCwsClipboardPayload(cwsPayload, { range });
+        return;
+      }
+      if (cwsPayload?.kind === "range" && !cwsRangePayloadMatchesInternalClipboard(cwsPayload)) {
+        pasteCwsClipboardPayload(cwsPayload, { range, keepSourceFormatting: preferRich });
+        return;
+      }
+    } catch (error) {
+      console.warn("CWS clipboard read failed:", error);
+    }
   }
 
   if (preferRich && state.internalClipboard) {
@@ -83491,6 +83791,19 @@ async function pasteFromClipboard(options = {}) {
 async function pasteFromRibbonButton() {
   restorePersistedInternalClipboard();
   const range = activeSelectionRange();
+  if (canUseAsyncClipboardItemRead()) {
+    try {
+      const cwsPayload = await asyncClipboardCwsPayload();
+      if (cwsPayload?.kind === "objects" && !cwsObjectPayloadMatchesObjectClipboard(cwsPayload)) {
+        if (pasteCwsClipboardPayload(cwsPayload, { range })) return;
+      }
+      if (cwsPayload?.kind === "range" && !cwsRangePayloadMatchesInternalClipboard(cwsPayload)) {
+        if (pasteCwsClipboardPayload(cwsPayload, { range })) return;
+      }
+    } catch (error) {
+      console.warn("CWS clipboard read failed:", error);
+    }
+  }
   if (range && (canUseAsyncClipboardItemRead() || canUseAsyncClipboardRead())) {
     if (canUseAsyncClipboardItemRead()) {
       try {
@@ -83659,12 +83972,13 @@ async function copySelectedImages(options = {}) {
   updateSelectionUi();
   const actionText = mode === "cut" ? "切り取りました" : "コピーしました";
   const statusText = `${label}を${actionText}。`;
-  const wroteClipboardEvent = writePlainTextToClipboardData(options.clipboardData, label);
+  const payload = cwsClipboardPayload("objects", state.objectClipboard, label);
+  const wroteClipboardEvent = writePlainTextToClipboardData(options.clipboardData, label, { cwsPayload: payload });
   markObjectClipboardSystemSynced(mode, state.activeSheetIndex, sourceIds, wroteClipboardEvent);
   setStatus(statusText);
   if (shouldWriteAsyncClipboard(options, wroteClipboardEvent)) {
     try {
-      await navigator.clipboard.writeText(label);
+      await writeCwsPayloadToAsyncClipboard(payload, label);
       markObjectClipboardSystemSynced(mode, state.activeSheetIndex, sourceIds, true);
     } catch (error) {
       console.warn("Object clipboard write failed:", error);
@@ -83853,6 +84167,13 @@ function handleWorkbookPasteEvent(event) {
   }
   const text = clipboardData?.getData("text/plain");
   restorePersistedInternalClipboard();
+  const cwsPayload = cwsClipboardPayloadFromData(clipboardData);
+  if (cwsPayload?.kind === "objects" && !cwsObjectPayloadMatchesObjectClipboard(cwsPayload)) {
+    event.preventDefault();
+    cancelObjectPasteFallback();
+    pasteCwsClipboardPayload(cwsPayload);
+    return;
+  }
   const objectClipboardLabel = objectClipboardTextLabel();
   if (state.objectClipboard?.objects?.length && text === objectClipboardLabel) {
     event.preventDefault();
@@ -83866,12 +84187,30 @@ function handleWorkbookPasteEvent(event) {
     pasteObjectClipboard();
     return;
   }
+  if (cwsPayload?.kind === "objects") {
+    event.preventDefault();
+    cancelObjectPasteFallback();
+    pasteObjectClipboard();
+    return;
+  }
   const range = activeSelectionRange();
   if (!range) return;
+  if (cwsPayload?.kind === "range" && !cwsRangePayloadMatchesInternalClipboard(cwsPayload)) {
+    event.preventDefault();
+    cancelObjectPasteFallback();
+    pasteCwsClipboardPayload(cwsPayload, { range });
+    return;
+  }
   if (state.internalClipboard && shouldUseInternalClipboardPaste(text, clipboardData)) {
     event.preventDefault();
     cancelObjectPasteFallback();
     pasteInternalClipboardAtRange(range);
+    return;
+  }
+  if (cwsPayload) {
+    event.preventDefault();
+    cancelObjectPasteFallback();
+    pasteCwsClipboardPayload(cwsPayload, { range });
     return;
   }
   if (text != null && text !== "") {
