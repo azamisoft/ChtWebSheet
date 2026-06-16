@@ -1,4 +1,5 @@
-import { access, readFile, realpath, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { access, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineConfig } from "vite";
@@ -6,12 +7,37 @@ import { standaloneRuntimeCurrentBaseUrl } from "./scripts/standalone-runtime-pa
 
 const LOCAL_SAVE_ROUTE = "/__websheet/local-save";
 const LOCAL_OPEN_WORKBOOK_ROUTE = "/__websheet/local-open-workbook";
+const CWS_AGENT_ROUTE = "/cws-agent/";
+const CWS_AGENT_DIST_DIR = path.resolve("cws-agent", "dist");
 const MAX_LOCAL_SAVE_BYTES = 120 * 1024 * 1024;
 
 function webSheetLocalSavePlugin() {
   return {
     name: "websheet-local-save",
     configureServer(server) {
+      server.middlewares.use(CWS_AGENT_ROUTE, async (req, res, next) => {
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          next();
+          return;
+        }
+        const filePath = await cwsAgentDevFilePath(req.url || "");
+        if (!filePath) {
+          next();
+          return;
+        }
+        const info = await stat(filePath).catch(() => null);
+        if (!info?.isFile()) {
+          next();
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader("Content-Type", cwsAgentDevContentType(filePath));
+        if (req.method === "HEAD") {
+          res.end();
+          return;
+        }
+        createReadStream(filePath).pipe(res);
+      });
       server.middlewares.use(LOCAL_SAVE_ROUTE, async (req, res, next) => {
         if (req.method !== "POST" && req.method !== "OPTIONS") {
           next();
@@ -58,6 +84,28 @@ function webSheetLocalSavePlugin() {
       });
     },
   };
+}
+
+async function cwsAgentDevFilePath(url) {
+  const raw = String(url || "").split("?")[0] || "";
+  const pathPart = raw.startsWith(CWS_AGENT_ROUTE) ? raw.slice(CWS_AGENT_ROUTE.length) : raw.replace(/^\/+/, "");
+  const relative = decodeURIComponent(pathPart || "agent.js");
+  if (!relative || relative.includes("\0")) return "";
+  const target = path.resolve(CWS_AGENT_DIST_DIR, relative);
+  const root = await realpath(CWS_AGENT_DIST_DIR).catch(() => "");
+  if (!root) return "";
+  const normalizedRoot = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+  if (target !== root && !target.startsWith(normalizedRoot)) return "";
+  return target;
+}
+
+function cwsAgentDevContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".js") return "text/javascript; charset=utf-8";
+  if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".php") return "text/plain; charset=utf-8";
+  return "application/octet-stream";
 }
 
 function setLocalSaveCorsHeaders(req, res) {

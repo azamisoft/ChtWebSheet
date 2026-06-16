@@ -121,7 +121,7 @@ import {
   ZoomIn,
   createIcons,
 } from "lucide";
-import { initCwsAiPanel } from "./cws-ai-panel.js";
+import { initCwsAgentBridge } from "./cws-agent-bridge.js";
 import "./styles.css";
 
 const ROW_HEADER_MIN_WIDTH = 28;
@@ -10603,7 +10603,7 @@ function init() {
   initWorkbookNameDisplay();
   initDialogChromeObserver();
   void refreshServerVersionInfo();
-  initCwsAiPanel({
+  initCwsAgentBridge({
     $,
     icons,
     createIcons,
