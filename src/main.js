@@ -21592,7 +21592,7 @@ function validationDefinedNameFromFormulaText(text, baseSheet) {
   const qualified = validationQualifiedDefinedName(text);
   if (qualified) {
     const sheet = (state.model?.sheets || []).find((item) => item.name === qualified.sheetName) || null;
-    return sheet ? validationDefinedName(qualified.name, sheet, { localOnly: true }) : null;
+    return sheet ? validationDefinedName(qualified.name, sheet) : null;
   }
   const name = unquoteFormulaDefinedName(text);
   return name ? validationDefinedName(name, baseSheet) : null;
@@ -29780,7 +29780,7 @@ function openSelectedHyperlink(row, col) {
 }
 
 function handleCellHyperlinkClick(event) {
-  const hyperlink = event.currentTarget?.getAttribute?.("href") || event.currentTarget?.dataset?.hyperlink || "";
+  const hyperlink = event.currentTarget?.dataset?.hyperlink || event.currentTarget?.getAttribute?.("href") || "";
   if (shouldDeferCellHyperlinkClick()) {
     event.preventDefault();
     return;
@@ -29814,7 +29814,7 @@ function hyperlinkFromCellClickEvent(event) {
   if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
   const link = cellElement.querySelector(".cell-link");
   if (!link || !pointIsInsideElementClientRects(link, event.clientX, event.clientY)) return "";
-  return link.getAttribute("href") || link.dataset?.hyperlink || "";
+  return link.dataset?.hyperlink || link.getAttribute("href") || "";
 }
 
 function shouldDeferCellHyperlinkClick() {
@@ -85198,7 +85198,8 @@ function handleSelectedObjectKeyboardShortcut(event) {
   const key = String(event.key || "").toLowerCase();
   const isModifier = event.ctrlKey || event.metaKey;
   const selectedObjects = selectedImageObjects();
-  const hasSelectedObjects = selectedObjects.length > 0;
+  const selectedStrokes = selectedInkStrokes();
+  const hasSelectedObjects = selectedObjects.length > 0 || selectedStrokes.length > 0;
   const hasObjectClipboard = Boolean(state.objectClipboard?.objects?.length);
   if (!hasSelectedObjects && !(hasObjectClipboard && key === "escape")) {
     return false;
@@ -85215,12 +85216,12 @@ function handleSelectedObjectKeyboardShortcut(event) {
   }
 
   if (isModifier && !event.altKey) {
-    if (key === "c" && hasSelectedObjects) {
+    if (key === "c" && selectedObjects.length) {
       event.preventDefault();
       executeWorkbookClipboardShortcut("copy", () => void copySelectedImages({ systemClipboard: true }));
       return true;
     }
-    if (key === "x" && hasSelectedObjects) {
+    if (key === "x" && selectedObjects.length) {
       event.preventDefault();
       executeWorkbookClipboardShortcut("cut", () => void cutSelectedImages({ systemClipboard: true }));
       return true;
@@ -85229,6 +85230,16 @@ function handleSelectedObjectKeyboardShortcut(event) {
   }
 
   if (!hasSelectedObjects || event.ctrlKey || event.metaKey || event.altKey) return false;
+  if (key === "escape") {
+    event.preventDefault();
+    clearSelectedWorksheetObjects();
+    return true;
+  }
+  if (key === "delete" || key === "backspace") {
+    event.preventDefault();
+    deleteSelectedWorksheetObjects();
+    return true;
+  }
   if (key === "f2") {
     const image = selectedObjects.find((item) => item?.shape && !isLineShapeObject(item));
     if (image) {
@@ -85246,11 +85257,7 @@ function handleSelectedObjectKeyboardShortcut(event) {
       return true;
     }
   }
-  if (key === "delete" || key === "backspace") {
-    event.preventDefault();
-    deleteSelectedImages();
-    return true;
-  }
+  if (!selectedObjects.length) return false;
   const arrowSteps = {
     arrowleft: [-1, 0],
     arrowright: [1, 0],
@@ -93117,6 +93124,12 @@ function selectedInkStrokeIdSet() {
   return new Set((state.selectedInkStrokeIds || []).map(String));
 }
 
+function selectedInkStrokes(sheet = activeSheet()) {
+  const selectedIds = selectedInkStrokeIdSet();
+  if (!selectedIds.size) return [];
+  return normalizeInkStrokes(sheet?.inkStrokes).filter((stroke) => selectedIds.has(String(stroke.id)));
+}
+
 function selectedImageObject() {
   if (!state.selectedImage || state.selectedImage.sheetIndex !== state.activeSheetIndex) return null;
   return activeSheet().images?.find((image) => image.id === state.selectedImage.id) || null;
@@ -93244,7 +93257,8 @@ function cellInnerHtml(cell, display, overflowWidth = null, sheet = activeSheet(
   }
 
   if (cell.hyperlink) {
-    return `${indicators}${filterButton}<a class="cell-link cell-content" ${cellContentStyle(overflowWidth)} href="${escapeAttr(cell.hyperlink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
+    const hyperlink = escapeAttr(cell.hyperlink);
+    return `${indicators}${filterButton}<a class="cell-link cell-content" ${cellContentStyle(overflowWidth)} href="${hyperlink}" data-hyperlink="${hyperlink}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
   }
 
   return `${indicators}${filterButton}<span class="cell-content" ${cellContentStyle(overflowWidth)}>${escapeHtml(text)}</span>`;
@@ -97583,6 +97597,71 @@ function groupedShapeObjectsCorrespond(source, candidate) {
   return (source.name && source.name === candidate.name) || (source.mimeType && source.mimeType === candidate.mimeType);
 }
 
+function selectedWorksheetObjectSummary(imageObjects = [], inkStrokes = []) {
+  const total = imageObjects.length + inkStrokes.length;
+  if (total === 1) return imageObjects[0]?.name || inkStrokes[0]?.name || "インク";
+  if (!imageObjects.length) return `${inkStrokes.length} 個のインク`;
+  if (!inkStrokes.length) return selectedObjectSummary(imageObjects);
+  return `${total} 個のオブジェクト`;
+}
+
+function clearSelectedWorksheetObjects() {
+  const hadSelection = activeSelectedImageIds().length > 0 || selectedInkStrokeIdSet().size > 0;
+  if (!hadSelection) return false;
+  setSelectedImageIds([], null);
+  state.selectedInkStrokeIds = [];
+  renderSheet();
+  updateSelectionUi();
+  setStatus("オブジェクトの選択を解除しました。");
+  return true;
+}
+
+function deleteSelectedWorksheetObjects() {
+  const sheet = activeSheet();
+  const selectedStrokes = selectedInkStrokes(sheet);
+  if (!selectedStrokes.length) return deleteSelectedImages();
+
+  const ids = activeSelectedImageIds();
+  const idSet = new Set(ids);
+  const selectedImages = (sheet.images || []).filter((image) => idSet.has(image.id));
+  if (!selectedImages.length && !selectedStrokes.length) return false;
+  if (!ensureSheetProtectionPermission(sheet, "allowEditObjects", "保護されたシートではオブジェクトを削除できません。")) return false;
+
+  const sheetBefore = captureSheetForHistory(sheet);
+  const strokeIdSet = new Set(selectedStrokes.map((stroke) => String(stroke.id)));
+  sheet.inkStrokes = normalizeInkStrokes(sheet.inkStrokes).filter((stroke) => !strokeIdSet.has(String(stroke.id)));
+  if (idSet.size) sheet.images = (sheet.images || []).filter((image) => !idSet.has(image.id));
+
+  setSelectedImageIds([], null);
+  state.selectedInkStrokeIds = [];
+  state.selected = null;
+  state.selectionRange = null;
+  state.selectionRanges = [];
+  state.selectionAnchor = null;
+  state.selectionStart = null;
+  if (state.objectClipboard?.sourceIds?.some((id) => idSet.has(id))) {
+    state.objectClipboard = null;
+    clearConsumedCutObjectClipboardLabel();
+  }
+
+  const summary = selectedWorksheetObjectSummary(selectedImages, selectedStrokes);
+  pushHistory({
+    sheetIndex: state.activeSheetIndex,
+    sheetBefore,
+    sheetAfter: captureSheetForHistory(sheet),
+    selectionBefore: null,
+    selectionAfter: null,
+    selectionBeforeRanges: [],
+    selectionAfterRanges: [],
+    label: `${summary} 削除`,
+  });
+  renderSheet();
+  updateSelectionUi();
+  syncShapeFormatControls();
+  setStatus(`${summary}を削除しました。`);
+  return true;
+}
+
 function deleteSelectedImages() {
   const ids = activeSelectedImageIds();
   if (!ids.length) return false;
@@ -97595,6 +97674,7 @@ function deleteSelectedImages() {
   const sheetBefore = captureSheetForHistory(sheet);
   sheet.images = (sheet.images || []).filter((image) => !idSet.has(image.id));
   setSelectedImageIds([], null);
+  state.selectedInkStrokeIds = [];
   state.selected = null;
   state.selectionRange = null;
   state.selectionRanges = [];
@@ -97637,6 +97717,7 @@ function deleteSelectedImagesForSheetGroup(ids) {
       item.sheet.images = (item.sheet.images || []).filter((image) => !targetIds.has(image.id));
     });
     setSelectedImageIds([], null);
+    state.selectedInkStrokeIds = [];
     state.selected = null;
     state.selectionRange = null;
     state.selectionRanges = [];
@@ -101779,6 +101860,7 @@ function closeStatusBarContextMenu() {
 function updateSelectionUi(options = {}) {
   const ranges = activeSelectionRanges();
   const imageObjects = selectedImageObjects();
+  const inkStrokes = selectedInkStrokes();
   syncAutoFillOptionsWithSelection(ranges, imageObjects);
   const cropFocusChanged = syncPictureCropSelectionState();
   const formulaReferenceColorClasses = FORMULA_REFERENCE_COLORS.map((_color, index) => formulaReferenceColorClass(index)).join(" ");
@@ -101804,11 +101886,11 @@ function updateSelectionUi(options = {}) {
       }
     });
     $selectedCellLabel.text(ranges.map(rangeToLabel).join(","));
-  } else if (imageObjects.length) {
+  } else if (imageObjects.length || inkStrokes.length) {
     imageObjects.forEach((image) => {
       $sheetHost.find(`[data-image-id="${cssEscape(image.id)}"]`).addClass("is-selected");
     });
-    $selectedCellLabel.text(imageObjects.length === 1 ? imageObjects[0].name || "画像" : `${imageObjects.length} 個のオブジェクト`);
+    $selectedCellLabel.text(selectedWorksheetObjectSummary(imageObjects, inkStrokes));
   } else {
     $selectedCellLabel.text("A1");
   }
@@ -109862,7 +109944,8 @@ function standaloneRuntime() {
       return indicators + "<select class='cell-select'>" + options + "</select>";
     }
     if (cell.hyperlink) {
-      return indicators + "<a class='cell-link cell-content' " + cellContentStyle(overflowWidth) + " href='" + escapeAttr(cell.hyperlink) + "' target='_blank' rel='noopener noreferrer'>" + escapeHtml(text) + "</a>";
+      const hyperlink = escapeAttr(cell.hyperlink);
+      return indicators + "<a class='cell-link cell-content' " + cellContentStyle(overflowWidth) + " href='" + hyperlink + "' data-hyperlink='" + hyperlink + "' target='_blank' rel='noopener noreferrer'>" + escapeHtml(text) + "</a>";
     }
     return indicators + "<span class='cell-content' " + cellContentStyle(overflowWidth) + ">" + escapeHtml(text) + "</span>";
   }
@@ -111282,7 +111365,7 @@ function standaloneRuntime() {
     $apply.prop("disabled", false);
   }
   function handleStandaloneCellHyperlinkClick(event) {
-    const hyperlink = event.currentTarget?.getAttribute?.("href") || "";
+    const hyperlink = event.currentTarget?.dataset?.hyperlink || event.currentTarget?.getAttribute?.("href") || "";
     if (!openStandaloneHyperlinkTarget(hyperlink)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -111309,7 +111392,7 @@ function standaloneRuntime() {
     if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
     const link = cellElement.querySelector(".cell-link");
     if (!link || !standalonePointIsInsideElementClientRects(link, event.clientX, event.clientY)) return "";
-    return link.getAttribute("href") || "";
+    return link.dataset?.hyperlink || link.getAttribute("href") || "";
   }
   function standaloneCellElementFromClientPoint(clientX, clientY) {
     const hitElements = typeof document.elementsFromPoint === "function"
@@ -111408,10 +111491,16 @@ function standaloneRuntime() {
       const name = text.slice(bangIndex + 1).trim();
       const sheetIndex = standaloneHyperlinkSheetIndexByName(sheetName);
       if (sheetIndex < 0 || !name || standaloneDecodeA1Range(name.replace(/\$/g, ""))) return null;
-      return (model.definedNames || []).find(function (definition) {
+      const local = (model.definedNames || []).find(function (definition) {
         return !definition.hidden &&
           definition.scope === "sheet" &&
           Number(definition.sheetIndex) === sheetIndex &&
+          standaloneNormalizeDefinedNameLookup(definition.name) === standaloneNormalizeDefinedNameLookup(name);
+      });
+      if (local) return local;
+      return (model.definedNames || []).find(function (definition) {
+        return !definition.hidden &&
+          definition.scope !== "sheet" &&
           standaloneNormalizeDefinedNameLookup(definition.name) === standaloneNormalizeDefinedNameLookup(name);
       }) || null;
     }
