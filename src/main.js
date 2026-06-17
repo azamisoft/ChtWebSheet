@@ -96347,6 +96347,7 @@ function clearAutoFillOptions(options = {}) {
 function clearAutoFillOptionsOnExternalFocus(event) {
   if (!state.autoFillOptions) return;
   if (event.target?.closest?.("#autoFillOptionsMenu, #autoFillOptionsButton")) return;
+  if (isSelectionKeyboardSink(event.target)) return;
   if ($sheetHost[0]?.contains(event.target)) return;
   clearAutoFillOptions();
 }
