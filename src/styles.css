@@ -7319,7 +7319,7 @@ body.is-drawing-ink .sheet-host {
 
 .auto-fill-options-button {
   position: absolute;
-  z-index: 12;
+  z-index: var(--z-floating-menu);
   width: 20px;
   height: 20px;
   padding: 0;

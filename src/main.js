@@ -83512,6 +83512,472 @@ function clipboardDataLooksLikeCellPaste(clipboardData, text = null) {
   });
 }
 
+function richHtmlClipboardFromData(clipboardData, text = null) {
+  const html = clipboardDataText(clipboardData, "text/html");
+  return richHtmlClipboardFromPayload({
+    text: text == null ? clipboardDataText(clipboardData, "text/plain") : text,
+    html,
+    types: clipboardDataTypes(clipboardData),
+  });
+}
+
+function richHtmlClipboardFromPayload(payload) {
+  const html = String(payload?.html || "");
+  if (!html || html.includes(CWS_CLIPBOARD_HTML_MARKER) || !clipboardHtmlLooksLikeCellTable(html)) return null;
+  return excelHtmlClipboardFromHtml(html, payload?.text || "");
+}
+
+function excelHtmlClipboardFromHtml(html, fallbackText = "") {
+  if (typeof DOMParser === "undefined") return null;
+  let doc = null;
+  try {
+    doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+  } catch (error) {
+    return null;
+  }
+  const table = Array.from(doc.querySelectorAll("table")).find((candidate) => candidate.querySelector("td,th"));
+  if (!table) return null;
+
+  const classStyles = excelHtmlClassStyleMap(doc);
+  const columnData = excelHtmlColumnData(table, classStyles);
+  const occupied = new Set();
+  const textGrid = [];
+  const cellEntries = [];
+  const merges = [];
+  const rowHeights = [];
+  const columnWidths = [...columnData.widths];
+  let rowCount = 0;
+  let colCount = 0;
+
+  Array.from(table.rows || []).forEach((rowElement) => {
+    rowCount += 1;
+    const row = rowCount;
+    let col = 1;
+    const rowStyle = excelHtmlStyleForElement(rowElement, classStyles);
+    const rowHeight = excelHtmlElementPixelSize(rowElement, rowStyle, "height");
+    if (rowHeight) rowHeights[row - 1] = rowHeight;
+    textGrid[row - 1] = textGrid[row - 1] || [];
+
+    Array.from(rowElement.cells || []).forEach((cellElement) => {
+      while (occupied.has(cellKey(row, col))) col += 1;
+      const rowSpan = Math.max(1, Math.trunc(Number(cellElement.rowSpan || cellElement.getAttribute("rowspan") || 1)) || 1);
+      const colSpan = Math.max(1, Math.trunc(Number(cellElement.colSpan || cellElement.getAttribute("colspan") || 1)) || 1);
+      const columnStyle = columnData.styles[col - 1] || {};
+      const cellStyle = {
+        ...columnStyle,
+        ...rowStyle,
+        ...excelHtmlStyleForElement(cellElement, classStyles),
+      };
+      const text = excelHtmlCellText(cellElement);
+      const raw = excelHtmlCellRawValue(cellElement, text);
+      const cellModel = excelHtmlCellModelFromStyle(cellStyle, text, raw);
+      cellModel.row = row;
+      cellModel.col = col;
+      cellEntries.push(cellModel);
+      textGrid[row - 1][col - 1] = text;
+
+      const cellHeight = excelHtmlElementPixelSize(cellElement, cellStyle, "height");
+      if (cellHeight) rowHeights[row - 1] = Math.max(rowHeights[row - 1] || 0, cellHeight);
+      const cellWidth = excelHtmlElementPixelSize(cellElement, cellStyle, "width");
+      if (cellWidth) {
+        const widthPerColumn = cellWidth / colSpan;
+        for (let offset = 0; offset < colSpan; offset += 1) {
+          const targetIndex = col + offset - 1;
+          columnWidths[targetIndex] = Math.max(columnWidths[targetIndex] || 0, widthPerColumn);
+        }
+      }
+
+      for (let rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+        for (let colOffset = 0; colOffset < colSpan; colOffset += 1) {
+          occupied.add(cellKey(row + rowOffset, col + colOffset));
+        }
+      }
+      if (rowSpan > 1 || colSpan > 1) {
+        merges.push({
+          top: row,
+          left: col,
+          bottom: row + rowSpan - 1,
+          right: col + colSpan - 1,
+        });
+      }
+      colCount = Math.max(colCount, col + colSpan - 1);
+      col += colSpan;
+    });
+    colCount = Math.max(colCount, col - 1);
+  });
+
+  if (!rowCount || !colCount || !cellEntries.length) return null;
+  const text = excelHtmlClipboardText(textGrid, rowCount, colCount) || String(fallbackText || "");
+  return {
+    text,
+    mode: "copy",
+    sourceSheetIndex: -1,
+    sourceRange: { sheetIndex: -1, top: 1, left: 1, bottom: rowCount, right: colCount },
+    rowCount,
+    colCount,
+    rows: Array.from({ length: rowCount }, (_item, index) => (
+      rowHeights[index] ? { height: rowHeights[index], hidden: false } : null
+    )),
+    columns: Array.from({ length: colCount }, (_item, index) => (
+      columnWidths[index] ? { width: columnWidths[index], hidden: false } : null
+    )),
+    merges,
+    cellEntries,
+    externalHtml: true,
+  };
+}
+
+function excelHtmlClassStyleMap(doc) {
+  const map = new Map();
+  const cssText = Array.from(doc.querySelectorAll("style"))
+    .map((node) => node.textContent || "")
+    .join("\n")
+    .replace(/<!--|-->/g, "");
+  const rulePattern = /([^{}]+)\{([^{}]*)\}/g;
+  let match = null;
+  while ((match = rulePattern.exec(cssText))) {
+    const declarations = parseCssDeclarations(match[2]);
+    match[1].split(",").forEach((selector) => {
+      const classPattern = /\.([_a-zA-Z][\w-]*)/g;
+      let classMatch = null;
+      while ((classMatch = classPattern.exec(selector))) {
+        const key = classMatch[1].toLowerCase();
+        map.set(key, { ...(map.get(key) || {}), ...declarations });
+      }
+    });
+  }
+  return map;
+}
+
+function excelHtmlColumnData(table, classStyles) {
+  const widths = [];
+  const styles = [];
+  let index = 0;
+  Array.from(table.querySelectorAll("col")).forEach((colElement) => {
+    const span = Math.max(1, Math.trunc(Number(colElement.getAttribute("span") || 1)) || 1);
+    const style = excelHtmlStyleForElement(colElement, classStyles);
+    const width = excelHtmlElementPixelSize(colElement, style, "width");
+    for (let offset = 0; offset < span; offset += 1) {
+      styles[index] = style;
+      if (width) widths[index] = width;
+      index += 1;
+    }
+  });
+  return { widths, styles };
+}
+
+function parseCssDeclarations(text) {
+  const declarations = {};
+  splitCssDeclarations(text).forEach((part) => {
+    const index = part.indexOf(":");
+    if (index <= 0) return;
+    const property = part.slice(0, index).trim().toLowerCase();
+    const value = part.slice(index + 1).trim();
+    if (property && value) declarations[property] = value;
+  });
+  return declarations;
+}
+
+function splitCssDeclarations(text) {
+  const parts = [];
+  let current = "";
+  let quote = "";
+  String(text || "").replace(/\/\*[\s\S]*?\*\//g, "").split("").forEach((char) => {
+    if (quote) {
+      current += char;
+      if (char === quote) quote = "";
+      return;
+    }
+    if (char === "\"" || char === "'") {
+      quote = char;
+      current += char;
+      return;
+    }
+    if (char === ";") {
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+      return;
+    }
+    current += char;
+  });
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function excelHtmlStyleForElement(element, classStyles) {
+  const style = {};
+  Array.from(element?.classList || []).forEach((className) => {
+    Object.assign(style, classStyles.get(String(className || "").toLowerCase()) || {});
+  });
+  Object.assign(style, parseCssDeclarations(element?.getAttribute?.("style") || ""));
+  const align = element?.getAttribute?.("align");
+  if (align) style["text-align"] = align;
+  const valign = element?.getAttribute?.("valign");
+  if (valign) style["vertical-align"] = valign;
+  const bgcolor = element?.getAttribute?.("bgcolor");
+  if (bgcolor) style["background-color"] = bgcolor;
+  return style;
+}
+
+function excelHtmlElementPixelSize(element, style, property) {
+  const cssValue = style?.[property];
+  const cssPixels = cssLengthToPixels(cssValue);
+  if (cssPixels) return cssPixels;
+  const attrValue = element?.getAttribute?.(property);
+  return cssLengthToPixels(attrValue);
+}
+
+function cssLengthToPixels(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw || raw === "auto") return 0;
+  const match = raw.match(/-?(?:\d+(?:\.\d+)?|\.\d+)/);
+  if (!match) return 0;
+  const number = Number(match[0]);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  if (raw.includes("pt")) return Math.max(1, Math.round(number * (96 / 72)));
+  if (raw.includes("in")) return Math.max(1, Math.round(number * 96));
+  if (raw.includes("cm")) return Math.max(1, Math.round(number * (96 / 2.54)));
+  if (raw.includes("mm")) return Math.max(1, Math.round(number * (96 / 25.4)));
+  if (raw.includes("pc")) return Math.max(1, Math.round(number * 16));
+  if (raw.includes("em")) return Math.max(1, Math.round(number * 16));
+  return Math.max(1, Math.round(number));
+}
+
+function excelHtmlCellText(cellElement) {
+  const chunks = [];
+  const visit = (node) => {
+    if (!node) return;
+    if (node.nodeType === 3) {
+      chunks.push(String(node.nodeValue || ""));
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const tag = String(node.tagName || "").toLowerCase();
+    if (tag === "br") {
+      chunks.push("\n");
+      return;
+    }
+    const startsNewLine = ["div", "p"].includes(tag) && chunks.length && !chunks[chunks.length - 1].endsWith("\n");
+    if (startsNewLine) chunks.push("\n");
+    Array.from(node.childNodes || []).forEach(visit);
+    if (["div", "p"].includes(tag) && chunks.length && !chunks[chunks.length - 1].endsWith("\n")) chunks.push("\n");
+  };
+  Array.from(cellElement?.childNodes || []).forEach(visit);
+  return chunks.join("").replace(/\u00a0/g, " ").replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n$/, "");
+}
+
+function excelHtmlCellRawValue(cellElement, text) {
+  const formula = excelHtmlAttribute(cellElement, "fmla") || excelHtmlAttribute(cellElement, "formula");
+  if (formula) return String(formula).trim().startsWith("=") ? String(formula).trim() : `=${String(formula).trim()}`;
+  const numeric = excelHtmlAttribute(cellElement, "num");
+  if (numeric !== "") {
+    const number = Number(String(numeric).replace(/,/g, ""));
+    if (Number.isFinite(number)) return number;
+  }
+  const explicitString = excelHtmlAttribute(cellElement, "str");
+  if (explicitString !== "") return explicitString;
+  if (text === "") return null;
+  return coerceUserInput(text, { preserveWhitespace: String(text) !== String(text).trim() });
+}
+
+function excelHtmlAttribute(element, localName) {
+  const names = [localName, `x:${localName}`, `o:${localName}`];
+  for (const name of names) {
+    const value = element?.getAttribute?.(name);
+    if (value != null) return value;
+  }
+  const suffix = `:${String(localName).toLowerCase()}`;
+  const attr = Array.from(element?.attributes || []).find((item) => String(item.name || "").toLowerCase().endsWith(suffix));
+  return attr?.value ?? "";
+}
+
+function excelHtmlCellModelFromStyle(style, text, raw) {
+  const css = {};
+  const fontFamily = cssFontFamilyForModel(styleValue(style, "font-family"));
+  if (fontFamily) css.fontFamily = fontFamily;
+  const fontSize = styleValue(style, "font-size");
+  if (fontSize) css.fontSize = fontSize;
+  const fontColor = htmlCssColorToHex(styleValue(style, "color"));
+  if (fontColor) css.color = fontColor;
+  const fillColor = htmlCssColorToHex(styleValue(style, "background-color")) || htmlCssFirstColor(styleValue(style, "background"));
+  if (fillColor) css.backgroundColor = fillColor;
+  const fontWeight = String(styleValue(style, "font-weight") || "").toLowerCase();
+  if (fontWeight === "bold" || Number.parseInt(fontWeight, 10) >= 600) css.fontWeight = "700";
+  const fontStyle = String(styleValue(style, "font-style") || "").toLowerCase();
+  if (fontStyle === "italic") css.fontStyle = "italic";
+  const decoration = String(styleValue(style, "text-decoration", "text-decoration-line") || "").toLowerCase();
+  if (decoration.includes("underline")) css.textDecoration = decoration.includes("double") ? "underline double" : "underline";
+  else if (decoration.includes("line-through")) css.textDecoration = "line-through";
+  const textAlign = normalizeExcelHtmlHorizontalAlign(styleValue(style, "text-align", "mso-horizontal-align"));
+  if (textAlign) css.textAlign = textAlign;
+  const verticalAlign = normalizeExcelHtmlVerticalAlign(styleValue(style, "vertical-align", "mso-vertical-align"));
+  if (verticalAlign) {
+    css.verticalAlign = verticalAlign;
+    css.alignItems = verticalAlignToFlex(verticalAlign);
+  }
+  if (
+    String(styleValue(style, "white-space") || "").toLowerCase().includes("pre") ||
+    String(styleValue(style, "mso-wrap-style") || "").toLowerCase().includes("wrap") ||
+    String(text || "").includes("\n")
+  ) {
+    css.whiteSpace = "pre-wrap";
+    css.overflowWrap = "anywhere";
+  }
+
+  const formula = typeof raw === "string" && raw.startsWith("=");
+  const model = {
+    raw,
+    formula: formula ? raw : null,
+    cached: formula ? null : raw,
+    display: formula || raw == null ? "" : String(text ?? raw),
+    css,
+    hasFill: Boolean(css.backgroundColor),
+    hasFontColor: Boolean(css.color),
+    borders: excelHtmlBordersFromStyle(style),
+    numFmt: excelHtmlNumberFormat(style),
+  };
+  if (!Object.keys(model.css).length) delete model.css;
+  if (!Object.keys(model.borders).length) delete model.borders;
+  if (!model.numFmt) delete model.numFmt;
+  return model;
+}
+
+function styleValue(style, ...properties) {
+  for (const property of properties) {
+    const value = style?.[property];
+    if (value != null && String(value).trim() !== "") return String(value).trim();
+  }
+  return "";
+}
+
+function cssFontFamilyForModel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const first = raw.split(",")[0].replace(/^["']|["']$/g, "").trim();
+  return fontFamilyForExcel(first) || raw;
+}
+
+function normalizeExcelHtmlHorizontalAlign(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (["left", "center", "right", "justify"].includes(normalized)) return normalized;
+  return "";
+}
+
+function normalizeExcelHtmlVerticalAlign(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "top") return "top";
+  if (["middle", "center"].includes(normalized)) return "middle";
+  if (normalized === "bottom") return "bottom";
+  return "";
+}
+
+function excelHtmlNumberFormat(style) {
+  const raw = unquoteCssValue(styleValue(style, "mso-number-format"));
+  if (!raw) return "";
+  const format = raw.replace(/\\(.)/g, "$1").trim();
+  return /^general$/i.test(format) ? "" : format;
+}
+
+function unquoteCssValue(value) {
+  const text = String(value || "").trim();
+  if ((text.startsWith("\"") && text.endsWith("\"")) || (text.startsWith("'") && text.endsWith("'"))) {
+    return text.slice(1, -1);
+  }
+  return text;
+}
+
+function htmlCssColorToHex(value) {
+  const text = unquoteCssValue(value).trim().toLowerCase();
+  if (!text || ["none", "transparent", "automatic"].includes(text)) return "";
+  if (/^#[0-9a-f]{3}$/i.test(text)) {
+    return `#${text.slice(1).split("").map((char) => char + char).join("")}`.toUpperCase();
+  }
+  return normalizeCellEditColor(text) || HTML_NAMED_COLORS[text] || "";
+}
+
+function htmlCssFirstColor(value) {
+  const text = String(value || "").toLowerCase();
+  const hex = text.match(/#[0-9a-f]{3}(?:[0-9a-f]{3})?\b/i);
+  if (hex) return htmlCssColorToHex(hex[0]);
+  const rgb = text.match(/rgba?\([^)]+\)/i);
+  if (rgb) return htmlCssColorToHex(rgb[0]);
+  const name = Object.keys(HTML_NAMED_COLORS).find((candidate) => new RegExp(`\\b${candidate}\\b`, "i").test(text));
+  return name ? HTML_NAMED_COLORS[name] : "";
+}
+
+const HTML_NAMED_COLORS = {
+  aqua: "#00FFFF",
+  black: "#000000",
+  blue: "#0000FF",
+  cyan: "#00FFFF",
+  fuchsia: "#FF00FF",
+  gray: "#808080",
+  grey: "#808080",
+  green: "#008000",
+  lime: "#00FF00",
+  magenta: "#FF00FF",
+  maroon: "#800000",
+  navy: "#000080",
+  olive: "#808000",
+  orange: "#FFA500",
+  purple: "#800080",
+  red: "#FF0000",
+  silver: "#C0C0C0",
+  teal: "#008080",
+  white: "#FFFFFF",
+  window: "#FFFFFF",
+  windowtext: "#000000",
+  yellow: "#FFFF00",
+};
+
+function excelHtmlBordersFromStyle(style) {
+  const borders = {};
+  const common = htmlCssBorderFromStyleText(styleValue(style, "border"));
+  ["top", "right", "bottom", "left"].forEach((side) => {
+    const sideBorder = htmlCssBorderFromStyleText(
+      styleValue(style, `border-${side}`),
+      styleValue(style, `border-${side}-width`),
+      styleValue(style, `border-${side}-style`),
+      styleValue(style, `border-${side}-color`),
+    ) || common;
+    if (sideBorder) borders[side] = sideBorder;
+  });
+  return borders;
+}
+
+function htmlCssBorderFromStyleText(borderText, widthText = "", styleText = "", colorText = "") {
+  const combined = [borderText, widthText, styleText, colorText].filter(Boolean).join(" ").toLowerCase();
+  if (!combined || /\b(?:none|hidden)\b/.test(combined)) return null;
+  const cssStyle = combined.match(/\b(double|dashed|dotted|solid)\b/)?.[1] || "";
+  if (!cssStyle) return null;
+  const keywordWidth = combined.match(/\b(thin|medium|thick)\b/)?.[1] || "";
+  const widthSource = combined.replace(/rgba?\([^)]+\)/gi, "");
+  const explicitLength =
+    widthSource.match(/(?:\d+(?:\.\d+)?|\.\d+)(?:px|pt|in|cm|mm|pc)\b/i)?.[0] ||
+    widthSource.match(/\b(?:\d+(?:\.\d+)?|\.\d+)\b/i)?.[0] ||
+    "";
+  const width = explicitLength
+    ? cssLengthToPixels(explicitLength)
+    : keywordWidth === "thick"
+      ? 3
+      : keywordWidth === "medium"
+        ? 2
+        : 1;
+  const color = htmlCssFirstColor(combined) || htmlCssColorToHex(colorText) || "#000000";
+  return {
+    width: Math.max(1, width || 1),
+    style: cssStyle,
+    color,
+    weight: Math.max(1, width || 1) + (cssStyle === "double" ? 2 : 0),
+  };
+}
+
+function excelHtmlClipboardText(textGrid, rowCount, colCount) {
+  return Array.from({ length: rowCount }, (_rowItem, rowIndex) => (
+    Array.from({ length: colCount }, (_colItem, colIndex) => textGrid[rowIndex]?.[colIndex] ?? "").join("\t")
+  )).join("\n");
+}
+
 function clipboardDataHasCwsRangeMarker(clipboardData) {
   if (!clipboardData) return false;
   try {
@@ -83728,6 +84194,25 @@ function pasteCwsClipboardPayload(payload, options = {}) {
   return true;
 }
 
+function pasteExternalRichClipboard(clipboard, options = {}) {
+  if (!clipboard?.cellEntries?.length) return false;
+  const range = options.range || activeSelectionRange();
+  if (!range) {
+    setStatus("貼り付け先のセルを選択してください。");
+    return true;
+  }
+  state.internalClipboard = clipboard;
+  state.objectClipboard = null;
+  clearPersistedInternalClipboard();
+  clearConsumedCutObjectClipboardLabel();
+  cancelObjectPasteFallback();
+  pasteInternalClipboardAtRange(range, {
+    keepSourceFormatting: options.keepSourceFormatting !== false,
+    applyDimensions: options.applyDimensions === true,
+  });
+  return true;
+}
+
 function restorePersistedInternalClipboard() {
   if (state.internalClipboard || !state.model) return Boolean(state.internalClipboard);
   try {
@@ -83853,6 +84338,12 @@ async function asyncClipboardCellTextPayload() {
     }
   }
   return null;
+}
+
+async function asyncClipboardRichHtmlClipboard() {
+  if (!canUseAsyncClipboardItemRead()) return null;
+  const payload = await asyncClipboardTextPayload();
+  return richHtmlClipboardFromPayload(payload);
 }
 
 function scheduleInternalPasteFallback() {
@@ -84037,6 +84528,18 @@ async function pasteFromClipboard(options = {}) {
     }
   }
 
+  if (preferRich && options.allowAsyncClipboard === true && canUseAsyncClipboardItemRead()) {
+    try {
+      const richClipboard = await asyncClipboardRichHtmlClipboard();
+      if (richClipboard) {
+        pasteExternalRichClipboard(richClipboard, { range, applyDimensions: true });
+        return;
+      }
+    } catch (error) {
+      console.warn("Rich HTML clipboard read failed:", error);
+    }
+  }
+
   if (preferRich && state.internalClipboard) {
     pasteInternalClipboardAtRange(range);
     return;
@@ -84104,6 +84607,17 @@ async function pasteFromRibbonButton() {
       }
     } catch (error) {
       console.warn("CWS clipboard read failed:", error);
+    }
+  }
+  if (range && canUseAsyncClipboardItemRead()) {
+    try {
+      const richClipboard = await asyncClipboardRichHtmlClipboard();
+      if (richClipboard) {
+        pasteExternalRichClipboard(richClipboard, { range, applyDimensions: true });
+        return;
+      }
+    } catch (error) {
+      console.warn("Rich HTML clipboard read failed:", error);
     }
   }
   if (range && (canUseAsyncClipboardItemRead() || canUseAsyncClipboardRead())) {
@@ -84469,6 +84983,7 @@ function handleWorkbookPasteEvent(event) {
   const clipboardData = clipboardDataFromEvent(event);
   const text = clipboardData?.getData("text/plain");
   const cellTextPaste = clipboardDataLooksLikeCellPaste(clipboardData, text);
+  const richClipboard = richHtmlClipboardFromData(clipboardData, text);
   const imageFiles = clipboardImageFilesFromData(clipboardData);
   restorePersistedInternalClipboard();
   const cwsPayload = cwsClipboardPayloadFromData(clipboardData);
@@ -84505,6 +85020,12 @@ function handleWorkbookPasteEvent(event) {
   }
   const range = activeSelectionRange();
   if (!range) return;
+  if (richClipboard) {
+    event.preventDefault();
+    cancelObjectPasteFallback();
+    pasteExternalRichClipboard(richClipboard, { range, applyDimensions: true });
+    return;
+  }
   if (cwsPayload?.kind === "range" && !cwsRangePayloadMatchesInternalClipboard(cwsPayload)) {
     event.preventDefault();
     cancelObjectPasteFallback();
@@ -86692,6 +87213,32 @@ function pasteInternalClipboardLinkAtRange(range) {
   }
 }
 
+function clipboardHasDimensions(clipboard) {
+  return Boolean(
+    (clipboard?.rows || []).some((row) => Number(row?.height) > 0) ||
+      (clipboard?.columns || []).some((column) => Number(column?.width) > 0)
+  );
+}
+
+function applyClipboardDimensionsToRange(sheet, clipboard, range) {
+  (clipboard.columns || []).forEach((sourceColumn, offset) => {
+    const width = Number(sourceColumn?.width);
+    if (!Number.isFinite(width) || width <= 0) return;
+    const targetCol = range.left + offset;
+    sheet.columns[targetCol - 1] = { ...defaultColumnModel(sheet), ...(sheet.columns[targetCol - 1] || {}) };
+    sheet.columns[targetCol - 1].width = width;
+    sheet.columns[targetCol - 1].hidden = false;
+  });
+  (clipboard.rows || []).forEach((sourceRow, offset) => {
+    const height = Number(sourceRow?.height);
+    if (!Number.isFinite(height) || height <= 0) return;
+    const targetRow = range.top + offset;
+    sheet.rows[targetRow - 1] = { ...defaultRowModel(sheet), ...(sheet.rows[targetRow - 1] || {}) };
+    sheet.rows[targetRow - 1].height = height;
+    sheet.rows[targetRow - 1].hidden = false;
+  });
+}
+
 function pasteInternalClipboardAtRange(range, options = {}) {
   const clipboard = state.internalClipboard;
   if (!clipboard) {
@@ -86724,7 +87271,8 @@ function pasteInternalClipboardAtRange(range, options = {}) {
     assumeFormula: clipboardHasFormula(clipboard),
   });
   const cutSheetIndexes = cutPasteHistorySheetIndexes(clipboard, state.activeSheetIndex);
-  const usesSheetHistory = tableEditCandidate || cutSheetIndexes.length;
+  const appliesDimensions = options.applyDimensions === true && !pasteSize.repeating && clipboardHasDimensions(clipboard);
+  const usesSheetHistory = tableEditCandidate || cutSheetIndexes.length || appliesDimensions;
   const sheetsBefore = tableEditCandidate
     ? captureSheetsForHistory(state.model.sheets.map((_item, index) => index))
     : cutSheetIndexes.length
@@ -86737,6 +87285,7 @@ function pasteInternalClipboardAtRange(range, options = {}) {
 
   try {
     ensureSheetSize(sheet, targetRows, targetCols);
+    if (appliesDimensions) applyClipboardDimensionsToRange(sheet, clipboard, range);
     removeIntersectingMerges(sheet, targetRange);
     clearCellsInRange(sheet, targetRange);
     const entriesByOffset = new Map(entries.map((sourceCell) => [cellKey(sourceCell.row, sourceCell.col), sourceCell]));
@@ -95550,6 +96099,16 @@ function applyAutoFill(sourceRange, fillRange, targetRange, direction, options =
   state.selectionRanges = [targetRange];
   state.selectionStart = state.selected;
   state.selectionDrag = null;
+  state.autoFillOptions = {
+    sheetIndex: state.activeSheetIndex,
+    sourceRange: { ...sourceRange },
+    fillRange: { ...fillRange },
+    targetRange: { ...targetRange },
+    direction,
+    before: before.map((item) => ({ row: item.row, col: item.col, cell: cloneCellModel(item.cell) })),
+    mode,
+    menuOpen: false,
+  };
   const label = tableEdit.changed
     ? `${tableEdit.label} / ${rangeToLabel(sourceRange)} オートフィル -> ${rangeToLabel(targetRange)}`
     : `${rangeToLabel(sourceRange)} オートフィル -> ${rangeToLabel(targetRange)}`;
@@ -95576,39 +96135,62 @@ function applyAutoFill(sourceRange, fillRange, targetRange, direction, options =
   renderSheet();
   updateSelectionUi();
   updateFormulaBarForSelection();
-  state.autoFillOptions = {
-    sheetIndex: state.activeSheetIndex,
-    sourceRange: { ...sourceRange },
-    fillRange: { ...fillRange },
-    targetRange: { ...targetRange },
-    direction,
-    before: before.map((item) => ({ row: item.row, col: item.col, cell: cloneCellModel(item.cell) })),
-    mode,
-    menuOpen: false,
-  };
-  renderSheet();
   clearAppAlert();
   setStatus(tableEdit.changed ? `${tableEdit.status} ${rangeToLabel(targetRange)} にオートフィルしました。` : `${rangeToLabel(targetRange)} にオートフィルしました。`);
   return { ok: true };
 }
 
+const AUTO_FILL_OPTIONS_BUTTON_SIZE = 20;
+const AUTO_FILL_OPTIONS_VIEWPORT_MARGIN = 4;
+const AUTO_FILL_OPTIONS_MENU_WIDTH = 190;
+
 function renderAutoFillOptions(sheet, visibleRange) {
   const options = state.autoFillOptions;
   if (!options || options.sheetIndex !== state.activeSheetIndex || !rangeIntersects(options.targetRange, visibleRange)) return "";
-  const left = coordinateToPixels(sheet, "col", options.targetRange.right) + 3;
-  const top = coordinateToPixels(sheet, "row", options.targetRange.bottom) + 3;
+  const buttonPoint = clampAutoFillOptionsButtonPoint(
+    coordinateToPixels(sheet, "col", options.targetRange.right) + 3,
+    coordinateToPixels(sheet, "row", options.targetRange.bottom) + 3,
+  );
+  const { left, top } = buttonPoint;
   const buttonStyle = `left:${left}px;top:${top}px`;
-  const menuLeft = Number.isFinite(Number(options.menuPoint?.left)) ? Number(options.menuPoint.left) : left;
-  const menuTop = Number.isFinite(Number(options.menuPoint?.top)) ? Number(options.menuPoint.top) : top + 22;
-  const menu = options.menuOpen ? renderAutoFillOptionsMenu(menuLeft, menuTop, options.mode, sheet, options.sourceRange) : "";
+  const menuItems = autoFillOptionItemsForSource(sheet, options.sourceRange);
+  const rawMenuLeft = Number.isFinite(Number(options.menuPoint?.left)) ? Number(options.menuPoint.left) : left;
+  const rawMenuTop = Number.isFinite(Number(options.menuPoint?.top)) ? Number(options.menuPoint.top) : top + 22;
+  const menuPoint = clampAutoFillOptionsMenuPoint(rawMenuLeft, rawMenuTop, menuItems.length);
+  const menu = options.menuOpen ? renderAutoFillOptionsMenu(menuPoint.left, menuPoint.top, options.mode, sheet, options.sourceRange, menuItems) : "";
   return `
     <button id="autoFillOptionsButton" class="auto-fill-options-button" type="button" style="${escapeAttr(buttonStyle)}" aria-haspopup="menu" aria-expanded="${options.menuOpen ? "true" : "false"}" title="オートフィル オプション">▣</button>
     ${menu}
   `;
 }
 
-function renderAutoFillOptionsMenu(left, top, activeMode, sheet = activeSheet(), sourceRange = state.autoFillOptions?.sourceRange) {
-  const items = autoFillOptionItemsForSource(sheet, sourceRange);
+function clampAutoFillOptionsButtonPoint(left, top) {
+  const host = $sheetHost[0];
+  if (!host) return { left, top };
+  return clampAutoFillOptionsPoint(left, top, AUTO_FILL_OPTIONS_BUTTON_SIZE, AUTO_FILL_OPTIONS_BUTTON_SIZE);
+}
+
+function clampAutoFillOptionsMenuPoint(left, top, itemCount = 4) {
+  const menuHeight = Math.max(34, Number(itemCount || 0) * 26 + 8);
+  return clampAutoFillOptionsPoint(left, top, AUTO_FILL_OPTIONS_MENU_WIDTH, menuHeight);
+}
+
+function clampAutoFillOptionsPoint(left, top, width, height) {
+  const host = $sheetHost[0];
+  if (!host) return { left, top };
+  const margin = AUTO_FILL_OPTIONS_VIEWPORT_MARGIN;
+  const minLeft = host.scrollLeft + margin;
+  const minTop = host.scrollTop + margin;
+  const maxLeft = host.scrollLeft + Math.max(margin, host.clientWidth - width - margin);
+  const maxTop = host.scrollTop + Math.max(margin, host.clientHeight - height - margin);
+  return {
+    left: Math.round(Math.min(Math.max(Number(left) || minLeft, minLeft), maxLeft)),
+    top: Math.round(Math.min(Math.max(Number(top) || minTop, minTop), maxTop)),
+  };
+}
+
+function renderAutoFillOptionsMenu(left, top, activeMode, sheet = activeSheet(), sourceRange = state.autoFillOptions?.sourceRange, itemsOverride = null) {
+  const items = itemsOverride || autoFillOptionItemsForSource(sheet, sourceRange);
   const buttons = items.map((item) => {
     const checked = activeMode === item.mode ? " is-active" : "";
     return `<button class="auto-fill-options-menu-item${checked}" type="button" role="menuitemradio" aria-checked="${activeMode === item.mode ? "true" : "false"}" data-auto-fill-option="${item.mode}" data-access-key="${item.accessKey}"><span class="auto-fill-options-check">${activeMode === item.mode ? "✓" : ""}</span>${accessKeyLabelHtml(item.label)}</button>`;
@@ -95983,24 +96565,48 @@ function integerRange(start, end) {
 }
 
 function writeAutoFillCells(sheet, sourceRange, fillRange, direction, options = {}) {
+  const mode = options.mode || "series";
   forEachCellInRange(fillRange, (row, col) => {
     const sourcePoint = autoFillSourcePoint(sourceRange, row, col, direction);
-    const sourceCell = sheet.cells[cellKey(sourcePoint.row, sourcePoint.col)] || null;
+    const sourceCell = sourceCellForAutoFill(sheet, sourcePoint.row, sourcePoint.col);
     const key = cellKey(row, col);
     const beforeCell = options.beforeMap?.get(key) || null;
+    if (autoFillShouldOwnTargetFormatting(mode, beforeCell)) removeSheetStyleRangesAtCell(sheet, row, col);
     if (!sourceCell) {
-      delete sheet.cells[key];
+      if (mode === "no-formatting" && beforeCell) storeBlankAutoFillCellWithFormatting(sheet, key, row, col, beforeCell);
+      else delete sheet.cells[key];
       return;
     }
 
     const nextCell = cloneCellForAutoFill(sheet, sourceRange, sourceCell, sourcePoint, row, col, direction, {
-      mode: options.mode || "series",
+      mode,
       beforeCell,
     });
     nextCell.row = row;
     nextCell.col = col;
     storeCellModelForSheet(sheet, key, nextCell);
   });
+}
+
+function sourceCellForAutoFill(sheet, row, col) {
+  const storedCell = sheet.cells[cellKey(row, col)] || null;
+  return sheetDisplayCell(sheet, row, col, storedCell) || null;
+}
+
+function autoFillShouldOwnTargetFormatting(mode, beforeCell) {
+  return mode !== "no-formatting" || Boolean(beforeCell);
+}
+
+function storeBlankAutoFillCellWithFormatting(sheet, key, row, col, formatCell) {
+  const nextCell = cloneCellModel(formatCell) || { row, col, raw: null, formula: null, cached: null, display: "", css: {}, borders: {} };
+  nextCell.row = row;
+  nextCell.col = col;
+  nextCell.raw = null;
+  nextCell.formula = null;
+  nextCell.cached = null;
+  nextCell.display = "";
+  delete nextCell.richText;
+  storeCellModelForSheet(sheet, key, nextCell);
 }
 
 function cloneCellForAutoFill(sheet, sourceRange, sourceCell, sourcePoint, targetRow, targetCol, direction, options = {}) {
