@@ -10204,6 +10204,16 @@ const DEFAULT_CELL_CSS_KEYS = [
   "alignItems",
   "textRotation",
 ];
+const INFERRED_DEFAULT_CELL_CSS_KEYS = new Set(["fontFamily", "fontSize"]);
+const LOCALIZED_DEFAULT_CELL_CSS_KEYS = new Set([
+  "color",
+  "fontWeight",
+  "fontStyle",
+  "textDecoration",
+  "textAlign",
+  "alignItems",
+  "textRotation",
+]);
 const EMPTY_CELL_CSS = Object.freeze({});
 const EMPTY_CELL_BORDERS = Object.freeze({});
 const cellStyleInternPools = {
@@ -10302,6 +10312,7 @@ const state = {
   undoStack: [],
   redoStack: [],
   isRestoringHistory: false,
+  cwsAgentPreview: null,
   internalClipboard: null,
   objectClipboard: null,
   consumedCutObjectClipboardLabel: null,
@@ -10591,6 +10602,693 @@ const FORMULA_REFERENCE_COLORS = [
 const AUTO_FILL_MODES = new Set(["copy", "series", "formatting", "no-formatting", "date-day", "date-weekday", "date-month", "date-year", "linear-trend", "growth-trend"]);
 const AUTO_FILL_DATE_MODES = new Set(["date-day", "date-weekday", "date-month", "date-year"]);
 const AUTO_FILL_TREND_MODES = new Set(["linear-trend", "growth-trend"]);
+const CWS_AGENT_MAX_RANGE_CELLS = 400;
+const CWS_AGENT_MAX_STRUCTURE_ROWS = 100;
+
+function applyCwsAgentOps(ops = [], options = {}) {
+  if (!Array.isArray(ops)) {
+    throw new Error("Agent 操作が正しくありません。");
+  }
+  if (!state.model) {
+    throw new Error("ブックが開かれていません。");
+  }
+  if (ops.length > 20) {
+    throw new Error("一度に適用できる Agent 操作は20件までです。");
+  }
+
+  if (!options.keepPreview) {
+    clearCwsAgentPreview({ restore: true, quiet: true });
+  }
+  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, index));
+  const results = normalizedOps.map((op) => applyCwsAgentOp(op));
+  if (results.length) {
+    setStatus(`CWS Agent: ${results.map((result) => result.address).join(", ")} を更新しました。`);
+  }
+  return { ok: true, applied: results.length, results };
+}
+
+function previewCwsAgentOps(ops = [], options = {}) {
+  if (!Array.isArray(ops)) {
+    throw new Error("Agent 操作が正しくありません。");
+  }
+  if (!state.model) {
+    throw new Error("ブックが開かれていません。");
+  }
+  if (ops.length > 20) {
+    throw new Error("一度にプレビューできる Agent 操作は20件までです。");
+  }
+
+  clearCwsAgentPreview({ restore: true, quiet: true });
+  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, index));
+  const sheetIndexes = state.model.sheets.map((_sheet, index) => index);
+  const sheetsBefore = captureSheetsForHistory(sheetIndexes);
+  const definedNamesBefore = cloneDefinedNames(state.model.definedNames);
+  const activeSheetBefore = state.activeSheetIndex;
+  const selectionBefore = cwsAgentCloneRange(state.selectionRange);
+  const selectionBeforeRanges = cwsAgentCloneRanges(state.selectionRanges);
+  const revisionSnapshot = cwsAgentWorkbookRevisionSnapshot();
+
+  try {
+    const results = withCwsAgentPreviewMutation(() => normalizedOps.map((op) => applyCwsAgentOp(op)), revisionSnapshot);
+    const afterSheetIndexes = sheetIndexes.filter((index) => state.model?.sheets?.[index]);
+    const historyEntry = {
+      sheetIndex: state.activeSheetIndex,
+      sheetsBefore,
+      sheetsAfter: captureSheetsForHistory(afterSheetIndexes),
+      definedNamesBefore,
+      definedNamesAfter: cloneDefinedNames(state.model.definedNames),
+      selectionBefore,
+      selectionAfter: cwsAgentCloneRange(state.selectionRange),
+      selectionBeforeRanges,
+      selectionAfterRanges: cwsAgentCloneRanges(state.selectionRanges),
+      activeSheetBefore,
+      activeSheetAfter: state.activeSheetIndex,
+      label: "CWS Agent プレビュー",
+    };
+    const previewId = `cws-agent-preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    state.cwsAgentPreview = {
+      id: previewId,
+      messageId: String(options.messageId || ""),
+      historyEntry,
+      results,
+      visible: true,
+    };
+    cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+    setStatus("CWS Agent: 変更プレビューを表示しています。");
+    return { ok: true, previewId, visible: true, applied: results.length, results };
+  } catch (error) {
+    restoreSheetsFromHistory(sheetsBefore);
+    state.model.definedNames = cloneDefinedNames(definedNamesBefore);
+    state.activeSheetIndex = Math.max(0, Math.min(activeSheetBefore, state.model.sheets.length - 1));
+    cwsAgentRestoreSelectionSnapshot(selectionBefore, selectionBeforeRanges, state.activeSheetIndex);
+    state.hf = buildFormulaEngine(state.model);
+    cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+    renderWorkbook();
+    updateSelectionUi();
+    updateFormulaBarForSelection();
+    throw error;
+  }
+}
+
+function setCwsAgentPreviewVisible(previewId, visible) {
+  const preview = cwsAgentPreviewForId(previewId);
+  const nextVisible = visible !== false;
+  if (preview.visible !== nextVisible) {
+    applyHistoryEntry(preview.historyEntry, nextVisible ? "redo" : "undo");
+    preview.visible = nextVisible;
+  }
+  setStatus(nextVisible ? "CWS Agent: 変更後を表示しています。" : "CWS Agent: 変更前を表示しています。");
+  return { ok: true, previewId: preview.id, visible: preview.visible, applied: preview.results?.length || 0, results: preview.results || [] };
+}
+
+function commitCwsAgentPreview(previewId) {
+  const preview = cwsAgentPreviewForId(previewId);
+  if (preview.visible === false) {
+    applyHistoryEntry(preview.historyEntry, "redo");
+    preview.visible = true;
+  }
+  pushHistory(preview.historyEntry);
+  state.cwsAgentPreview = null;
+  const results = preview.results || [];
+  setStatus(`CWS Agent: ${results.length > 1 ? `${results.length}件の変更` : "変更"}を適用しました。`);
+  return { ok: true, previewId: preview.id, visible: true, applied: results.length, results };
+}
+
+function clearCwsAgentPreview(options = {}) {
+  const preview = state.cwsAgentPreview;
+  if (!preview) return { ok: true, cleared: false };
+  if (options.restore !== false && preview.visible !== false) {
+    applyHistoryEntry(preview.historyEntry, "undo");
+  }
+  state.cwsAgentPreview = null;
+  if (!options.quiet) {
+    setStatus("CWS Agent: 変更プレビューを取り消しました。");
+  }
+  return { ok: true, cleared: true };
+}
+
+function cwsAgentPreviewForId(previewId) {
+  const preview = state.cwsAgentPreview;
+  if (!preview || (previewId && preview.id !== previewId)) {
+    throw new Error("変更プレビューはもう利用できません。");
+  }
+  return preview;
+}
+
+function withCwsAgentPreviewMutation(callback, revisionSnapshot = cwsAgentWorkbookRevisionSnapshot()) {
+  const wasRestoringHistory = state.isRestoringHistory;
+  state.isRestoringHistory = true;
+  try {
+    return callback();
+  } finally {
+    state.isRestoringHistory = wasRestoringHistory;
+    cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+  }
+}
+
+function cwsAgentWorkbookRevisionSnapshot() {
+  return {
+    workbookRevision: state.workbookRevision,
+    workbookSavedRevision: state.workbookSavedRevision,
+  };
+}
+
+function cwsAgentRestoreWorkbookRevisionSnapshot(snapshot = {}) {
+  state.workbookRevision = Number(snapshot.workbookRevision) || 0;
+  state.workbookSavedRevision = Number(snapshot.workbookSavedRevision) || 0;
+}
+
+function cwsAgentCloneRange(range) {
+  return range ? { ...range } : null;
+}
+
+function cwsAgentCloneRanges(ranges) {
+  return Array.isArray(ranges) ? ranges.map(cwsAgentCloneRange).filter(Boolean) : [];
+}
+
+function cwsAgentRestoreSelectionSnapshot(selection, ranges, sheetIndex) {
+  if (selection) {
+    const normalizedSelection = { ...selection, sheetIndex };
+    state.selected = { sheetIndex, row: normalizedSelection.top || normalizedSelection.row || 1, col: normalizedSelection.left || normalizedSelection.col || 1 };
+    state.selectionRange = normalizedSelection;
+    state.selectionRanges = ranges?.length ? ranges.map((range) => ({ ...range, sheetIndex })) : [normalizedSelection];
+    state.selectionStart = state.selected;
+  } else {
+    state.selected = null;
+    state.selectionRange = null;
+    state.selectionRanges = [];
+    state.selectionStart = null;
+  }
+  state.selectionDrag = null;
+  state.selectedImage = null;
+}
+
+function normalizeCwsAgentOp(op, index) {
+  const type = String(op?.type || op?.op || "").trim().toLowerCase().replace(/[_-]/g, "");
+  if (type === "setcell") {
+    return normalizeCwsAgentSetCellOp(op, index);
+  }
+  if (type === "setrange") {
+    return normalizeCwsAgentSetRangeOp(op, index);
+  }
+  if (type === "setstyle") {
+    return normalizeCwsAgentSetStyleOp(op, index);
+  }
+  if (type === "insertrow" || type === "insertrows") {
+    return normalizeCwsAgentRowsOp(op, index, "insertRows");
+  }
+  if (type === "deleterow" || type === "deleterows") {
+    return normalizeCwsAgentRowsOp(op, index, "deleteRows");
+  }
+  throw new Error(`対応していない Agent 操作です: ${type || index + 1}`);
+}
+
+function normalizeCwsAgentSetCellOp(op, index) {
+  const address = cwsAgentParseCellAddress(op?.address || op?.ref || op?.cell || "");
+  const row = cwsAgentPositiveInteger(op?.row) || address?.row || 0;
+  const col = cwsAgentColumnValue(op?.col) || address?.col || 0;
+  if (!row || !col || row > EXCEL_MAX_ROWS || col > EXCEL_MAX_COLS) {
+    throw new Error(`Agent 操作 ${index + 1} のセル位置が正しくありません。`);
+  }
+
+  const sheetIndex = cwsAgentSheetIndexForOp(op, address?.sheetName);
+  const sheet = state.model?.sheets?.[sheetIndex];
+  if (!sheet || !isSheetVisible(sheet)) {
+    throw new Error(`Agent 操作 ${index + 1} のシートが見つかりません。`);
+  }
+
+  return {
+    type: "setCell",
+    sheetIndex,
+    row,
+    col,
+    value: cwsAgentCellValue(op?.value),
+  };
+}
+
+function normalizeCwsAgentSetRangeOp(op, index) {
+  const values = cwsAgentMatrixValues(op?.values || op?.rows || op?.data);
+  if (!values.length) {
+    throw new Error(`Agent 操作 ${index + 1} の範囲データが正しくありません。`);
+  }
+  const range = cwsAgentRangeForOp(op, index, values);
+  return {
+    type: "setRange",
+    ...range,
+    values,
+  };
+}
+
+function normalizeCwsAgentSetStyleOp(op, index) {
+  const style = cwsAgentStylePatch(op?.style || op || {});
+  if (!Object.keys(style).length) {
+    throw new Error(`Agent 操作 ${index + 1} の書式が正しくありません。`);
+  }
+  const range = cwsAgentRangeForOp(op, index);
+  return {
+    type: "setStyle",
+    ...range,
+    style,
+  };
+}
+
+function normalizeCwsAgentRowsOp(op, index, type) {
+  const parsedRange = cwsAgentParseRangeAddress(op?.range || op?.address || op?.ref || op?.cell || "");
+  const row = cwsAgentPositiveInteger(op?.row || op?.startRow || op?.index || op?.at || op?.beforeRow) || parsedRange?.top || 0;
+  const count = cwsAgentPositiveInteger(op?.count || op?.amount || op?.rows) || (parsedRange ? parsedRange.bottom - parsedRange.top + 1 : 1);
+  if (!row || row > EXCEL_MAX_ROWS || count < 1 || count > CWS_AGENT_MAX_STRUCTURE_ROWS) {
+    throw new Error(`Agent 操作 ${index + 1} の行指定が正しくありません。`);
+  }
+  if (row + count - 1 > EXCEL_MAX_ROWS) {
+    throw new Error(`Agent 操作 ${index + 1} の行指定が大きすぎます。`);
+  }
+
+  const sheetIndex = cwsAgentSheetIndexForOp(op, parsedRange?.sheetName);
+  const sheet = state.model?.sheets?.[sheetIndex];
+  if (!sheet || !isSheetVisible(sheet)) {
+    throw new Error(`Agent 操作 ${index + 1} のシートが見つかりません。`);
+  }
+  if (type === "insertRows" && row > sheet.rowCount + 1) {
+    throw new Error(`Agent 操作 ${index + 1} の挿入位置が正しくありません。`);
+  }
+  if (type === "deleteRows" && row > sheet.rowCount) {
+    throw new Error(`Agent 操作 ${index + 1} の削除位置が正しくありません。`);
+  }
+
+  return {
+    type,
+    sheetIndex,
+    row,
+    count,
+  };
+}
+
+function cwsAgentRangeForOp(op, index, values = null) {
+  const parsedRange = cwsAgentParseRangeAddress(op?.range || op?.address || op?.ref || op?.cell || "");
+  const top = cwsAgentPositiveInteger(op?.top || op?.row) || parsedRange?.top || 0;
+  const left = cwsAgentColumnValue(op?.left || op?.col) || parsedRange?.left || 0;
+  if (!top || !left || top > EXCEL_MAX_ROWS || left > EXCEL_MAX_COLS) {
+    throw new Error(`Agent 操作 ${index + 1} の範囲が正しくありません。`);
+  }
+
+  const valueHeight = values ? values.length : 1;
+  const valueWidth = values ? Math.max(...values.map((row) => row.length)) : 1;
+  let bottom = cwsAgentPositiveInteger(op?.bottom) || parsedRange?.bottom || top;
+  let right = cwsAgentColumnValue(op?.right) || parsedRange?.right || left;
+  if (values && bottom === top && right === left) {
+    bottom = top + valueHeight - 1;
+    right = left + valueWidth - 1;
+  }
+  if (bottom < top || right < left || bottom > EXCEL_MAX_ROWS || right > EXCEL_MAX_COLS) {
+    throw new Error(`Agent 操作 ${index + 1} の範囲が正しくありません。`);
+  }
+  if (values && ((bottom - top + 1) !== valueHeight || (right - left + 1) !== valueWidth)) {
+    throw new Error(`Agent 操作 ${index + 1} の範囲とデータ数が一致しません。`);
+  }
+  const cellCount = (bottom - top + 1) * (right - left + 1);
+  if (cellCount > CWS_AGENT_MAX_RANGE_CELLS) {
+    throw new Error(`Agent 操作 ${index + 1} の範囲が大きすぎます。`);
+  }
+
+  const sheetIndex = cwsAgentSheetIndexForOp(op, parsedRange?.sheetName);
+  const sheet = state.model?.sheets?.[sheetIndex];
+  if (!sheet || !isSheetVisible(sheet)) {
+    throw new Error(`Agent 操作 ${index + 1} のシートが見つかりません。`);
+  }
+  return { sheetIndex, top, left, bottom, right };
+}
+
+function cwsAgentSheetIndexForOp(op, parsedSheetName = "") {
+  const byIndex = cwsAgentInteger(op?.sheetIndex);
+  if (byIndex !== null) {
+    return byIndex;
+  }
+
+  const sheetName = String(op?.sheetName || parsedSheetName || "").trim();
+  if (sheetName) {
+    const found = (state.model?.sheets || []).findIndex((sheet) => sheet.name === sheetName);
+    if (found >= 0) return found;
+  }
+
+  return state.activeSheetIndex;
+}
+
+function cwsAgentMatrixValues(value) {
+  if (!Array.isArray(value)) return [];
+  const rows = [];
+  for (const row of value) {
+    if (!Array.isArray(row)) return [];
+    rows.push(row.map(cwsAgentCellValue));
+  }
+  return rows;
+}
+
+function cwsAgentStylePatch(value) {
+  if (!value || typeof value !== "object") return {};
+  const style = {};
+  const hasBackgroundColor = Object.prototype.hasOwnProperty.call(value, "backgroundColor") || Object.prototype.hasOwnProperty.call(value, "fillColor");
+  const backgroundColor = cwsAgentCssColor(value.backgroundColor ?? value.fillColor, hasBackgroundColor);
+  if (backgroundColor !== undefined) style.backgroundColor = backgroundColor;
+  const hasColor = Object.prototype.hasOwnProperty.call(value, "color") || Object.prototype.hasOwnProperty.call(value, "textColor") || Object.prototype.hasOwnProperty.call(value, "fontColor");
+  const color = cwsAgentCssColor(value.color ?? value.textColor ?? value.fontColor, hasColor);
+  if (color !== undefined) style.color = color;
+  if (Object.prototype.hasOwnProperty.call(value, "fontWeight")) {
+    style.fontWeight = cwsAgentFontWeight(value.fontWeight);
+  } else if (Object.prototype.hasOwnProperty.call(value, "bold")) {
+    style.fontWeight = cwsAgentBoolean(value.bold) ? "700" : "";
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "fontStyle")) {
+    style.fontStyle = String(value.fontStyle || "").toLowerCase() === "italic" ? "italic" : "";
+  } else if (Object.prototype.hasOwnProperty.call(value, "italic")) {
+    style.fontStyle = cwsAgentBoolean(value.italic) ? "italic" : "";
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "textDecoration")) {
+    style.textDecoration = String(value.textDecoration || "").toLowerCase().includes("underline") ? "underline" : "";
+  } else if (Object.prototype.hasOwnProperty.call(value, "underline")) {
+    style.textDecoration = cwsAgentBoolean(value.underline) ? "underline" : "";
+  }
+  const textAlign = String(value.textAlign || value.align || "").toLowerCase();
+  if (["left", "center", "right"].includes(textAlign)) style.textAlign = textAlign;
+  const verticalAlign = String(value.verticalAlign || value.valign || "").toLowerCase();
+  if (["top", "middle", "bottom"].includes(verticalAlign)) {
+    style.verticalAlign = verticalAlign;
+    style.alignItems = verticalAlignToFlex(verticalAlign);
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "wrapText")) {
+    if (cwsAgentBoolean(value.wrapText)) {
+      style.whiteSpace = "pre-wrap";
+      style.overflowWrap = "anywhere";
+    } else {
+      style.whiteSpace = "";
+      style.overflowWrap = "";
+    }
+  }
+  return Object.fromEntries(Object.entries(style).filter(([, item]) => item !== undefined));
+}
+
+function cwsAgentCssColor(value, hasValue = true) {
+  if (!hasValue) return undefined;
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  if (text.toLowerCase() === "none") return "";
+  return normalizeColorValue(text) || cwsAgentRgbColor(text) || undefined;
+}
+
+function cwsAgentRgbColor(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i);
+  if (!match) return "";
+  const channels = [match[1], match[2], match[3]].map((item) => Number.parseInt(item, 10));
+  if (channels.some((item) => !Number.isFinite(item) || item < 0 || item > 255)) return "";
+  const isRgba = /^rgba/i.test(text);
+  const hasAlpha = match[4] !== undefined;
+  if (isRgba !== hasAlpha) return "";
+  return text;
+}
+
+function cwsAgentFontWeight(value) {
+  const text = String(value || "").toLowerCase().trim();
+  if (!text) return "";
+  if (text === "bold" || text === "700") return "700";
+  if (text === "normal" || text === "400") return "";
+  const numeric = Number.parseInt(text, 10);
+  return Number.isFinite(numeric) && numeric >= 600 ? "700" : "";
+}
+
+function cwsAgentCellValue(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value !== "string") {
+    throw new Error("セルに入力できる値ではありません。");
+  }
+  return value.replace(/\r\n?/g, "\n").slice(0, 30000);
+}
+
+function cwsAgentInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isInteger(number) ? number : null;
+}
+
+function cwsAgentPositiveInteger(value) {
+  const number = cwsAgentInteger(value);
+  return number !== null && number > 0 ? number : 0;
+}
+
+function cwsAgentColumnValue(value) {
+  if (typeof value === "string" && /^[A-Za-z]{1,3}$/.test(value.trim())) {
+    return cwsAgentColumnIndex(value);
+  }
+  return cwsAgentPositiveInteger(value);
+}
+
+function cwsAgentBoolean(value) {
+  if (typeof value === "boolean") return value;
+  return ["1", "true", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
+}
+
+function cwsAgentParseCellAddress(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const parts = text.split("!");
+  const cellText = parts.pop().replace(/\$/g, "").trim();
+  const match = cellText.match(/^([A-Za-z]{1,3})([1-9][0-9]{0,6})$/);
+  if (!match) return null;
+
+  const sheetPart = parts.join("!").trim();
+  let sheetName = "";
+  if (sheetPart) {
+    sheetName = sheetPart.replace(/^'|'$/g, "").replace(/''/g, "'");
+  }
+  return {
+    sheetName,
+    row: Number(match[2]),
+    col: cwsAgentColumnIndex(match[1]),
+  };
+}
+
+function cwsAgentParseRangeAddress(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const parts = text.split("!");
+  const rangeText = parts.pop().replace(/\$/g, "").trim();
+  const rangeParts = rangeText.split(":", 2);
+  const sheetPart = parts.join("!").trim();
+  const start = cwsAgentParseCellAddress([sheetPart, rangeParts[0]].filter(Boolean).join("!"));
+  const end = cwsAgentParseCellAddress([sheetPart, rangeParts[1] || rangeParts[0]].filter(Boolean).join("!"));
+  if (!start || !end) return null;
+  return {
+    sheetName: start.sheetName || end.sheetName,
+    top: Math.min(start.row, end.row),
+    left: Math.min(start.col, end.col),
+    bottom: Math.max(start.row, end.row),
+    right: Math.max(start.col, end.col),
+  };
+}
+
+function cwsAgentColumnIndex(name) {
+  return String(name || "").toUpperCase().split("").reduce((total, char) => {
+    const code = char.charCodeAt(0);
+    if (code < 65 || code > 90) return total;
+    return total * 26 + code - 64;
+  }, 0);
+}
+
+function applyCwsAgentOp(op) {
+  if (op.type === "setCell") {
+    return applyCwsAgentSetCellOp(op);
+  }
+  if (op.type === "setRange") {
+    return applyCwsAgentSetRangeOp(op);
+  }
+  if (op.type === "setStyle") {
+    return applyCwsAgentSetStyleOp(op);
+  }
+  if (op.type === "insertRows" || op.type === "deleteRows") {
+    return applyCwsAgentRowsOp(op);
+  }
+  throw new Error(`対応していない Agent 操作です: ${op.type || ""}`);
+}
+
+function applyCwsAgentSetCellOp(op) {
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    setActiveSheet(op.sheetIndex);
+  }
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    throw new Error("対象シートを開けませんでした。");
+  }
+
+  const sheet = state.model.sheets[op.sheetIndex];
+  const before = getCellRawInput(sheet, op.row, op.col);
+  commitCellValue(op.row, op.col, op.value, {
+    preserveWhitespace: true,
+    skipSheetGroup: true,
+  });
+
+  const updatedSheet = state.model.sheets[op.sheetIndex];
+  const after = getCellRawInput(updatedSheet, op.row, op.col);
+  if (String(after ?? "") !== String(op.value ?? "") && String(before ?? "") !== String(op.value ?? "")) {
+    throw new Error(`${columnName(op.col)}${op.row} を変更できませんでした。`);
+  }
+
+  return {
+    type: "setCell",
+    sheetIndex: op.sheetIndex,
+    sheetName: updatedSheet.name,
+    row: op.row,
+    col: op.col,
+    address: `${updatedSheet.name}!${columnName(op.col)}${op.row}`,
+  };
+}
+
+function applyCwsAgentSetRangeOp(op) {
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    setActiveSheet(op.sheetIndex);
+  }
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    throw new Error("対象シートを開けませんでした。");
+  }
+
+  const sheet = state.model.sheets[op.sheetIndex];
+  const range = normalizeRange(
+    { sheetIndex: op.sheetIndex, row: op.top, col: op.left },
+    { sheetIndex: op.sheetIndex, row: op.bottom, col: op.right },
+  );
+  if (!ensureEditableRangeForProtection(sheet, range, "変更")) {
+    throw new Error("保護されたセルは変更できません。");
+  }
+
+  ensureSheetSize(sheet, range.bottom, range.right);
+  const sheetId = getSheetId(sheet.name);
+  const writes = [];
+  for (let rowOffset = 0; rowOffset < op.values.length; rowOffset += 1) {
+    const rowValues = op.values[rowOffset] || [];
+    for (let colOffset = 0; colOffset < rowValues.length; colOffset += 1) {
+      const row = range.top + rowOffset;
+      const col = range.left + colOffset;
+      const content = coerceUserInput(rowValues[colOffset], { preserveWhitespace: true });
+      const validation = validateCellInput(sheet, row, col, content);
+      if (!validation.valid) {
+        throw new Error(`${columnName(col)}${row}: ${validation.message || "入力規則に違反しています。"}`);
+      }
+      writes.push({ row, col, content });
+    }
+  }
+
+  const sheetBefore = captureSheetForHistory(sheet);
+  writes.forEach((item) => writeCellContent(sheet, sheetId, item.row, item.col, item.content, { preserveWhitespace: true }));
+  internCellsInRange(sheet, range);
+  refreshWorkbookChartsAfterSourceEdit(op.sheetIndex, range);
+  commitDataOperationForSheet(
+    op.sheetIndex,
+    sheet,
+    sheetBefore,
+    range,
+    `${rangeToLabel(range)} CWS Agent 一括入力`,
+    `CWS Agent: ${sheet.name}!${rangeToLabel(range)} を更新しました。`,
+    range,
+  );
+
+  return {
+    type: "setRange",
+    sheetIndex: op.sheetIndex,
+    sheetName: sheet.name,
+    top: range.top,
+    left: range.left,
+    bottom: range.bottom,
+    right: range.right,
+    address: `${sheet.name}!${rangeToLabel(range)}`,
+  };
+}
+
+function applyCwsAgentSetStyleOp(op) {
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    setActiveSheet(op.sheetIndex);
+  }
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    throw new Error("対象シートを開けませんでした。");
+  }
+
+  const sheet = state.model.sheets[op.sheetIndex];
+  if (!ensureSheetProtectionPermission(sheet, "allowFormatCells", "保護されたシートではセルの書式を変更できません。")) {
+    throw new Error("保護されたシートでは書式を変更できません。");
+  }
+  const range = normalizeRange(
+    { sheetIndex: op.sheetIndex, row: op.top, col: op.left },
+    { sheetIndex: op.sheetIndex, row: op.bottom, col: op.right },
+  );
+  ensureSheetSize(sheet, range.bottom, range.right);
+  const before = captureCellsForHistory(sheet, range);
+  applyCssPatchToSheetRanges(sheet, [range], op.style);
+  const after = captureCellsForHistory(sheet, range);
+
+  state.selected = { sheetIndex: op.sheetIndex, row: range.top, col: range.left };
+  state.selectionRange = range;
+  state.selectionRanges = [range];
+  state.selectionStart = state.selected;
+  state.selectionDrag = null;
+  pushHistory({
+    sheetIndex: op.sheetIndex,
+    before,
+    after,
+    selectionBefore: range,
+    selectionAfter: range,
+    selectionBeforeRanges: [range],
+    selectionAfterRanges: [range],
+    label: `${rangeToLabel(range)} CWS Agent 書式`,
+  });
+  renderWorkbook();
+  updateFormulaBarForSelection();
+  setStatus(`CWS Agent: ${sheet.name}!${rangeToLabel(range)} に書式を適用しました。`);
+
+  return {
+    type: "setStyle",
+    sheetIndex: op.sheetIndex,
+    sheetName: sheet.name,
+    top: range.top,
+    left: range.left,
+    bottom: range.bottom,
+    right: range.right,
+    address: `${sheet.name}!${rangeToLabel(range)}`,
+  };
+}
+
+function applyCwsAgentRowsOp(op) {
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    setActiveSheet(op.sheetIndex);
+  }
+  if (state.activeSheetIndex !== op.sheetIndex) {
+    throw new Error("対象シートを開けませんでした。");
+  }
+
+  const sheet = state.model.sheets[op.sheetIndex];
+  const count = Math.min(op.count, op.type === "deleteRows" ? Math.max(0, sheet.rowCount - op.row + 1) : op.count);
+  if (count < 1) {
+    throw new Error("対象行がありません。");
+  }
+  const range = {
+    sheetIndex: op.sheetIndex,
+    top: op.row,
+    left: 1,
+    bottom: op.row + count - 1,
+    right: Math.max(1, Number(sheet.colCount) || 1),
+    fullRow: true,
+  };
+  const kind = op.type === "insertRows" ? "insert" : "delete";
+  const applied = applyCellStructureOperation(kind, "entire-row", range);
+  if (!applied) {
+    throw new Error(op.type === "insertRows" ? "行を挿入できませんでした。" : "行を削除できませんでした。");
+  }
+  const updatedSheet = state.model.sheets[op.sheetIndex];
+  return {
+    type: op.type,
+    sheetIndex: op.sheetIndex,
+    sheetName: updatedSheet.name,
+    row: op.row,
+    count,
+    address: `${updatedSheet.name}!${rangeToLabel(range)}`,
+  };
+}
 
 function init() {
   state.isStandalone = Boolean(window.__WEBSHEET_STANDALONE__);
@@ -10620,6 +11318,13 @@ function init() {
       rangeToLabel,
       escapeHtml,
       escapeAttr,
+    },
+    operations: {
+      applyOps: applyCwsAgentOps,
+      previewOps: previewCwsAgentOps,
+      setPreviewVisible: setCwsAgentPreviewVisible,
+      commitPreview: commitCwsAgentPreview,
+      clearPreview: clearCwsAgentPreview,
     },
   });
 
@@ -88964,7 +89669,7 @@ function removeSheetStyleRangesAtCell(sheet, row, col) {
 
 function compactSheetDefaultCellCss(sheet) {
   if (!sheet?.cells) return sheet;
-  const existingDefaultCss = defaultableCellCss(sheet.defaultCellCss);
+  const existingDefaultCss = sanitizeSheetDefaultCellCss(sheet, defaultableCellCss(sheet.defaultCellCss));
   const defaultCss = Object.keys(existingDefaultCss).length ? existingDefaultCss : mostCommonDefaultCellCss(sheet);
   sheet.defaultCellCss = internCssObject(defaultCss);
   Object.keys(sheet.cells).forEach((key) => {
@@ -88976,11 +89681,80 @@ function compactSheetDefaultCellCss(sheet) {
   return sheet;
 }
 
+function sanitizeSheetDefaultCellCss(sheet, defaultCss) {
+  if (!defaultCss || !Object.keys(defaultCss).length) return {};
+  const localizedKeys = Object.keys(defaultCss).filter((key) =>
+    LOCALIZED_DEFAULT_CELL_CSS_KEYS.has(key) && sheetDefaultCellCssKeyLooksDecorative(key, defaultCss[key]),
+  );
+  if (!localizedKeys.length || !sheetHasExplicitlyStyledCells(sheet)) return defaultCss;
+  localizeDefaultCellCssToExplicitlyStyledCells(sheet, defaultCss, localizedKeys);
+  return Object.fromEntries(Object.entries(defaultCss).filter(([key]) => !localizedKeys.includes(key)));
+}
+
+function sheetDefaultCellCssKeyLooksDecorative(key, value) {
+  if (key === "color") return cellCssColorLooksLight(value);
+  if (key === "fontWeight") return Boolean(value) && String(value) !== "400";
+  if (key === "fontStyle") return Boolean(value) && String(value) !== "normal";
+  if (key === "textDecoration") return Boolean(value) && String(value) !== "none";
+  if (key === "textAlign") return ["center", "right"].includes(String(value || "").toLowerCase());
+  if (key === "alignItems") return ["center", "flex-end"].includes(String(value || "").toLowerCase());
+  if (key === "textRotation") return Boolean(value);
+  return false;
+}
+
+function cellCssColorLooksLight(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  const hex = normalizeColorValue(text);
+  let channels = null;
+  if (hex) {
+    channels = [
+      Number.parseInt(hex.slice(1, 3), 16),
+      Number.parseInt(hex.slice(3, 5), 16),
+      Number.parseInt(hex.slice(5, 7), 16),
+    ];
+  } else {
+    const match = text.match(/^rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})/i);
+    if (match) channels = [match[1], match[2], match[3]].map((item) => Number.parseInt(item, 10));
+  }
+  if (!channels || channels.some((channel) => !Number.isFinite(channel))) return false;
+  const [red, green, blue] = channels;
+  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) >= 180;
+}
+
+function sheetHasExplicitlyStyledCells(sheet) {
+  return Object.values(sheet?.cells || {}).some(cellLooksExplicitlyStyled);
+}
+
+function localizeDefaultCellCssToExplicitlyStyledCells(sheet, defaultCss, localizedKeys) {
+  Object.values(sheet?.cells || {}).forEach((cell) => {
+    if (!cellLooksExplicitlyStyled(cell)) return;
+    cell.css = mutableCssObject(cell.css);
+    localizedKeys.forEach((key) => {
+      if (cell.css[key] == null || cell.css[key] === "") cell.css[key] = defaultCss[key];
+      if (key === "color") cell.hasFontColor = true;
+    });
+  });
+}
+
+function cellLooksExplicitlyStyled(cell) {
+  if (!cell) return false;
+  const css = cell.css || {};
+  return Boolean(
+    cell.hasFill ||
+      cell.hasFontColor ||
+      css.backgroundColor ||
+      css.color ||
+      Object.keys(cell.borders || {}).length,
+  );
+}
+
 function mostCommonDefaultCellCss(sheet) {
   const counts = new Map();
   const values = new Map();
   Object.values(sheet?.cells || {}).forEach((cell) => {
-    const candidate = defaultableCellCss(cell?.css);
+    if (cellLooksExplicitlyStyled(cell)) return;
+    const candidate = inferredDefaultableCellCss(cell?.css);
     if (!Object.keys(candidate).length) return;
     const key = stableObjectKey(candidate);
     counts.set(key, (counts.get(key) || 0) + 1);
@@ -88995,6 +89769,14 @@ function mostCommonDefaultCellCss(sheet) {
     }
   });
   return bestKey && bestCount >= 2 ? values.get(bestKey) || {} : {};
+}
+
+function inferredDefaultableCellCss(css) {
+  const candidate = {};
+  INFERRED_DEFAULT_CELL_CSS_KEYS.forEach((key) => {
+    if (css?.[key] != null && css[key] !== "") candidate[key] = css[key];
+  });
+  return candidate;
 }
 
 function defaultableCellCss(css) {

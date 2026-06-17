@@ -1,5 +1,6 @@
 const CWS_AGENT_HOST_VERSION = 1;
 const CWS_AGENT_DEFAULT_REMOTE_BASE_URL = "https://chtec.co.jp/cws/cws-agent/";
+const CWS_AGENT_ASSET_VERSION = "20260618-agent-history-2";
 
 let cwsAgentLoadStarted = false;
 
@@ -20,13 +21,15 @@ export function initCwsAgentBridge(runtimeOptions = {}) {
   host.register = (agent) => {
     if (!agent || typeof agent.init !== "function") return;
     host.agent = agent;
-    if (host.initialized) return;
+    if (host.initialized && host.initializedRuntime === host.runtime) return;
     host.initialized = true;
+    host.initializedRuntime = host.runtime;
     try {
       agent.init(host.runtime);
     } catch (error) {
       console.warn("CWS Agent initialization failed:", error);
       host.initialized = false;
+      host.initializedRuntime = null;
     }
   };
   window.ChtWebSheetAgentHost = host;
@@ -42,9 +45,9 @@ export function initCwsAgentBridge(runtimeOptions = {}) {
 function loadCwsAgentAssets(agentBaseUrl) {
   if (!agentBaseUrl || cwsAgentLoadStarted) return;
   cwsAgentLoadStarted = true;
-  loadCwsAgentStylesheet(new URL("agent.css", agentBaseUrl).href);
+  loadCwsAgentStylesheet(cwsAgentAssetUrl("agent.css", agentBaseUrl));
   const script = document.createElement("script");
-  script.src = new URL("agent.js", agentBaseUrl).href;
+  script.src = cwsAgentAssetUrl("agent.js", agentBaseUrl);
   script.async = true;
   script.dataset.cwsAgentScript = "true";
   script.onerror = () => {
@@ -52,6 +55,12 @@ function loadCwsAgentAssets(agentBaseUrl) {
     console.info("CWS Agent is not available at this location.");
   };
   document.head.appendChild(script);
+}
+
+function cwsAgentAssetUrl(assetName, agentBaseUrl) {
+  const url = new URL(assetName, agentBaseUrl);
+  url.searchParams.set("v", CWS_AGENT_ASSET_VERSION);
+  return url.href;
 }
 
 function loadCwsAgentStylesheet(href) {
