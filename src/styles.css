@@ -2724,6 +2724,17 @@ body.is-dragging-print-area * {
   cursor: pointer;
 }
 
+.ribbon-bold-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  font-family: Arial, "Yu Gothic UI", Meiryo, sans-serif;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .ribbon-alignment-group .ribbon-icon-tool {
   width: 18px;
   height: 18px;
@@ -2880,6 +2891,26 @@ body.is-dragging-print-area * {
   grid-template-rows: 13px 4px;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
+}
+
+.ribbon-font-color-mark {
+  display: inline-grid;
+  place-items: center;
+  grid-row: 1;
+  width: 18px;
+  height: 13px;
+  font-family: Arial, "Yu Gothic UI", Meiryo, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+[data-ribbon-color-apply="fontColor"] .ribbon-color-indicator {
+  width: 16px;
+  height: 3px;
+  align-self: start;
+  transform: translateY(1px);
 }
 
 .ribbon-border-main {
@@ -7190,6 +7221,7 @@ body.is-drawing-ink .sheet-host {
 
 .sheet-cell[contenteditable="true"] {
   background: transparent;
+  box-sizing: border-box;
   cursor: text;
   display: block;
   height: var(--cell-edit-overlay-height, 100%);

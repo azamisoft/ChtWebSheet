@@ -14,11 +14,11 @@ import {
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
+  ArrowDownNarrowWide,
+  ArrowDownToLine,
   ArrowUpDown,
-  Baseline,
   BadgePlus,
   BarChart3,
-  Bold,
   BookOpen,
   Box,
   CalendarClock,
@@ -10394,11 +10394,11 @@ const icons = {
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
+  ArrowDownNarrowWide,
+  ArrowDownToLine,
   ArrowUpDown,
-  Baseline,
   BadgePlus,
   BarChart3,
-  Bold,
   BookOpen,
   Box,
   CalendarClock,
@@ -22313,20 +22313,46 @@ function shouldUseCachedWebSheetSpillFormulaForEngine(cell, raw, options = {}) {
   return WEBSHEET_FORMULA_ENGINE_CACHEABLE_SPILL_NAMES.has(webSheetFormulaTopLevelFunctionName(raw));
 }
 
+function hyperFormulaBuildConfig() {
+  return {
+    licenseKey: HYPERFORMULA_LICENSE,
+    leapYear1900: true,
+    useArrayArithmetic: true,
+    maxRows: EXCEL_MAX_ROWS,
+    maxColumns: EXCEL_MAX_COLS,
+  };
+}
+
+function formulaEngineCellEntry(sheet, cell, options = {}) {
+  const row = Number(cell?.row);
+  const col = Number(cell?.col);
+  if (!Number.isInteger(row) || !Number.isInteger(col) || row < 1 || col < 1) return null;
+  let raw = formulaCellRawValue(cell);
+  if (options.useCachedFormulas && typeof raw === "string" && raw.startsWith("=")) {
+    raw = cell.cached ?? null;
+  } else if (shouldUseCachedWebSheetSpillFormulaForEngine(cell, raw, options)) {
+    raw = cachedFormulaEngineValueForCell(cell);
+  }
+  if (raw == null || raw === "") return null;
+  const sheetRows = Math.max(1, Number(sheet?.rowCount) || sheet?.rows?.length || row);
+  const sheetCols = Math.max(1, Number(sheet?.colCount) || sheet?.columns?.length || col);
+  if (row > sheetRows || col > sheetCols) return null;
+  return { row, col, raw, cell };
+}
+
 function denseFormulaDataForSheet(sheet, options = {}) {
-  const rowCount = Math.max(1, Number(sheet?.rowCount) || sheet?.rows?.length || 1);
-  const colCount = Math.max(1, Number(sheet?.colCount) || sheet?.columns?.length || 1);
-  const data = Array.from({ length: rowCount }, () => Array.from({ length: colCount }, () => null));
+  const entries = [];
+  let rowCount = 1;
+  let colCount = 1;
   Object.values(sheet?.cells || {}).forEach((cell) => {
-    const row = Number(cell?.row);
-    const col = Number(cell?.col);
-    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 1 || col < 1 || row > rowCount || col > colCount) return;
-    let raw = formulaCellRawValue(cell);
-    if (options.useCachedFormulas && typeof raw === "string" && raw.startsWith("=")) {
-      raw = cell.cached ?? null;
-    } else if (shouldUseCachedWebSheetSpillFormulaForEngine(cell, raw, options)) {
-      raw = cachedFormulaEngineValueForCell(cell);
-    }
+    const entry = formulaEngineCellEntry(sheet, cell, options);
+    if (!entry) return;
+    entries.push(entry);
+    rowCount = Math.max(rowCount, entry.row);
+    colCount = Math.max(colCount, entry.col);
+  });
+  const data = Array.from({ length: rowCount }, () => Array.from({ length: colCount }, () => null));
+  entries.forEach(({ cell, row, col, raw }) => {
     if (typeof raw === "string" && raw.startsWith("=")) {
       raw = translateFormulaForFormulaEngine(raw, {
         model: options.model,
@@ -22367,11 +22393,7 @@ function buildFormulaEngine(model) {
 
   try {
     state.formulaEngineFallback = false;
-    const hf = HyperFormula.buildFromSheets(sourceSheets, {
-      licenseKey: HYPERFORMULA_LICENSE,
-      leapYear1900: true,
-      useArrayArithmetic: true,
-    });
+    const hf = HyperFormula.buildFromSheets(sourceSheets, hyperFormulaBuildConfig());
     applyFormulaEngineIntrinsicNames(hf);
     applyDefinedNamesToFormulaEngine(hf, model, definedNameAliases);
     return hf;
@@ -22382,11 +22404,7 @@ function buildFormulaEngine(model) {
         useCachedWebSheetDynamicArrays: true,
       });
       try {
-        const hf = HyperFormula.buildFromSheets(dynamicArraySheets, {
-          licenseKey: HYPERFORMULA_LICENSE,
-          leapYear1900: true,
-          useArrayArithmetic: true,
-        });
+        const hf = HyperFormula.buildFromSheets(dynamicArraySheets, hyperFormulaBuildConfig());
         applyFormulaEngineIntrinsicNames(hf);
         applyDefinedNamesToFormulaEngine(hf, model, definedNameAliases);
         state.formulaEngineFallback = false;
@@ -22404,11 +22422,7 @@ function buildFormulaEngine(model) {
     const fallbackSheets = denseFormulaSheetsForWorkbook(model, { useCachedFormulas: true, definedNameAliases });
 
     try {
-      const hf = HyperFormula.buildFromSheets(fallbackSheets, {
-        licenseKey: HYPERFORMULA_LICENSE,
-        leapYear1900: true,
-        useArrayArithmetic: true,
-      });
+      const hf = HyperFormula.buildFromSheets(fallbackSheets, hyperFormulaBuildConfig());
       applyFormulaEngineIntrinsicNames(hf);
       applyDefinedNamesToFormulaEngine(hf, model, definedNameAliases);
       return hf;
@@ -22416,11 +22430,7 @@ function buildFormulaEngine(model) {
       console.warn("Formula engine empty fallback:", fallbackError);
       const hf = HyperFormula.buildFromSheets(
         denseFormulaSheetsForWorkbook(model, { useCachedFormulas: true, definedNameAliases }),
-        {
-          licenseKey: HYPERFORMULA_LICENSE,
-          leapYear1900: true,
-          useArrayArithmetic: true,
-        },
+        hyperFormulaBuildConfig(),
       );
       applyFormulaEngineIntrinsicNames(hf);
       applyDefinedNamesToFormulaEngine(hf, model, definedNameAliases);
@@ -33602,11 +33612,7 @@ function formulaEngineAutocompleteFunctionDefinitions() {
   if (formulaEngineAutocompleteFunctionCache) return formulaEngineAutocompleteFunctionCache;
   let temporaryEngine = null;
   try {
-    const hf = state.hf || HyperFormula.buildEmpty({
-      licenseKey: HYPERFORMULA_LICENSE,
-      leapYear1900: true,
-      useArrayArithmetic: true,
-    });
+    const hf = state.hf || HyperFormula.buildEmpty(hyperFormulaBuildConfig());
     if (!state.hf) temporaryEngine = hf;
     const names = typeof hf.getRegisteredFunctionNames === "function"
       ? hf.getRegisteredFunctionNames()
@@ -95228,14 +95234,22 @@ function cellEditRunHtml(run) {
   return `<span style="${escapeAttr(styleObjectToString(css))}">${text}</span>`;
 }
 
+const CELL_EDIT_MIN_PADDING_TOP = 2;
+const CELL_EDIT_PADDING_BOTTOM = 2;
+
 function syncEditableCellAlignment(cellElement) {
   if (!cellElement || cellElement.getAttribute("contenteditable") !== "true") return;
+  cellElement.style.setProperty("--cell-edit-padding-top", `${CELL_EDIT_MIN_PADDING_TOP}px`);
   const overlay = editableCellOverlayMetrics(cellElement);
-  cellElement.style.setProperty("--cell-edit-padding-top", "2px");
+  const paddingTop = editableCellPaddingTop(cellElement, overlay);
+  const shiftedTextBottom = Number.isFinite(overlay.textBottom)
+    ? overlay.textBottom + paddingTop - CELL_EDIT_MIN_PADDING_TOP
+    : overlay.height;
   cellElement.style.setProperty("--cell-edit-overlay-left", `${overlay.left}px`);
   cellElement.style.setProperty("--cell-edit-overlay-width", `${overlay.width}px`);
   cellElement.style.removeProperty("--cell-edit-overlay-height");
-  cellElement.style.setProperty("--cell-edit-overlay-height", `${overlay.height}px`);
+  cellElement.style.setProperty("--cell-edit-overlay-height", `${Math.ceil(Math.max(overlay.baseHeight || overlay.height, shiftedTextBottom + CELL_EDIT_PADDING_BOTTOM))}px`);
+  cellElement.style.setProperty("--cell-edit-padding-top", `${paddingTop}px`);
   cellElement.scrollTop = 0;
 }
 
@@ -95251,9 +95265,10 @@ function editableCellOverlayMetrics(cellElement) {
   range.selectNodeContents(cellElement);
   const rects = [...range.getClientRects()].filter((rect) => rect.width > 0 || rect.height > 0);
   range.detach?.();
-  if (!rects.length) return { left: 0, width: Math.ceil(baseWidth), height: Math.ceil(baseHeight) };
+  if (!rects.length) return { left: 0, width: Math.ceil(baseWidth), height: Math.ceil(baseHeight), baseHeight: Math.ceil(baseHeight) };
   const textLeft = Math.min(...rects.map((rect) => rect.left)) - cellRect.left;
   const textRight = Math.max(...rects.map((rect) => rect.right)) - cellRect.left;
+  const textTop = Math.min(...rects.map((rect) => rect.top)) - cellRect.top;
   const textBottom = Math.max(...rects.map((rect) => rect.bottom)) - cellRect.top;
   const left = Math.min(0, Math.floor(textLeft) - 3);
   const right = Math.max(baseWidth, Math.ceil(textRight) + 3);
@@ -95261,7 +95276,37 @@ function editableCellOverlayMetrics(cellElement) {
     left,
     width: Math.ceil(right - left),
     height: Math.ceil(Math.max(baseHeight, textBottom + 3)),
+    baseHeight: Math.ceil(baseHeight),
+    textTop,
+    textBottom,
   };
+}
+
+function editableCellPaddingTop(cellElement, overlay) {
+  const baseHeight = Number(overlay?.baseHeight || overlay?.height || 0);
+  const textTop = Number(overlay?.textTop);
+  const textBottom = Number(overlay?.textBottom);
+  const textHeight = Number.isFinite(textTop) && Number.isFinite(textBottom) ? Math.max(0, textBottom - textTop) : 0;
+  if (!baseHeight || !textHeight || baseHeight <= textHeight + CELL_EDIT_MIN_PADDING_TOP + CELL_EDIT_PADDING_BOTTOM) {
+    return CELL_EDIT_MIN_PADDING_TOP;
+  }
+  const vertical = editableCellVerticalAlignment(cellElement);
+  if (vertical === "bottom") {
+    return Math.max(CELL_EDIT_MIN_PADDING_TOP, Math.floor(CELL_EDIT_MIN_PADDING_TOP + baseHeight - textHeight - CELL_EDIT_PADDING_BOTTOM - textTop));
+  }
+  if (vertical === "middle") {
+    return Math.max(CELL_EDIT_MIN_PADDING_TOP, Math.floor(CELL_EDIT_MIN_PADDING_TOP + (baseHeight - textHeight) / 2 - textTop));
+  }
+  return CELL_EDIT_MIN_PADDING_TOP;
+}
+
+function editableCellVerticalAlignment(cellElement) {
+  const computed = getComputedStyle(cellElement);
+  const alignItems = String(computed.alignItems || cellElement.style.alignItems || "").toLowerCase();
+  const verticalAlign = String(computed.verticalAlign || cellElement.style.verticalAlign || "").toLowerCase();
+  if (alignItems === "flex-start" || verticalAlign === "top") return "top";
+  if (alignItems === "flex-end" || verticalAlign === "bottom") return "bottom";
+  return "middle";
 }
 
 function applyValidationImeModeToEditable(element, rule = {}) {
@@ -109752,6 +109797,15 @@ function standaloneRuntime() {
   const model = window.__WEBSHEET_MODEL__;
   const HF = window.HyperFormula?.HyperFormula || window.HyperFormula;
   const licenseKey = "gpl-v3";
+  function hyperFormulaBuildConfig() {
+    return {
+      licenseKey,
+      leapYear1900: true,
+      useArrayArithmetic: true,
+      maxRows: 1048576,
+      maxColumns: 16384,
+    };
+  }
   const state = {
     active: 0,
     selected: null,
@@ -109824,25 +109878,42 @@ function standaloneRuntime() {
     if (!options?.useCachedWebSheetDynamicArrays || typeof raw !== "string" || !raw.startsWith("=")) return false;
     return WEBSHEET_STANDALONE_CACHEABLE_SPILL_NAMES.has(standaloneFormulaTopLevelFunctionName(raw));
   }
+  function standaloneFormulaEngineCellEntry(sheet, cell, options) {
+    const row = Number(cell?.row);
+    const col = Number(cell?.col);
+    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 1 || col < 1) return null;
+    let raw = formulaCellRawValue(cell);
+    if (options?.useCachedFormulas && typeof raw === "string" && raw.startsWith("=")) {
+      raw = cell.cached ?? null;
+    } else if (shouldUseCachedStandaloneSpillFormulaForEngine(cell, raw, options)) {
+      raw = cachedStandaloneFormulaEngineValueForCell(cell);
+    }
+    if (raw == null || raw === "") return null;
+    const sheetRows = Math.max(1, Number(sheet?.rowCount) || sheet?.rows?.length || row);
+    const sheetCols = Math.max(1, Number(sheet?.colCount) || sheet?.columns?.length || col);
+    if (row > sheetRows || col > sheetCols) return null;
+    return { row, col, raw, cell };
+  }
   function denseFormulaDataForSheet(sheet, options) {
-    const rowCount = Math.max(1, Number(sheet?.rowCount) || sheet?.rows?.length || 1);
-    const colCount = Math.max(1, Number(sheet?.colCount) || sheet?.columns?.length || 1);
+    const entries = [];
+    let rowCount = 1;
+    let colCount = 1;
+    Object.keys(sheet?.cells || {}).forEach(function (key) {
+      const entry = standaloneFormulaEngineCellEntry(sheet, sheet.cells[key], options);
+      if (!entry) return;
+      entries.push(entry);
+      rowCount = Math.max(rowCount, entry.row);
+      colCount = Math.max(colCount, entry.col);
+    });
     const data = Array.from({ length: rowCount }, function () {
       return Array.from({ length: colCount }, function () {
         return null;
       });
     });
-    Object.keys(sheet?.cells || {}).forEach(function (key) {
-      const cell = sheet.cells[key];
-      const row = Number(cell?.row);
-      const col = Number(cell?.col);
-      if (!Number.isInteger(row) || !Number.isInteger(col) || row < 1 || col < 1 || row > rowCount || col > colCount) return;
-      let raw = formulaCellRawValue(cell);
-      if (options?.useCachedFormulas && typeof raw === "string" && raw.startsWith("=")) {
-        raw = cell.cached ?? null;
-      } else if (shouldUseCachedStandaloneSpillFormulaForEngine(cell, raw, options)) {
-        raw = cachedStandaloneFormulaEngineValueForCell(cell);
-      }
+    entries.forEach(function (entry) {
+      const row = entry.row;
+      const col = entry.col;
+      let raw = entry.raw;
       if (typeof raw === "string" && raw.startsWith("=")) {
         raw = translateStandaloneFormulaForFormulaEngine(raw, {
           definedNameAliases: options?.definedNameAliases,
@@ -109866,20 +109937,20 @@ function standaloneRuntime() {
   const sourceSheets = denseFormulaSheetsForWorkbook({ definedNameAliases });
   let hf;
   try {
-    hf = HF.buildFromSheets(sourceSheets, { licenseKey, leapYear1900: true, useArrayArithmetic: true });
+    hf = HF.buildFromSheets(sourceSheets, hyperFormulaBuildConfig());
     applyDefinedNamesToFormulaEngine(hf, definedNameAliases);
   } catch (error) {
     if (/resizing to smaller array/i.test(String(error?.message || error || ""))) {
       try {
         const dynamicArraySheets = denseFormulaSheetsForWorkbook({ useCachedWebSheetDynamicArrays: true, definedNameAliases });
-        hf = HF.buildFromSheets(dynamicArraySheets, { licenseKey, leapYear1900: true, useArrayArithmetic: true });
+        hf = HF.buildFromSheets(dynamicArraySheets, hyperFormulaBuildConfig());
         applyDefinedNamesToFormulaEngine(hf, definedNameAliases);
       } catch {}
     }
     if (!hf) {
       const fallbackSheets = denseFormulaSheetsForWorkbook({ useCachedFormulas: true, definedNameAliases });
-    hf = HF.buildFromSheets(fallbackSheets, { licenseKey, leapYear1900: true, useArrayArithmetic: true });
-    applyDefinedNamesToFormulaEngine(hf, definedNameAliases);
+      hf = HF.buildFromSheets(fallbackSheets, hyperFormulaBuildConfig());
+      applyDefinedNamesToFormulaEngine(hf, definedNameAliases);
     }
   }
   const $tabs = $("#wx-tabs");
@@ -112653,14 +112724,21 @@ function standaloneRuntime() {
     scheduleCanvasPaint();
     placeCaretAtEnd($cell[0]);
   }
+  const CELL_EDIT_MIN_PADDING_TOP = 2;
+  const CELL_EDIT_PADDING_BOTTOM = 2;
   function syncEditableCellAlignment(cellElement) {
     if (!cellElement || cellElement.getAttribute("contenteditable") !== "true") return;
+    cellElement.style.setProperty("--cell-edit-padding-top", CELL_EDIT_MIN_PADDING_TOP + "px");
     const overlay = editableCellOverlayMetrics(cellElement);
-    cellElement.style.setProperty("--cell-edit-padding-top", "2px");
+    const paddingTop = editableCellPaddingTop(cellElement, overlay);
+    const shiftedTextBottom = Number.isFinite(overlay.textBottom)
+      ? overlay.textBottom + paddingTop - CELL_EDIT_MIN_PADDING_TOP
+      : overlay.height;
     cellElement.style.setProperty("--cell-edit-overlay-left", overlay.left + "px");
     cellElement.style.setProperty("--cell-edit-overlay-width", overlay.width + "px");
     cellElement.style.removeProperty("--cell-edit-overlay-height");
-    cellElement.style.setProperty("--cell-edit-overlay-height", overlay.height + "px");
+    cellElement.style.setProperty("--cell-edit-overlay-height", Math.ceil(Math.max(overlay.baseHeight || overlay.height, shiftedTextBottom + CELL_EDIT_PADDING_BOTTOM)) + "px");
+    cellElement.style.setProperty("--cell-edit-padding-top", paddingTop + "px");
     cellElement.scrollTop = 0;
   }
   function editableCellOverlayHeight(cellElement) {
@@ -112674,9 +112752,10 @@ function standaloneRuntime() {
     range.selectNodeContents(cellElement);
     const rects = Array.prototype.slice.call(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
     if (range.detach) range.detach();
-    if (!rects.length) return { left: 0, width: Math.ceil(baseWidth), height: Math.ceil(baseHeight) };
+    if (!rects.length) return { left: 0, width: Math.ceil(baseWidth), height: Math.ceil(baseHeight), baseHeight: Math.ceil(baseHeight) };
     const textLeft = Math.min.apply(null, rects.map((rect) => rect.left)) - cellRect.left;
     const textRight = Math.max.apply(null, rects.map((rect) => rect.right)) - cellRect.left;
+    const textTop = Math.min.apply(null, rects.map((rect) => rect.top)) - cellRect.top;
     const textBottom = Math.max.apply(null, rects.map((rect) => rect.bottom)) - cellRect.top;
     const left = Math.min(0, Math.floor(textLeft) - 3);
     const right = Math.max(baseWidth, Math.ceil(textRight) + 3);
@@ -112684,7 +112763,35 @@ function standaloneRuntime() {
       left,
       width: Math.ceil(right - left),
       height: Math.ceil(Math.max(baseHeight, textBottom + 3)),
+      baseHeight: Math.ceil(baseHeight),
+      textTop,
+      textBottom,
     };
+  }
+  function editableCellPaddingTop(cellElement, overlay) {
+    const baseHeight = Number(overlay?.baseHeight || overlay?.height || 0);
+    const textTop = Number(overlay?.textTop);
+    const textBottom = Number(overlay?.textBottom);
+    const textHeight = Number.isFinite(textTop) && Number.isFinite(textBottom) ? Math.max(0, textBottom - textTop) : 0;
+    if (!baseHeight || !textHeight || baseHeight <= textHeight + CELL_EDIT_MIN_PADDING_TOP + CELL_EDIT_PADDING_BOTTOM) {
+      return CELL_EDIT_MIN_PADDING_TOP;
+    }
+    const vertical = editableCellVerticalAlignment(cellElement);
+    if (vertical === "bottom") {
+      return Math.max(CELL_EDIT_MIN_PADDING_TOP, Math.floor(CELL_EDIT_MIN_PADDING_TOP + baseHeight - textHeight - CELL_EDIT_PADDING_BOTTOM - textTop));
+    }
+    if (vertical === "middle") {
+      return Math.max(CELL_EDIT_MIN_PADDING_TOP, Math.floor(CELL_EDIT_MIN_PADDING_TOP + (baseHeight - textHeight) / 2 - textTop));
+    }
+    return CELL_EDIT_MIN_PADDING_TOP;
+  }
+  function editableCellVerticalAlignment(cellElement) {
+    const computed = getComputedStyle(cellElement);
+    const alignItems = String(computed.alignItems || cellElement.style.alignItems || "").toLowerCase();
+    const verticalAlign = String(computed.verticalAlign || cellElement.style.verticalAlign || "").toLowerCase();
+    if (alignItems === "flex-start" || verticalAlign === "top") return "top";
+    if (alignItems === "flex-end" || verticalAlign === "bottom") return "bottom";
+    return "middle";
   }
   function placeCaretAtEnd(element) {
     const selection = window.getSelection?.();
@@ -112840,7 +112947,7 @@ function standaloneRuntime() {
       hf.addSheet(name);
     } catch {
       const sheets = denseFormulaSheetsForWorkbook();
-      hf = HF.buildFromSheets(sheets, { licenseKey, leapYear1900: true, useArrayArithmetic: true });
+      hf = HF.buildFromSheets(sheets, hyperFormulaBuildConfig());
     }
     state.active = model.sheets.length - 1;
     state.selected = null;
@@ -113801,7 +113908,7 @@ html,body{height:100%;overflow:hidden}body{margin:0;background:#eef2f7;color:#1d
 .grid-header{background:#f3f6fa;color:#526173;text-align:center;font-weight:600;user-select:none;text-overflow:clip}.column-header{position:sticky;top:0;z-index:100000}.row-header{position:sticky;left:0;z-index:100000}.corner-header{position:sticky;top:0;left:0;z-index:100001}.header-label{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:clip;white-space:nowrap;pointer-events:none}.sheet-cell{z-index:1;border-right:1px solid transparent;border-bottom:1px solid transparent;background:transparent;background-clip:padding-box;display:flex;align-items:center;user-select:none}.sheet-cell.has-fill{background-clip:border-box}.sheet-cell.has-fill,.sheet-cell.hide-grid-right{border-right-color:transparent}.sheet-cell.has-fill,.sheet-cell.hide-grid-bottom{border-bottom-color:transparent}.sheet-grid.hide-gridlines .sheet-cell{border-right-color:transparent;border-bottom-color:transparent}.corner-header,.row-header{width:100%;min-width:0;max-width:100%;padding:0}
 .sheet-cell.text-overflow{overflow:visible;z-index:2}.sheet-cell.text-overflow .cell-content{pointer-events:none}.cell-content{display:block;width:100%;flex:0 0 auto;overflow:hidden;text-overflow:clip;white-space:inherit}.sheet-cell:not([contenteditable=true]) .cell-content{opacity:0}
 .sheet-image,.sheet-image-link{position:absolute;display:block;box-sizing:border-box;z-index:3}.sheet-image{object-fit:fill;pointer-events:auto;user-select:none}.sheet-image.sheet-shape:not(.is-line-shape){overflow:visible}.sheet-shape-render{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;user-select:none}.sheet-shape-text-layer{position:absolute;inset:0;box-sizing:border-box;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;line-height:1.22;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;pointer-events:none;user-select:none}.sheet-shape-text-block{width:100%;min-width:0}.sheet-picture-crop{overflow:hidden;object-fit:initial}.sheet-picture-crop-content{position:absolute;display:block;max-width:none;max-height:none;pointer-events:none;user-select:none}.sheet-image-link{pointer-events:auto}.sheet-image-link .sheet-image{position:static;width:100%;height:100%}.sheet-image-link .sheet-picture-crop{position:relative}.sheet-image.selected{outline:2px solid #22c55e;outline-offset:1px}.wx-selection-frame{position:absolute;z-index:5;pointer-events:none;box-sizing:border-box;border:2px solid #22c55e;background:rgba(34,197,94,.08)}.wx-selection-frame.is-active::after{content:"";position:absolute;right:-4px;bottom:-4px;width:7px;height:7px;background:#22c55e;border:1px solid #fff;box-sizing:border-box}
-.sheet-cell[contenteditable=true]{background:transparent;cursor:text;display:block;height:var(--cell-edit-overlay-height,100%);isolation:isolate;min-height:100%;overflow:visible;padding-top:var(--cell-edit-padding-top,2px);text-overflow:clip;white-space:pre;user-select:text;scrollbar-width:none;z-index:40}.sheet-cell[contenteditable=true]::before{content:"";position:absolute;z-index:-1;left:var(--cell-edit-overlay-left,0);top:0;width:var(--cell-edit-overlay-width,100%);height:var(--cell-edit-overlay-height,100%);background:var(--cell-fill-color,#fff);pointer-events:none}.sheet-cell[contenteditable=true]::-webkit-scrollbar{width:0;height:0;display:none}.sheet-cell[contenteditable=true] .cell-content{opacity:1;overflow:visible;pointer-events:auto}.sheet-cell[contenteditable=true]:focus{outline:2px solid #22c55e;outline-offset:-2px;z-index:41}.sheet-cell.selected{outline:2px solid #22c55e;outline-offset:-2px;z-index:4}
+.sheet-cell[contenteditable=true]{background:transparent;box-sizing:border-box;cursor:text;display:block;height:var(--cell-edit-overlay-height,100%);isolation:isolate;min-height:100%;overflow:visible;padding-top:var(--cell-edit-padding-top,2px);text-overflow:clip;white-space:pre;user-select:text;scrollbar-width:none;z-index:40}.sheet-cell[contenteditable=true]::before{content:"";position:absolute;z-index:-1;left:var(--cell-edit-overlay-left,0);top:0;width:var(--cell-edit-overlay-width,100%);height:var(--cell-edit-overlay-height,100%);background:var(--cell-fill-color,#fff);pointer-events:none}.sheet-cell[contenteditable=true]::-webkit-scrollbar{width:0;height:0;display:none}.sheet-cell[contenteditable=true] .cell-content{opacity:1;overflow:visible;pointer-events:auto}.sheet-cell[contenteditable=true]:focus{outline:2px solid #22c55e;outline-offset:-2px;z-index:41}.sheet-cell.selected{outline:2px solid #22c55e;outline-offset:-2px;z-index:4}
 .formula-cell:after{content:"";position:absolute;right:3px;top:3px;width:0;height:0;border-left:6px solid transparent;border-top:6px solid #2563eb}
 .cell-annotation-marker{position:absolute;top:0;right:0;z-index:6;width:0;height:0;pointer-events:none;border-left:8px solid transparent}.cell-annotation-marker.is-comment{border-top:8px solid #8064a2}.cell-annotation-marker.is-note{border-top:8px solid #c00000}.sheet-cell.has-comment.has-note .cell-annotation-marker.is-comment{right:9px}
 a{color:#1d4ed8}.cell-select{width:100%;height:100%;border:0;background:transparent;color:inherit}
