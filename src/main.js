@@ -83448,6 +83448,70 @@ function cwsClipboardPayloadFromData(clipboardData) {
   }
 }
 
+function clipboardDataText(clipboardData, type) {
+  if (!clipboardData) return "";
+  try {
+    return clipboardData.getData(type) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function clipboardDataTypes(clipboardData) {
+  try {
+    return Array.from(clipboardData?.types || []).map((type) => String(type || "").toLowerCase());
+  } catch (error) {
+    return [];
+  }
+}
+
+function clipboardHtmlLooksLikeCellTable(html) {
+  const text = String(html || "");
+  if (!text) return false;
+  if (/<table[\s>]/i.test(text) && /<(td|th)[\s>]/i.test(text)) return true;
+  return (
+    /urn:schemas-microsoft-com:office:excel/i.test(text) ||
+    /mso-(?:number-format|data-placement|style-name)/i.test(text) ||
+    /<(?:x:str|x:num|x:excelworkbook)\b/i.test(text)
+  );
+}
+
+function clipboardPlainTextLooksLikeCellGrid(text) {
+  const normalized = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n$/, "");
+  return normalized.includes("\t") || normalized.includes("\n");
+}
+
+function clipboardTypesLookLikeSpreadsheet(types) {
+  return (types || []).some((type) => (
+    type === "text/csv" ||
+    type.includes("spreadsheet") ||
+    type.includes("excel") ||
+    type.includes("worksheet")
+  ));
+}
+
+function clipboardTextPayloadLooksLikeCells(payload) {
+  const text = String(payload?.text || "");
+  if (!text) return false;
+  return (
+    clipboardHtmlLooksLikeCellTable(payload?.html) ||
+    clipboardPlainTextLooksLikeCellGrid(text) ||
+    clipboardTypesLookLikeSpreadsheet(payload?.types)
+  );
+}
+
+function clipboardDataLooksLikeCellPaste(clipboardData, text = null) {
+  if (!clipboardData) return false;
+  return clipboardTextPayloadLooksLikeCells({
+    text: text == null ? clipboardDataText(clipboardData, "text/plain") : text,
+    html: clipboardDataText(clipboardData, "text/html"),
+    types: clipboardDataTypes(clipboardData),
+  });
+}
+
 function clipboardDataHasCwsRangeMarker(clipboardData) {
   if (!clipboardData) return false;
   try {
@@ -83739,6 +83803,58 @@ async function asyncClipboardCwsPayload() {
   return null;
 }
 
+async function asyncClipboardTextPayload() {
+  if (!canUseAsyncClipboardItemRead()) return null;
+  const payload = { text: "", html: "", types: [] };
+  const items = await navigator.clipboard.read();
+  for (const item of items || []) {
+    const types = Array.from(item.types || []);
+    payload.types.push(...types);
+    if (!payload.html && types.includes("text/html")) {
+      try {
+        payload.html = await (await item.getType("text/html")).text();
+      } catch (error) {
+        // Keep scanning other clipboard items.
+      }
+    }
+    if (!payload.text && types.includes("text/plain")) {
+      try {
+        payload.text = await (await item.getType("text/plain")).text();
+      } catch (error) {
+        // Keep scanning other clipboard items.
+      }
+    }
+  }
+  payload.types = Array.from(new Set(payload.types.map((type) => String(type || "").toLowerCase())));
+  return payload;
+}
+
+async function asyncClipboardCellTextPayload() {
+  let itemPayload = null;
+  if (canUseAsyncClipboardItemRead()) {
+    try {
+      itemPayload = await asyncClipboardTextPayload();
+      if (clipboardTextPayloadLooksLikeCells(itemPayload)) return itemPayload;
+    } catch (error) {
+      console.warn("Clipboard text item read failed:", error);
+    }
+  }
+  if (canUseAsyncClipboardRead()) {
+    try {
+      const text = await navigator.clipboard.readText();
+      const payload = {
+        text,
+        html: itemPayload?.html || "",
+        types: itemPayload?.types?.length ? itemPayload.types : ["text/plain"],
+      };
+      if (clipboardTextPayloadLooksLikeCells(payload)) return payload;
+    } catch (error) {
+      console.warn("Clipboard text read failed:", error);
+    }
+  }
+  return null;
+}
+
 function scheduleInternalPasteFallback() {
   if (!state.internalClipboard) return;
   const token = {};
@@ -83930,6 +84046,16 @@ async function pasteFromClipboard(options = {}) {
     return;
   }
 
+  if (options.allowAsyncClipboard === true && (canUseAsyncClipboardItemRead() || canUseAsyncClipboardRead())) {
+    const cellTextPayload = await asyncClipboardCellTextPayload();
+    if (cellTextPayload?.text) {
+      if (consumeStaleCutObjectClipboardText(cellTextPayload.text)) return;
+      clearWorkbookClipboardState();
+      pasteTextAtRange(cellTextPayload.text, range);
+      return;
+    }
+  }
+
   if (options.allowAsyncClipboardImages === true && canUseAsyncClipboardItemRead()) {
     try {
       const imageFiles = await asyncClipboardImageFiles();
@@ -83981,6 +84107,13 @@ async function pasteFromRibbonButton() {
     }
   }
   if (range && (canUseAsyncClipboardItemRead() || canUseAsyncClipboardRead())) {
+    const cellTextPayload = await asyncClipboardCellTextPayload();
+    if (cellTextPayload?.text) {
+      if (consumeStaleCutObjectClipboardText(cellTextPayload.text)) return;
+      clearWorkbookClipboardState();
+      pasteTextAtRange(cellTextPayload.text, range);
+      return;
+    }
     if (canUseAsyncClipboardItemRead()) {
       try {
         const imageFiles = await asyncClipboardImageFiles();
@@ -84334,14 +84467,9 @@ function handleWorkbookPasteEvent(event) {
   if (!state.model || isTextEditingTarget(event.target)) return;
   state.pendingPasteFallback = null;
   const clipboardData = clipboardDataFromEvent(event);
-  const imageFiles = clipboardImageFilesFromData(clipboardData);
-  if (imageFiles.length) {
-    event.preventDefault();
-    cancelObjectPasteFallback();
-    void pasteClipboardImageFiles(imageFiles, { anchor: insertionPointForObjects() });
-    return;
-  }
   const text = clipboardData?.getData("text/plain");
+  const cellTextPaste = clipboardDataLooksLikeCellPaste(clipboardData, text);
+  const imageFiles = clipboardImageFilesFromData(clipboardData);
   restorePersistedInternalClipboard();
   const cwsPayload = cwsClipboardPayloadFromData(clipboardData);
   if (cwsPayload?.kind === "objects" && !cwsObjectPayloadMatchesObjectClipboard(cwsPayload)) {
@@ -84367,6 +84495,12 @@ function handleWorkbookPasteEvent(event) {
     event.preventDefault();
     cancelObjectPasteFallback();
     pasteObjectClipboard();
+    return;
+  }
+  if (imageFiles.length && !cellTextPaste) {
+    event.preventDefault();
+    cancelObjectPasteFallback();
+    void pasteClipboardImageFiles(imageFiles, { anchor: insertionPointForObjects() });
     return;
   }
   const range = activeSelectionRange();
