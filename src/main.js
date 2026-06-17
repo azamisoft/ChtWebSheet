@@ -95929,7 +95929,11 @@ function finishAutoFillDrag(event) {
     openAutoFillRightDragOptions(drag, event);
     return;
   }
-  const result = applyAutoFill(drag.sourceRange, drag.fillRange, drag.targetRange, drag.direction, { mode: drag.mode });
+  const defaultMode = defaultAutoFillMode(activeSheet(), drag.sourceRange);
+  const result = applyAutoFill(drag.sourceRange, drag.fillRange, drag.targetRange, drag.direction, {
+    mode: drag.mode,
+    explicitMode: drag.mode !== defaultMode,
+  });
   if (!result.ok) {
     restoreAutoFillSourceSelection(drag);
     showMessageBox(result.message, { title: "Cht WebSheet" });
@@ -96087,7 +96091,10 @@ function applyAutoFill(sourceRange, fillRange, targetRange, direction, options =
   ensureSheetSize(sheet, targetRange.bottom, targetRange.right);
   const mode = normalizeAutoFillMode(options.mode) || defaultAutoFillMode(sheet, sourceRange);
   removeIntersectingMerges(sheet, fillRange);
-  writeAutoFillCells(sheet, sourceRange, fillRange, direction, { mode });
+  writeAutoFillCells(sheet, sourceRange, fillRange, direction, {
+    mode,
+    explicitMode: options.explicitMode === true,
+  });
   applyAutoFillMerges(sheet, sourceRange, fillRange, direction);
   const tableEdit = applyTableRangeEditBehaviors(sheet, fillRange);
   state.hf = buildFormulaEngine(state.model);
@@ -96385,7 +96392,11 @@ function applyAutoFillOption(mode) {
   const beforeMap = autoFillHistoryCellMap(options.before);
   ensureSheetSize(sheet, options.targetRange.bottom, options.targetRange.right);
   removeIntersectingMerges(sheet, options.fillRange);
-  writeAutoFillCells(sheet, options.sourceRange, options.fillRange, options.direction, { mode, beforeMap });
+  writeAutoFillCells(sheet, options.sourceRange, options.fillRange, options.direction, {
+    mode,
+    beforeMap,
+    explicitMode: true,
+  });
   applyAutoFillMerges(sheet, options.sourceRange, options.fillRange, options.direction);
   state.hf = buildFormulaEngine(state.model);
   const after = captureCellsForHistory(sheet, options.targetRange);
@@ -96435,7 +96446,30 @@ function normalizeAutoFillMode(mode) {
 }
 
 function defaultAutoFillMode(sheet, sourceRange) {
+  if (autoFillSourceIsPlainAlphabet(sheet, sourceRange)) return "copy";
   return isSinglePlainNumberAutoFillSource(sheet, sourceRange) ? "copy" : "series";
+}
+
+function autoFillSourceIsPlainAlphabet(sheet, sourceRange) {
+  if (!sheet || !sourceRange) return false;
+  const cellCount = (sourceRange.bottom - sourceRange.top + 1) * (sourceRange.right - sourceRange.left + 1);
+  const entries = autoFillPlainAlphabetEntries(sheet, sourceRange);
+  return entries.length > 0 && entries.length === cellCount;
+}
+
+function autoFillPlainAlphabetEntries(sheet, sourceRange) {
+  const entries = [];
+  let invalid = false;
+  forEachCellInRange(sourceRange, (row, col) => {
+    if (invalid) return;
+    const entry = cellAlphabetEntryForAutoFill(sheet, row, col);
+    if (!entry) {
+      invalid = true;
+      return;
+    }
+    entries.push(entry);
+  });
+  return invalid ? [] : entries;
 }
 
 function autoFillModeForPointerEvent(sheet, sourceRange, event, fallbackMode = "") {
@@ -96582,6 +96616,7 @@ function writeAutoFillCells(sheet, sourceRange, fillRange, direction, options = 
     const nextCell = cloneCellForAutoFill(sheet, sourceRange, sourceCell, sourcePoint, row, col, direction, {
       mode,
       beforeCell,
+      explicitMode: options.explicitMode === true,
     });
     nextCell.row = row;
     nextCell.col = col;
@@ -96628,6 +96663,7 @@ function cloneCellForAutoFill(sheet, sourceRange, sourceCell, sourcePoint, targe
 
   const seriesValue = options.mode === "copy" ? null : autoFillSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction, {
     mode: options.mode,
+    explicitMode: options.explicitMode === true,
   });
   if (seriesValue) {
     nextCell.raw = seriesValue.raw;
@@ -96675,6 +96711,7 @@ function autoFillSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetC
   }
   return autoFillDateSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction, options) ||
     autoFillListSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction) ||
+    autoFillAlphabetSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction, options) ||
     autoFillTextNumberSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction) ||
     autoFillNumericSeriesEntry(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction);
 }
@@ -97079,6 +97116,39 @@ function circularListStep(firstIndex, lastIndex, length, intervals) {
   if (forward < 0) forward += length;
   if (forward === 0) return 0;
   return forward / intervals;
+}
+
+function autoFillAlphabetSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction, options = {}) {
+  if (options.mode !== "series" || options.explicitMode !== true) return null;
+  const axis = autoFillAxisContext(sourceRange, sourcePoint, targetRow, targetCol, direction);
+  const entries = [];
+  for (let index = 0; index < axis.length; index += 1) {
+    const { row, col } = autoFillAxisCellPoint(sourceRange, sourcePoint, axis, index);
+    const entry = cellAlphabetEntryForAutoFill(sheet, row, col);
+    if (!entry) return null;
+    entries.push(entry);
+  }
+  const first = entries[0];
+  if (!entries.every((entry) => entry.letterCase === first.letterCase)) return null;
+  const step = axis.length >= 2 ? (entries[axis.length - 1].value - first.value) / (axis.length - 1) : 1;
+  if (!Number.isFinite(step) || step === 0 || !Number.isInteger(step)) return null;
+  const source = entries[axis.sourceIndex] || first;
+  const nextValue = source.value + step * (axis.targetIndex - axis.sourceIndex);
+  if (!Number.isInteger(nextValue) || nextValue < 1) return null;
+  const text = first.letterCase === "lower" ? columnName(nextValue).toLowerCase() : columnName(nextValue);
+  return { raw: text, cached: text, display: text };
+}
+
+function cellAlphabetEntryForAutoFill(sheet, row, col) {
+  const cell = sheet.cells[cellKey(row, col)];
+  if (!cell || cell.formula) return null;
+  const text = String(cell.raw ?? cell.cached ?? cell.display ?? "").trim();
+  if (!/^[A-Za-z]+$/.test(text)) return null;
+  if (cellListEntryForAutoFill(sheet, row, col)) return null;
+  const letterCase = text === text.toUpperCase() ? "upper" : (text === text.toLowerCase() ? "lower" : "");
+  if (!letterCase) return null;
+  const value = columnNumber(text);
+  return Number.isInteger(value) && value > 0 ? { value, letterCase } : null;
 }
 
 function autoFillTextNumberSeriesValue(sheet, sourceRange, sourcePoint, targetRow, targetCol, direction) {
