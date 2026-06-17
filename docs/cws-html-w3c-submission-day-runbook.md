@@ -1,14 +1,14 @@
 # CWS HTML W3C Submission Day Runbook
 
-Status: Draft 0.1
+Status: Completed submission / post-creation reference
 
-Date: 2026-06-12
+Date: 2026-06-17
 
 ## Purpose
 
-This runbook is the step-by-step checklist for the day a W3C Community Group
-proposal is submitted. It assumes the work is still an incubation draft and
-must not be described as a W3C Recommendation or W3C Standard.
+This runbook records the W3C Community Group submission flow and the
+post-creation checklist. The work is Community Group incubation and must not be
+described as a W3C Recommendation or W3C Standard.
 
 ## Stop Conditions
 
@@ -34,7 +34,7 @@ Do not submit yet if any of these are true:
 6. Confirm the proposed group name is still acceptable.
 7. Confirm the short name `html-workbook` is still acceptable.
 8. Confirm at least five people have been privately asked whether they are
-   willing to support group creation once the proposed group page exists.
+   willing to support group creation.
 
 ## Verification Commands
 
@@ -68,8 +68,9 @@ Check for remaining public-link placeholders:
 rg -n "\\[link\\]|\\[PUBLIC_|<PUBLIC_BLOB_BASE_URL>" docs README.md
 ```
 
-`[W3C_PROPOSED_GROUP_URL]` may remain in the supporter follow-up message until
-W3C creates the proposed group page.
+Official W3C group URL after creation:
+
+https://www.w3.org/community/html-workbook/
 
 ## Submit Proposed Community Group
 
@@ -84,30 +85,26 @@ W3C creates the proposed group page.
 9. Review the final preview for overclaiming.
 10. Submit the proposed group.
 
-## Immediately After Submission
+## Submission Result
 
-1. Save the proposed group URL.
-2. Add the proposed group URL to local notes.
-3. Replace `[W3C_PROPOSED_GROUP_URL]` in the supporter follow-up message.
-4. Ask the five prepared supporters to support the proposed group through the
-   W3C page.
-5. Update `docs/cws-html-supporter-tracker.md` privately with who has been
-   asked and who has responded.
-6. Do not announce that the group has launched until W3C shows the group as
-   created.
+The AI-Editable HTML Workbook Community Group was created by W3C after the
+proposal received five supporters.
 
-## Public Announcement After Proposal
+Official group URL:
+
+https://www.w3.org/community/html-workbook/
+
+## Public Announcement After Launch
 
 Use a conservative announcement:
 
-> A proposed W3C Community Group is open for support and feedback: AI-Editable
-> HTML Workbook Community Group. The initial contribution is CWS HTML 1.0 Draft,
-> an incubation draft for browser-openable, AI-editable workbook HTML. This is
-> not a W3C Recommendation or W3C Standard.
+> The W3C AI-Editable HTML Workbook Community Group has launched. The initial
+> contribution is CWS HTML 1.0 Draft, an incubation draft for browser-openable,
+> AI-editable workbook HTML. This is not a W3C Recommendation or W3C Standard.
 
 Include links to:
 
-- proposed group page;
+- W3C Community Group page;
 - explainer;
 - draft specification;
 - prior-art note;
@@ -145,6 +142,8 @@ W3C account:
 
 Proposed group URL:
 
+W3C group URL:
+
 Public repository URL:
 
 Spec URL:
@@ -162,6 +161,10 @@ Follow-up issues:
 ## Post-Creation Checklist
 
 After the group is created:
+
+Official W3C group URL:
+
+https://www.w3.org/community/html-workbook/
 
 1. Update status wording from "proposed group" to "Community Group incubation".
 2. Add the W3C group URL to the public repository.

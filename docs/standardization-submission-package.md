@@ -1,8 +1,8 @@
 # CWS HTML Standardization Submission Package
 
-Status: Draft 0.1
+Status: Community Group launched
 
-Date: 2026-06-12
+Date: 2026-06-17
 
 ## Executive Summary
 
@@ -12,8 +12,9 @@ structure is stored as plain JSON in `script#websheet-model`. Automated agents
 can edit workbook content by modifying that JSON region without rewriting the
 runtime, loader, styles, or presentation-only HTML.
 
-The first standardization target should be incubation through a W3C Community
-Group. W3C Community Groups are intended for open discussion, specification
+The first standardization target is incubation through the W3C
+[AI-Editable HTML Workbook Community Group](https://www.w3.org/community/html-workbook/).
+W3C Community Groups are intended for open discussion, specification
 development, and test-suite work, and their reports may later become input to a
 formal standards-track process.
 
@@ -59,8 +60,7 @@ object positions, and image references remain plain JSON.
 
 1. Publish the project-level draft and examples.
 2. Use the reference validator to build conformance evidence.
-3. Open discussion through a W3C Community Group or an existing related Web
-   document incubation forum.
+3. Open discussion through the W3C AI-Editable HTML Workbook Community Group.
 4. Collect implementation and interoperability feedback.
 5. Consider Recommendation Track or other formal standardization only after
    broader implementation evidence exists.
@@ -109,7 +109,7 @@ Current:
 - Valid and invalid conformance examples are present.
 - Model diff and round-trip report helpers are present for evidence collection.
 
-Needed before external submission:
+Completed before W3C Community Group launch:
 
 - Public URLs for the specification, schema, AI guide, and examples.
 - At least one real exported workbook from CWS that validates.
@@ -121,8 +121,15 @@ Needed before external submission:
 - Five individual supporters for W3C Community Group creation.
 - Public wording that clearly says the work is incubation, not an approved W3C
   standard.
+
+Needed during Community Group incubation:
+
 - Early accessibility, internationalization, security, and privacy review
   requests.
+- Chair selection and operational agreement confirmation.
+- Initial public issues for scope, naming, conformance, image encoding, and
+  security/privacy review.
+- Additional implementation and round-trip evidence.
 
 ## Open Questions
 

@@ -9,6 +9,13 @@ separately.
 
 The project is developed by CHT Co., Ltd. (株式会社CHT).
 
+## W3C Community Group
+
+CWS HTML 1.0 Draft is being incubated through the
+[AI-Editable HTML Workbook Community Group](https://www.w3.org/community/html-workbook/).
+This is W3C Community Group incubation work, not a W3C Recommendation or W3C
+Standard.
+
 ## What It Does
 
 CWS lets users open a workbook in a browser, edit it with a spreadsheet-like
@@ -197,8 +204,8 @@ npm run test:e2e
   roadmap and material checklist.
 - `docs/cws-html-w3c-cg-form-draft.md`: form-ready W3C Community Group
   proposal draft.
-- `docs/cws-html-w3c-cg-submission-copy.md`: final copy-paste text for a W3C
-  Community Group proposal.
+- `docs/cws-html-w3c-cg-submission-copy.md`: W3C Community Group proposal text
+  and post-creation invitation copy.
 - `docs/cws-html-w3c-submission-day-runbook.md`: submission-day checklist and
   post-submission follow-up sequence.
 - `docs/cws-html-cg-operational-agreement-draft.md`: initial Community Group
