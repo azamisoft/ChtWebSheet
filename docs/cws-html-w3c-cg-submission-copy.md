@@ -1,22 +1,25 @@
 # CWS HTML W3C Community Group Submission Copy
 
-Status: Draft 0.1
+Status: Launched Community Group
 
-Date: 2026-06-12
+Date: 2026-06-17
 
 ## Purpose
 
-This document contains concise copy for a W3C Community Group proposal form.
-Replace bracketed placeholders before submission. Keep the wording conservative:
-this is an incubation proposal, not a claim that CWS HTML is already a W3C
-standard.
+This document preserves the W3C Community Group proposal text and provides
+post-creation invitation copy. Keep the wording conservative: this is Community
+Group incubation, not a claim that CWS HTML is already a W3C standard.
 
-## Pre-Submission Status Statement
+## Official Group URL
+
+https://www.w3.org/community/html-workbook/
+
+## Status Statement
 
 Use this near the proposal repository or announcement:
 
-> CWS HTML 1.0 Draft is a project-level incubation draft for an AI-editable HTML
-> workbook profile. It is not a W3C Recommendation or W3C Standard.
+> CWS HTML 1.0 Draft is being incubated through the W3C AI-Editable HTML
+> Workbook Community Group. It is not a W3C Recommendation or W3C Standard.
 
 ## Proposed Group Name
 
@@ -125,7 +128,7 @@ Success does not require immediate transition to the W3C Recommendation Track.
 
 - Public Git repository: https://github.com/azamisoft/ChtWebSheet/
 - Public issue tracker: https://github.com/azamisoft/ChtWebSheet/issues
-- W3C Community Group discussion channel, if the group is created.
+- W3C Community Group: https://www.w3.org/community/html-workbook/
 - Periodic public progress reports.
 
 ## Initial 90-Day Plan
@@ -143,27 +146,22 @@ Success does not require immediate transition to the W3C Recommendation Track.
 9. Ask adjacent communities for prior-art and venue feedback if this has not
    already happened.
 
-## Post-Submission Supporter Message
+## Post-Creation Join Message
 
-Use this after the W3C proposed group page exists:
+Use this to invite people to join the launched Community Group:
 
 Hello,
 
-The proposed AI-Editable HTML Workbook Community Group page is now available:
+The W3C AI-Editable HTML Workbook Community Group has launched:
 
-`[W3C_PROPOSED_GROUP_URL]`
+https://www.w3.org/community/html-workbook/
 
-If you are still willing to support creating the discussion venue, please visit
-the proposal page and support the group there. Supporting group creation means
-supporting a public incubation venue; it does not mean endorsing every technical
-detail of CWS HTML 1.0 Draft.
+If you are interested in browser-openable, AI-editable workbook HTML files,
+please consider joining the group. Joining the group means participating in a
+public incubation venue; it does not mean endorsing every technical detail of
+the current CWS HTML 1.0 Draft.
 
 The current draft remains an incubation draft and is not a W3C Recommendation or
 W3C Standard.
 
 Thank you.
-
-## Remaining Placeholder
-
-`[W3C_PROPOSED_GROUP_URL]` is intentionally left in the supporter follow-up
-message until W3C creates the proposed group page.
