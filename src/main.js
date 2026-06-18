@@ -10814,6 +10814,91 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
   return { ok: true, previewId, visible: true, applied: results.length, results };
 }
 
+async function appendCwsAgentPreviewOpsProgressively(ops = [], options = {}) {
+  if (!Array.isArray(ops)) {
+    throw new Error("Agent 操作が正しくありません。");
+  }
+  if (!state.model) {
+    throw new Error("ブックが開かれていません。");
+  }
+  if (!state.cwsAgentPreview || (options.messageId && state.cwsAgentPreview.messageId !== String(options.messageId))) {
+    return previewCwsAgentOpsProgressively(ops, options);
+  }
+
+  const preview = state.cwsAgentPreview;
+  const existingResults = Array.isArray(preview.results) ? preview.results : [];
+  if (existingResults.length + ops.length > CWS_AGENT_MAX_OPS) {
+    throw new Error(`一度にプレビューできる Agent 操作は${CWS_AGENT_MAX_OPS}件までです。`);
+  }
+  if (preview.visible === false) {
+    applyHistoryEntry(preview.historyEntry, "redo");
+    preview.visible = true;
+  }
+
+  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, existingResults.length + index));
+  const baseline = preview.historyEntry;
+  const revisionSnapshot = cwsAgentWorkbookRevisionSnapshot();
+  const results = [];
+  const wasRestoringHistory = state.isRestoringHistory;
+
+  try {
+    state.isRestoringHistory = true;
+    for (let index = 0; index < normalizedOps.length; index += 1) {
+      const result = applyCwsAgentOp(normalizedOps[index]);
+      results.push(result);
+      cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+      renderCwsAgentProgressivePreviewStep();
+      if (typeof options.onProgress === "function") {
+        options.onProgress({
+          index: index + 1,
+          total: normalizedOps.length,
+          result,
+          results: results.slice(),
+        });
+      }
+      if (index < normalizedOps.length - 1) {
+        await cwsAgentDelay(cwsAgentProgressivePreviewDelayMs(options));
+      }
+    }
+  } catch (error) {
+    restoreSheetsFromHistory(baseline.sheetsBefore || []);
+    state.model.definedNames = cloneDefinedNames(baseline.definedNamesBefore);
+    state.activeSheetIndex = Math.max(0, Math.min(Number(baseline.activeSheetBefore) || 0, state.model.sheets.length - 1));
+    cwsAgentRestoreSelectionSnapshot(baseline.selectionBefore, baseline.selectionBeforeRanges, state.activeSheetIndex);
+    state.hf = buildFormulaEngine(state.model);
+    state.cwsAgentPreview = null;
+    renderWorkbook();
+    updateSelectionUi();
+    updateFormulaBarForSelection();
+    throw error;
+  } finally {
+    state.isRestoringHistory = wasRestoringHistory;
+    cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+  }
+
+  const afterSheetIndexes = state.model.sheets.map((_sheet, index) => index);
+  preview.results = existingResults.concat(results);
+  preview.historyEntry = {
+    ...baseline,
+    sheetsAfter: captureSheetsForHistory(afterSheetIndexes),
+    definedNamesAfter: cloneDefinedNames(state.model.definedNames),
+    selectionAfter: cwsAgentCloneRange(state.selectionRange),
+    selectionAfterRanges: cwsAgentCloneRanges(state.selectionRanges),
+    activeSheetAfter: state.activeSheetIndex,
+  };
+  cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+  setStatus("CWS Agent: 変更プレビューを表示しています。");
+  return {
+    ok: true,
+    previewId: preview.id,
+    visible: true,
+    applied: preview.results.length,
+    appended: results.length,
+    results: preview.results,
+    appendedResults: results,
+  };
+}
+
 function cwsAgentProgressivePreviewDelayMs(options = {}) {
   const value = Number(options.stepDelayMs);
   if (Number.isFinite(value)) return Math.max(0, Math.min(500, value));
@@ -20641,6 +20726,7 @@ function init() {
       applyOps: applyCwsAgentOps,
       previewOps: previewCwsAgentOps,
       previewOpsProgressively: previewCwsAgentOpsProgressively,
+      appendPreviewOpsProgressively: appendCwsAgentPreviewOpsProgressively,
       setPreviewVisible: setCwsAgentPreviewVisible,
       commitPreview: commitCwsAgentPreview,
       clearPreview: clearCwsAgentPreview,
