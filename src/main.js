@@ -10641,6 +10641,7 @@ const CWS_AGENT_MAX_SHAPE_SIZE = 1600;
 const CWS_AGENT_MAX_SHAPE_TEXT = 2000;
 const CWS_AGENT_MAX_GOAL_SEEK_ABS_TARGET = 1e15;
 const CWS_AGENT_MAX_OPS = 80;
+const CWS_AGENT_PROGRESSIVE_PREVIEW_DELAY_MS = 90;
 const CWS_AGENT_BORDER_PRESETS = new Set(["none", "outside", "thick-outside", "all", "inside", "top", "right", "bottom", "left", "thick-bottom", "remove-outside"]);
 
 function applyCwsAgentOps(ops = [], options = {}) {
@@ -10726,6 +10727,107 @@ function previewCwsAgentOps(ops = [], options = {}) {
     updateFormulaBarForSelection();
     throw error;
   }
+}
+
+async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
+  if (!Array.isArray(ops)) {
+    throw new Error("Agent 操作が正しくありません。");
+  }
+  if (!state.model) {
+    throw new Error("ブックが開かれていません。");
+  }
+  if (ops.length > CWS_AGENT_MAX_OPS) {
+    throw new Error(`一度にプレビューできる Agent 操作は${CWS_AGENT_MAX_OPS}件までです。`);
+  }
+
+  clearCwsAgentPreview({ restore: true, quiet: true });
+  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, index));
+  const sheetIndexes = state.model.sheets.map((_sheet, index) => index);
+  const sheetsBefore = captureSheetsForHistory(sheetIndexes);
+  const definedNamesBefore = cloneDefinedNames(state.model.definedNames);
+  const activeSheetBefore = state.activeSheetIndex;
+  const selectionBefore = cwsAgentCloneRange(state.selectionRange);
+  const selectionBeforeRanges = cwsAgentCloneRanges(state.selectionRanges);
+  const revisionSnapshot = cwsAgentWorkbookRevisionSnapshot();
+  const results = [];
+  const wasRestoringHistory = state.isRestoringHistory;
+
+  try {
+    state.isRestoringHistory = true;
+    for (let index = 0; index < normalizedOps.length; index += 1) {
+      const result = applyCwsAgentOp(normalizedOps[index]);
+      results.push(result);
+      cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+      renderCwsAgentProgressivePreviewStep();
+      if (typeof options.onProgress === "function") {
+        options.onProgress({
+          index: index + 1,
+          total: normalizedOps.length,
+          result,
+          results: results.slice(),
+        });
+      }
+      if (index < normalizedOps.length - 1) {
+        await cwsAgentDelay(cwsAgentProgressivePreviewDelayMs(options));
+      }
+    }
+  } catch (error) {
+    restoreSheetsFromHistory(sheetsBefore);
+    state.model.definedNames = cloneDefinedNames(definedNamesBefore);
+    state.activeSheetIndex = Math.max(0, Math.min(activeSheetBefore, state.model.sheets.length - 1));
+    cwsAgentRestoreSelectionSnapshot(selectionBefore, selectionBeforeRanges, state.activeSheetIndex);
+    state.hf = buildFormulaEngine(state.model);
+    renderWorkbook();
+    updateSelectionUi();
+    updateFormulaBarForSelection();
+    throw error;
+  } finally {
+    state.isRestoringHistory = wasRestoringHistory;
+    cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+  }
+
+  const afterSheetIndexes = sheetIndexes.filter((index) => state.model?.sheets?.[index]);
+  const historyEntry = {
+    sheetIndex: state.activeSheetIndex,
+    sheetsBefore,
+    sheetsAfter: captureSheetsForHistory(afterSheetIndexes),
+    definedNamesBefore,
+    definedNamesAfter: cloneDefinedNames(state.model.definedNames),
+    selectionBefore,
+    selectionAfter: cwsAgentCloneRange(state.selectionRange),
+    selectionBeforeRanges,
+    selectionAfterRanges: cwsAgentCloneRanges(state.selectionRanges),
+    activeSheetBefore,
+    activeSheetAfter: state.activeSheetIndex,
+    label: "CWS Agent プレビュー",
+  };
+  const previewId = `cws-agent-preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  state.cwsAgentPreview = {
+    id: previewId,
+    messageId: String(options.messageId || ""),
+    historyEntry,
+    results,
+    visible: true,
+  };
+  cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
+  setStatus("CWS Agent: 変更プレビューを表示しています。");
+  return { ok: true, previewId, visible: true, applied: results.length, results };
+}
+
+function cwsAgentProgressivePreviewDelayMs(options = {}) {
+  const value = Number(options.stepDelayMs);
+  if (Number.isFinite(value)) return Math.max(0, Math.min(500, value));
+  return CWS_AGENT_PROGRESSIVE_PREVIEW_DELAY_MS;
+}
+
+function cwsAgentDelay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function renderCwsAgentProgressivePreviewStep() {
+  renderWorkbook();
+  updateSelectionUi();
+  updateFormulaBarForSelection();
 }
 
 function setCwsAgentPreviewVisible(previewId, visible) {
@@ -20538,6 +20640,7 @@ function init() {
     operations: {
       applyOps: applyCwsAgentOps,
       previewOps: previewCwsAgentOps,
+      previewOpsProgressively: previewCwsAgentOpsProgressively,
       setPreviewVisible: setCwsAgentPreviewVisible,
       commitPreview: commitCwsAgentPreview,
       clearPreview: clearCwsAgentPreview,
