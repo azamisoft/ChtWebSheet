@@ -11343,8 +11343,8 @@ body.is-drawing-ink .sheet-host {
 }
 
 .find-dialog {
-  width: min(430px, calc(100vw - 32px));
-  grid-template-rows: 32px auto 46px;
+  width: min(540px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, auto) auto;
   pointer-events: auto;
 }
 
@@ -11376,6 +11376,10 @@ body.is-drawing-ink .sheet-host {
   margin-bottom: 8px;
 }
 
+.find-dialog-scope {
+  margin-bottom: 8px;
+}
+
 .find-dialog-options {
   display: grid;
   gap: 5px;
@@ -11385,6 +11389,76 @@ body.is-drawing-ink .sheet-host {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.find-dialog-results {
+  margin-top: 10px;
+  border: 1px solid #9aa4b2;
+  background: #fff;
+}
+
+.find-dialog-results-summary {
+  min-height: 24px;
+  padding: 5px 7px;
+  border-bottom: 1px solid #c9d2df;
+  color: #1f2937;
+}
+
+.find-dialog-results-head,
+.find-dialog-result {
+  display: grid;
+  grid-template-columns: minmax(78px, 0.85fr) 76px minmax(0, 2fr);
+  column-gap: 8px;
+}
+
+.find-dialog-results-head {
+  padding: 4px 7px;
+  border-bottom: 1px solid #d9e1ec;
+  background: #f3f6fa;
+  color: #475467;
+  font-weight: 600;
+}
+
+.find-dialog-results-list {
+  max-height: min(230px, 34vh);
+  overflow: auto;
+}
+
+.find-dialog-result {
+  width: 100%;
+  min-height: 25px;
+  padding: 4px 7px;
+  border: 0;
+  border-bottom: 1px solid #edf1f7;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.find-dialog-result:hover,
+.find-dialog-result:focus-visible,
+.find-dialog-result.is-selected {
+  background: #e8f1ff;
+  outline: none;
+}
+
+.find-dialog-result span,
+.find-dialog-results-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.find-dialog-results-empty {
+  padding: 10px 7px;
+  color: #475467;
+}
+
+.find-dialog .excel-mini-actions {
+  flex-wrap: wrap;
 }
 
 .go-to-dialog {
