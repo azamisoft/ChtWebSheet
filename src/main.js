@@ -11000,6 +11000,7 @@ function init() {
   $(document).on("change", "[data-layout-field]", handlePageLayoutFieldChange);
   $(document).on("change", "[data-layout-sheet-option]", handlePageLayoutSheetOptionChange);
   $(document).on("click", "[data-find-dialog-action]", handleFindDialogAction);
+  $(document).on("input change", "#findDialog [data-find-field]", handleFindDialogFieldChange);
   $(document).on("change", "[data-formula-function-category]", handleInsertFunctionCategoryChange);
   $(document).on("input", "[data-formula-function-search]", handleInsertFunctionSearchInput);
   $(document).on("keydown", "[data-formula-function-search]", handleInsertFunctionSearchKeydown);
@@ -51316,7 +51317,8 @@ function openFindDialog(options = {}) {
   closeSpecialDialog();
   closeHomeCommandMenu();
   const mode = options.mode === "replace" ? "replace" : "find";
-  state.findDialog = { query: "", mode };
+  const scope = normalizeFindScope(options.scope || state.lastFind?.options?.scope);
+  state.findDialog = { query: "", mode, scope };
   const overlay = document.createElement("div");
   overlay.id = "findDialogOverlay";
   overlay.className = "excel-dialog-overlay find-dialog-overlay";
@@ -51330,14 +51332,21 @@ function openFindDialog(options = {}) {
         </div>
         <label class="excel-dialog-field find-dialog-query"><span class="excel-dialog-caption">${accessKeyLabelHtml("検索する文字列(N):")}</span><input type="text" data-find-field="query" /></label>
         <label class="excel-dialog-field find-dialog-replace${mode === "replace" ? "" : " hidden"}"><span class="excel-dialog-caption">${accessKeyLabelHtml("置換後の文字列(E):")}</span><input type="text" data-find-field="replacement" /></label>
+        <label class="excel-dialog-field find-dialog-scope"><span class="excel-dialog-caption">${accessKeyLabelHtml("検索場所(H):")}</span><select data-find-field="scope"><option value="sheet"${scope === "sheet" ? " selected" : ""}>シート</option><option value="workbook"${scope === "workbook" ? " selected" : ""}>ブック</option></select></label>
         <div class="find-dialog-options">
           <label><input type="checkbox" data-find-field="caseSensitive" />大文字と小文字を区別する(C)</label>
           <label><input type="checkbox" data-find-field="wholeCell" />セル内容が完全に同一であるものを検索する(O)</label>
+        </div>
+        <div class="find-dialog-results hidden" data-find-results>
+          <div class="find-dialog-results-summary" data-find-results-summary></div>
+          <div class="find-dialog-results-head" aria-hidden="true"><span>シート</span><span>セル</span><span>値</span></div>
+          <div class="find-dialog-results-list" role="listbox" aria-label="検索結果" data-find-results-list></div>
         </div>
       </div>
       <div class="excel-mini-actions">
         <button class="excel-mini-button find-replace-action${mode === "replace" ? "" : " hidden"}" type="button" data-find-dialog-action="replace-all">すべて置換(A)</button>
         <button class="excel-mini-button find-replace-action${mode === "replace" ? "" : " hidden"}" type="button" data-find-dialog-action="replace-one">置換(R)</button>
+        <button class="excel-mini-button" type="button" data-find-dialog-action="find-all">すべて検索(I)</button>
         <button class="excel-mini-button is-primary" type="button" data-find-dialog-action="find-next">次を検索(F)</button>
         <button class="excel-mini-button" type="button" data-find-dialog-action="close">閉じる</button>
       </div>
@@ -51353,6 +51362,8 @@ function handleFindDialogAction(event) {
     return;
   }
   if (action === "find-next") findNextFromDialog(event.currentTarget.closest("#findDialog"));
+  if (action === "find-all") findAllFromDialog(event.currentTarget.closest("#findDialog"));
+  if (action === "select-result") selectFindResultFromDialog(event.currentTarget.closest("#findDialog"), event.currentTarget);
   if (action === "replace-one") replaceFromDialog(event.currentTarget.closest("#findDialog"), { all: false });
   if (action === "replace-all") replaceFromDialog(event.currentTarget.closest("#findDialog"), { all: true });
   if (action === "show-find") setFindDialogMode(event.currentTarget.closest("#findDialog"), "find");
@@ -51381,6 +51392,12 @@ function handleFindDialogKeydown(event) {
   }
 }
 
+function handleFindDialogFieldChange(event) {
+  const field = event.target?.dataset?.findField || "";
+  if (!field || field === "replacement") return;
+  clearFindAllResults(event.currentTarget.closest("#findDialog"));
+}
+
 function closeFindDialogOnEscape(event) {
   if (event.key !== "Escape" || !state.findDialog) return;
   if (isElementImeCompositionEvent(event)) return;
@@ -51393,6 +51410,18 @@ function closeFindDialog() {
   state.findDialog = null;
 }
 
+function normalizeFindScope(scope) {
+  return scope === "workbook" ? "workbook" : "sheet";
+}
+
+function findDialogOptionsFromElement(dialog) {
+  return {
+    caseSensitive: Boolean(dialog?.querySelector("[data-find-field='caseSensitive']")?.checked),
+    wholeCell: Boolean(dialog?.querySelector("[data-find-field='wholeCell']")?.checked),
+    scope: normalizeFindScope(dialog?.querySelector("[data-find-field='scope']")?.value),
+  };
+}
+
 function findNextFromDialog(dialog) {
   if (!dialog) return;
   const query = String(dialog.querySelector("[data-find-field='query']")?.value || "");
@@ -51400,10 +51429,7 @@ function findNextFromDialog(dialog) {
     showMessageBox("検索する文字列を入力してください。", { title: "Cht WebSheet" });
     return;
   }
-  const options = {
-    caseSensitive: Boolean(dialog.querySelector("[data-find-field='caseSensitive']")?.checked),
-    wholeCell: Boolean(dialog.querySelector("[data-find-field='wholeCell']")?.checked),
-  };
+  const options = findDialogOptionsFromElement(dialog);
   state.lastFind = { query, options };
   const match = findNextCell(query, options);
   if (!match) {
@@ -51412,6 +51438,24 @@ function findNextFromDialog(dialog) {
   }
   selectSingleRange(match.range, `${rangeToLabel(match.range)} が見つかりました。`);
   dialog.querySelector("[data-find-field='query']")?.focus({ preventScroll: true });
+}
+
+function findAllFromDialog(dialog) {
+  if (!dialog) return;
+  const query = String(dialog.querySelector("[data-find-field='query']")?.value || "");
+  if (!query) {
+    showMessageBox("検索する文字列を入力してください。", { title: "Cht WebSheet" });
+    return;
+  }
+  const options = findDialogOptionsFromElement(dialog);
+  state.lastFind = { query, options };
+  const matches = findMatchingCells(query, options);
+  renderFindAllResults(dialog, matches, query, options);
+  if (!matches.length) {
+    setStatus("検索対象が見つかりません。");
+    return;
+  }
+  setStatus(`${matches.length} 件が見つかりました。`);
 }
 
 function repeatLastFindShortcut() {
@@ -51437,30 +51481,31 @@ function replaceFromDialog(dialog, options = {}) {
     return;
   }
   const replacement = String(dialog.querySelector("[data-find-field='replacement']")?.value || "");
-  const findOptions = {
-    caseSensitive: Boolean(dialog.querySelector("[data-find-field='caseSensitive']")?.checked),
-    wholeCell: Boolean(dialog.querySelector("[data-find-field='wholeCell']")?.checked),
-  };
+  const findOptions = findDialogOptionsFromElement(dialog);
   state.lastFind = { query, options: findOptions };
-  const sheet = activeSheet();
-  const sheetId = getSheetId(sheet?.name);
-  if (!sheet || sheetId == null) return;
   const matches = options.all ? findMatchingCells(query, findOptions) : [findCurrentOrNextCell(query, findOptions)].filter(Boolean);
   if (!matches.length) {
     showMessageBox("検索対象が見つかりません。", { title: "Cht WebSheet" });
     return;
   }
 
-  const sheetBefore = captureSheetForHistory(sheet);
+  const activeSheetBefore = state.activeSheetIndex;
   const selectionBefore = activeSelectionRange();
   const selectionBeforeRanges = rawActiveSelectionRanges().map((range) => ({ ...range }));
+  const affectedSheetIndexes = [...new Set(matches.map((match) => match.sheetIndex).filter((sheetIndex) => state.model?.sheets?.[sheetIndex]))];
+  const sheetsBefore = captureSheetsForHistory(affectedSheetIndexes);
   let changed = 0;
+  const changedMatches = [];
   matches.forEach((match) => {
+    const sheet = state.model?.sheets?.[match.sheetIndex];
+    const sheetId = getSheetId(sheet?.name);
+    if (!sheet || sheetId == null) return;
     const source = getCellRawInput(sheet, match.row, match.col);
     const nextValue = replaceCellText(source, query, replacement, { ...findOptions, replaceAllInCell: options.all });
     if (nextValue === source) return;
     writeCellContent(sheet, sheetId, match.row, match.col, nextValue);
     changed += 1;
+    changedMatches.push(match);
   });
   if (!changed) {
     showMessageBox("置換できる一致が見つかりません。", { title: "Cht WebSheet" });
@@ -51468,53 +51513,134 @@ function replaceFromDialog(dialog, options = {}) {
   }
 
   state.hf = buildFormulaEngine(state.model);
-  const last = matches[Math.min(matches.length - 1, changed - 1)];
-  const selectedRange = expandRangeForMerges(sheet, normalizeRange({ sheetIndex: state.activeSheetIndex, row: last.row, col: last.col }, { sheetIndex: state.activeSheetIndex, row: last.row, col: last.col }));
-  state.selected = { sheetIndex: state.activeSheetIndex, row: selectedRange.top, col: selectedRange.left };
-  state.selectionRange = selectedRange;
-  state.selectionRanges = [selectedRange];
-  state.selectionStart = state.selected;
-  state.selectionAnchor = state.selected;
-  state.selectionDrag = null;
-  state.selectedImage = null;
-  state.selectedImages = [];
+  const last = changedMatches[changedMatches.length - 1];
+  const selectedRange = findRangeForCell(last.sheetIndex, last.row, last.col);
+  const historySheetIndexes = sheetsBefore.map((snapshot) => snapshot.index);
   pushHistory({
-    sheetIndex: state.activeSheetIndex,
-    sheetBefore,
-    sheetAfter: captureSheetForHistory(sheet),
+    sheetIndex: selectedRange.sheetIndex,
+    activeSheetBefore,
+    activeSheetAfter: selectedRange.sheetIndex,
+    sheetsBefore,
+    sheetsAfter: captureSheetsForHistory(historySheetIndexes),
     selectionBefore,
     selectionAfter: selectedRange,
     selectionBeforeRanges,
     selectionAfterRanges: [selectedRange],
     label: `${changed} 件の置換`,
   });
-  renderSheet();
-  updateSelectionUi();
-  updateFormulaBarForSelection();
+  clearFindAllResults(dialog);
+  selectSingleRange(selectedRange, `${changed} 件を置換しました。`);
   setStatus(`${changed} 件を置換しました。`);
   dialog.querySelector("[data-find-field='query']")?.focus({ preventScroll: true });
 }
 
 function findCurrentOrNextCell(query, options = {}) {
-  const sheet = activeSheet();
-  if (state.selected?.sheetIndex === state.activeSheetIndex && cellMatchesFindQuery(sheet, state.selected.row, state.selected.col, query, options)) {
-    return { row: state.selected.row, col: state.selected.col, range: activeSelectionRange() };
+  const scope = normalizeFindScope(options.scope);
+  const selectedSheetIndex = state.selected?.sheetIndex;
+  const sheet = state.model?.sheets?.[selectedSheetIndex];
+  const canUseSelectedCell = sheet
+    && isSheetVisible(sheet)
+    && (scope === "workbook" || selectedSheetIndex === state.activeSheetIndex)
+    && cellMatchesFindQuery(sheet, state.selected.row, state.selected.col, query, options);
+  if (canUseSelectedCell) {
+    const range = findRangeForCell(selectedSheetIndex, state.selected.row, state.selected.col);
+    return { sheetIndex: selectedSheetIndex, row: state.selected.row, col: state.selected.col, range };
   }
   const match = findNextCell(query, options);
-  return match ? { row: match.range.top, col: match.range.left, range: match.range } : null;
+  return match ? { sheetIndex: match.sheetIndex, row: match.row, col: match.col, range: match.range } : null;
 }
 
 function findMatchingCells(query, options = {}) {
-  const sheet = activeSheet();
-  const used = sheetUsedRange(sheet);
-  if (!sheet || !used) return [];
   const matches = [];
-  for (let row = used.top; row <= used.bottom; row += 1) {
-    for (let col = used.left; col <= used.right; col += 1) {
-      if (cellMatchesFindQuery(sheet, row, col, query, options)) matches.push({ row, col });
+  const seen = new Set();
+  findSearchSheetIndexes(options).forEach((sheetIndex) => {
+    const sheet = state.model?.sheets?.[sheetIndex];
+    const used = sheetUsedRange(sheet);
+    if (!sheet || !used) return;
+    for (let row = used.top; row <= used.bottom; row += 1) {
+      for (let col = used.left; col <= used.right; col += 1) {
+        if (!cellMatchesFindQuery(sheet, row, col, query, options)) continue;
+        const range = findRangeForCell(sheetIndex, row, col);
+        const key = `${range.sheetIndex}:${range.top}:${range.left}:${range.bottom}:${range.right}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        matches.push({ sheetIndex, row, col, range });
+      }
     }
-  }
+  });
   return matches;
+}
+
+function renderFindAllResults(dialog, matches, query, options = {}) {
+  if (!dialog) return;
+  const results = matches.map((match) => ({
+    sheetIndex: match.sheetIndex,
+    row: match.row,
+    col: match.col,
+    range: match.range,
+  }));
+  state.findDialog = {
+    ...(state.findDialog || {}),
+    query,
+    options,
+    results,
+  };
+  const panel = dialog.querySelector("[data-find-results]");
+  const summary = dialog.querySelector("[data-find-results-summary]");
+  const list = dialog.querySelector("[data-find-results-list]");
+  if (!panel || !summary || !list) return;
+  dialog.classList.add("is-results-visible");
+  panel.classList.remove("hidden");
+  summary.textContent = results.length ? `${results.length} 件見つかりました。` : "検索対象が見つかりません。";
+  if (!results.length) {
+    list.innerHTML = `<div class="find-dialog-results-empty">該当するセルはありません。</div>`;
+    return;
+  }
+  list.innerHTML = results.map((match, index) => findResultButtonHtml(match, index)).join("");
+}
+
+function clearFindAllResults(dialog) {
+  if (!dialog) return;
+  dialog.classList.remove("is-results-visible");
+  const panel = dialog.querySelector("[data-find-results]");
+  const summary = dialog.querySelector("[data-find-results-summary]");
+  const list = dialog.querySelector("[data-find-results-list]");
+  panel?.classList.add("hidden");
+  if (summary) summary.textContent = "";
+  if (list) list.innerHTML = "";
+  if (state.findDialog) state.findDialog.results = [];
+}
+
+function findResultButtonHtml(match, index) {
+  const sheet = state.model?.sheets?.[match.sheetIndex];
+  const sheetId = sheet ? getSheetId(sheet.name) : null;
+  const range = match.range || findRangeForCell(match.sheetIndex, match.row, match.col);
+  const address = rangeToLabel(range);
+  const display = sheet && sheetId != null ? getDisplayForCell(sheet, sheetId, match.row, match.col) : "";
+  const raw = sheet ? getCellRawInput(sheet, match.row, match.col) : "";
+  const value = String(display ?? "") || String(raw ?? "");
+  const sheetName = sheet?.name || `Sheet${Number(match.sheetIndex) + 1}`;
+  const title = `${sheetName}!${address} ${value}`;
+  return `
+    <button class="find-dialog-result" type="button" role="option" aria-selected="false" title="${escapeAttr(title)}" data-find-dialog-action="select-result" data-find-result-index="${index}">
+      <span>${escapeHtml(sheetName)}</span>
+      <span>${escapeHtml(address)}</span>
+      <span>${escapeHtml(String(value ?? ""))}</span>
+    </button>`;
+}
+
+function selectFindResultFromDialog(dialog, target) {
+  const index = Number(target?.dataset?.findResultIndex);
+  const result = state.findDialog?.results?.[index];
+  if (!dialog || !result) return;
+  const range = result.range || findRangeForCell(result.sheetIndex, result.row, result.col);
+  selectSingleRange(range, `${rangeToLabel(range)} が見つかりました。`);
+  dialog.querySelectorAll("[data-find-result-index]").forEach((button) => {
+    const selected = Number(button.dataset.findResultIndex) === index;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+  target.focus({ preventScroll: true });
 }
 
 function replaceCellText(value, query, replacement, options = {}) {
@@ -51532,31 +51658,83 @@ function replaceCellText(value, query, replacement, options = {}) {
 }
 
 function findNextCell(query, options = {}) {
-  const sheet = activeSheet();
-  const used = sheetUsedRange(sheet);
-  if (!sheet || !used) return null;
-  const cells = [];
-  for (let row = used.top; row <= used.bottom; row += 1) {
-    for (let col = used.left; col <= used.right; col += 1) {
-      cells.push({ row, col });
-    }
-  }
+  const cells = findCellsInScope(options);
   if (!cells.length) return null;
-  const selectedRow = state.selected?.sheetIndex === state.activeSheetIndex ? state.selected.row : used.top;
-  const selectedCol = state.selected?.sheetIndex === state.activeSheetIndex ? state.selected.col : used.left;
-  const currentIndex = cells.findIndex((cell) => cell.row === selectedRow && cell.col === selectedCol);
-  const startIndex = currentIndex >= 0 ? currentIndex : -1;
+  const startIndex = findSearchStartIndex(cells, options);
   for (let offset = 1; offset <= cells.length; offset += 1) {
     const cellPoint = cells[(startIndex + offset + cells.length) % cells.length];
+    const sheet = state.model?.sheets?.[cellPoint.sheetIndex];
     if (cellMatchesFindQuery(sheet, cellPoint.row, cellPoint.col, query, options)) {
-      const base = normalizeRange({ sheetIndex: state.activeSheetIndex, ...cellPoint }, { sheetIndex: state.activeSheetIndex, ...cellPoint });
-      return { range: expandRangeForMerges(sheet, base) || base };
+      return {
+        sheetIndex: cellPoint.sheetIndex,
+        row: cellPoint.row,
+        col: cellPoint.col,
+        range: findRangeForCell(cellPoint.sheetIndex, cellPoint.row, cellPoint.col),
+      };
     }
   }
   return null;
 }
 
+function findSearchStartIndex(cells, options = {}) {
+  const scope = normalizeFindScope(options.scope);
+  const selected = state.selected;
+  const selectedSheetIndex = selected && (scope === "workbook" || selected.sheetIndex === state.activeSheetIndex)
+    ? selected.sheetIndex
+    : state.activeSheetIndex;
+  const selectedRow = selected?.sheetIndex === selectedSheetIndex ? selected.row : 0;
+  const selectedCol = selected?.sheetIndex === selectedSheetIndex ? selected.col : 0;
+  const currentIndex = cells.findIndex((cell) => (
+    cell.sheetIndex === selectedSheetIndex
+    && cell.row === selectedRow
+    && cell.col === selectedCol
+  ));
+  if (currentIndex >= 0) return currentIndex;
+  const nextIndex = cells.findIndex((cell) => (
+    cell.sheetIndex > selectedSheetIndex
+    || (
+      cell.sheetIndex === selectedSheetIndex
+      && (cell.row > selectedRow || (cell.row === selectedRow && cell.col > selectedCol))
+    )
+  ));
+  return nextIndex >= 0 ? nextIndex - 1 : cells.length - 1;
+}
+
+function findSearchSheetIndexes(options = {}) {
+  if (!state.model?.sheets?.length) return [];
+  if (normalizeFindScope(options.scope) !== "workbook") {
+    const sheet = state.model.sheets[state.activeSheetIndex];
+    return sheet && isSheetVisible(sheet) ? [state.activeSheetIndex] : [];
+  }
+  return state.model.sheets
+    .map((sheet, index) => (isSheetVisible(sheet) ? index : -1))
+    .filter((index) => index >= 0);
+}
+
+function findCellsInScope(options = {}) {
+  const cells = [];
+  findSearchSheetIndexes(options).forEach((sheetIndex) => {
+    const sheet = state.model?.sheets?.[sheetIndex];
+    const used = sheetUsedRange(sheet);
+    if (!sheet || !used) return;
+    for (let row = used.top; row <= used.bottom; row += 1) {
+      for (let col = used.left; col <= used.right; col += 1) {
+        cells.push({ sheetIndex, row, col });
+      }
+    }
+  });
+  return cells;
+}
+
+function findRangeForCell(sheetIndex, row, col) {
+  const targetSheetIndex = Number(sheetIndex);
+  const sheet = state.model?.sheets?.[targetSheetIndex];
+  const base = normalizeRange({ sheetIndex: targetSheetIndex, row, col }, { sheetIndex: targetSheetIndex, row, col });
+  return { ...(expandRangeForMerges(sheet, base) || base), sheetIndex: targetSheetIndex };
+}
+
 function cellMatchesFindQuery(sheet, row, col, query, options = {}) {
+  if (!sheet) return false;
   const sheetId = getSheetId(sheet.name);
   const raw = getCellRawInput(sheet, row, col);
   const display = getDisplayForCell(sheet, sheetId, row, col);
@@ -51604,15 +51782,23 @@ function selectSingleRange(range, statusMessage) {
 function selectRangesForHomeCommand(ranges, statusMessage) {
   const firstRange = ranges[0];
   if (!firstRange) return;
-  state.selected = { sheetIndex: state.activeSheetIndex, row: firstRange.top, col: firstRange.left };
-  state.selectionRange = { ...firstRange };
-  state.selectionRanges = ranges.map((range) => ({ ...range }));
+  const targetSheetIndex = Number.isInteger(Number(firstRange.sheetIndex)) ? Number(firstRange.sheetIndex) : state.activeSheetIndex;
+  const targetSheet = state.model?.sheets?.[targetSheetIndex];
+  if (!targetSheet || !isSheetVisible(targetSheet)) return;
+  if (targetSheetIndex !== state.activeSheetIndex) setActiveSheet(targetSheetIndex);
+  const targetRanges = ranges
+    .map((range) => ({ ...range, sheetIndex: Number.isInteger(Number(range.sheetIndex)) ? Number(range.sheetIndex) : targetSheetIndex }))
+    .filter((range) => range.sheetIndex === targetSheetIndex);
+  const selectedRange = targetRanges[0] || { ...firstRange, sheetIndex: targetSheetIndex };
+  state.selected = { sheetIndex: targetSheetIndex, row: selectedRange.top, col: selectedRange.left };
+  state.selectionRange = { ...selectedRange };
+  state.selectionRanges = targetRanges.length ? targetRanges.map((range) => ({ ...range })) : [state.selectionRange];
   state.selectionStart = state.selected;
   state.selectionAnchor = state.selected;
   state.selectionDrag = null;
   state.selectedImage = null;
   state.selectedImages = [];
-  scrollRangeIntoView(firstRange);
+  scrollRangeIntoView(selectedRange);
   renderSheet();
   updateSelectionUi();
   updateFormulaBarForSelection();
@@ -89544,17 +89730,23 @@ function applyHistoryEntry(entry, direction) {
 	    state.hf = buildFormulaEngine(state.model);
     const selection = direction === "undo" ? entry.selectionBefore : entry.selectionAfter;
     const selectionRanges = direction === "undo" ? entry.selectionBeforeRanges : entry.selectionAfterRanges;
-    const selectionSheetIndex = Math.max(0, Math.min(
+    const clampHistorySheetIndex = (value, fallback = entry.sheetIndex) => Math.max(0, Math.min(
+      Number.isFinite(Number(value)) ? Number(value) : fallback,
       state.model.sheets.length - 1,
-      Number.isFinite(Number(restoredWorkbookView?.activeSheetIndex)) ? Number(restoredWorkbookView.activeSheetIndex) : entry.sheetIndex,
     ));
+    const restoredActiveSheetIndex = clampHistorySheetIndex(restoredWorkbookView?.activeSheetIndex, entry.sheetIndex);
+    const explicitActiveSheetIndex = direction === "undo" ? entry.activeSheetBefore : entry.activeSheetAfter;
+    const nextActiveSheetIndex = clampHistorySheetIndex(explicitActiveSheetIndex, restoredActiveSheetIndex);
+    if (!restoredWorkbookWindowRecord) state.activeSheetIndex = nextActiveSheetIndex;
+    const selectionRangeSheetIndex = selectionRanges?.find((range) => Number.isFinite(Number(range?.sheetIndex)))?.sheetIndex;
+    const selectionSheetIndex = clampHistorySheetIndex(selection?.sheetIndex ?? selectionRangeSheetIndex, state.activeSheetIndex);
     if (!restoredWorkbookWindowRecord) {
       state.selected = selection
         ? { sheetIndex: selectionSheetIndex, row: selection.top, col: selection.left }
         : null;
-      state.selectionRange = selection || null;
+      state.selectionRange = selection ? { ...selection, sheetIndex: selectionSheetIndex } : null;
       state.selectionRanges = selectionRanges?.length
-        ? selectionRanges.map((range) => ({ ...range, sheetIndex: selectionSheetIndex }))
+        ? selectionRanges.map((range) => ({ ...range, sheetIndex: clampHistorySheetIndex(range.sheetIndex, selectionSheetIndex) }))
         : state.selectionRange
           ? [state.selectionRange]
           : [];
