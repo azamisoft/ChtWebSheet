@@ -11808,8 +11808,32 @@ function normalizeCwsAgentAddShapeOp(op, index, aliasType = "") {
     box,
     style,
     name: cwsAgentShapeObjectName(op?.objectName ?? op?.shapeName ?? op?.name),
+    connector: cwsAgentShapeConnectorForOp(op),
     anchor: location.anchorLabel,
   };
+}
+
+function cwsAgentShapeConnectorForOp(op) {
+  const fromShape = cwsAgentShapeReferenceText(cwsAgentFirstExistingValue(op, ["fromShape", "sourceShape", "startShape", "fromShapeName", "sourceShapeName", "startShapeName"]));
+  const toShape = cwsAgentShapeReferenceText(cwsAgentFirstExistingValue(op, ["toShape", "targetShape", "endShape", "toShapeName", "targetShapeName", "endShapeName"]));
+  if (!fromShape || !toShape) return null;
+  return {
+    fromShape,
+    toShape,
+    fromSite: cwsAgentOptionalLineEndpointSide(cwsAgentFirstExistingValue(op, ["fromSite", "fromSide", "sourceSite", "sourceSide", "startSite", "startSide"])),
+    toSite: cwsAgentOptionalLineEndpointSide(cwsAgentFirstExistingValue(op, ["toSite", "toSide", "targetSite", "targetSide", "endSite", "endSide"])),
+  };
+}
+
+function cwsAgentShapeReferenceText(value) {
+  if (value === null || value === undefined || Array.isArray(value) || typeof value === "object") return "";
+  return String(value).trim().slice(0, 120);
+}
+
+function cwsAgentOptionalLineEndpointSide(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const normalized = cwsAgentLineEndpointSide(value);
+  return normalized === "center" ? "" : normalized;
 }
 
 function normalizeCwsAgentSetDataValidationOp(op, index) {
@@ -14476,12 +14500,12 @@ function cwsAgentForecastRangeForOp(op, index) {
   return { sheetIndex, top, left, bottom, right };
 }
 
-function cwsAgentShapeLocationForOp(op, index) {
+function cwsAgentShapeLocationForOp(op, index, fallbackSheetName = "") {
   const rangeText = String(cwsAgentFirstExistingValue(op, ["targetRange", "shapeRange", "placeRange", "anchorRange", "range"])).trim();
   const parsedRange = cwsAgentParseRangeAddress(rangeText);
   const cellText = String(cwsAgentFirstExistingValue(op, ["targetCell", "anchorCell", "topLeftCell", "cell", "address", "ref", "at"])).trim();
   const parsedCell = cwsAgentParseCellAddress(cellText) || (parsedRange ? { sheetName: parsedRange.sheetName, row: parsedRange.top, col: parsedRange.left } : null);
-  const sheetIndex = cwsAgentSheetIndexForOp(op, parsedCell?.sheetName || parsedRange?.sheetName || "");
+  const sheetIndex = cwsAgentSheetIndexForOp(op, parsedCell?.sheetName || parsedRange?.sheetName || fallbackSheetName || "");
   const sheet = state.model?.sheets?.[sheetIndex];
   if (!sheet || !isSheetVisible(sheet)) {
     throw new Error(`Agent 操作 ${index + 1} のシートが見つかりません。`);
@@ -14498,6 +14522,38 @@ function cwsAgentShapeLocationForOp(op, index) {
       ? `${columnName(parsedCell.col)}${parsedCell.row}`
       : "図形";
   return { sheetIndex, parsedRange, parsedCell, anchorLabel };
+}
+
+function cwsAgentLineEndpointSide(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const aliases = {
+    left: "left",
+    l: "left",
+    west: "left",
+    左: "left",
+    左側: "left",
+    right: "right",
+    r: "right",
+    east: "right",
+    右: "right",
+    右側: "right",
+    top: "top",
+    t: "top",
+    north: "top",
+    上: "top",
+    上側: "top",
+    bottom: "bottom",
+    b: "bottom",
+    south: "bottom",
+    下: "bottom",
+    下側: "bottom",
+    center: "center",
+    middle: "center",
+    centre: "center",
+    中央: "center",
+    中心: "center",
+  };
+  return aliases[normalized] || "center";
 }
 
 function cwsAgentShapeBoxForOp(op, index, sheet, location, shapeType, style = {}) {
@@ -17677,15 +17733,16 @@ function applyCwsAgentAddShapeOp(op) {
     throw new Error("保護されたシートではオブジェクトを挿入できません。");
   }
 
+  const shapeBox = cwsAgentShapeConnectorBoxForOp(op, sheet) || op.box;
   const descriptor = shapeDescriptorForType(op.shapeType, {
     ...op.style,
-    width: op.box.width,
-    height: op.box.height,
+    width: shapeBox.width,
+    height: shapeBox.height,
   });
   const sheetBefore = captureSheetForHistory(sheet);
   const selectionBefore = activeSelectionRange();
   const selectionBeforeRanges = activeSelectionRanges().map((range) => ({ ...range }));
-  const image = addShapeAtPixelBoxToSheet(sheet, op.shapeType, op.box, descriptor);
+  const image = addShapeAtPixelBoxToSheet(sheet, op.shapeType, shapeBox, descriptor);
   if (!image) {
     throw new Error("図形を挿入できませんでした。");
   }
@@ -17725,12 +17782,54 @@ function applyCwsAgentAddShapeOp(op) {
     shapeType: image.shape?.type || op.shapeType,
     shapeId: image.id,
     name: image.name,
-    left: op.box.left,
-    top: op.box.top,
-    width: op.box.width,
-    height: op.box.height,
+    left: shapeBox.left,
+    top: shapeBox.top,
+    width: shapeBox.width,
+    height: shapeBox.height,
     address: `${sheet.name}!${op.anchor || "図形"}`,
   };
+}
+
+function cwsAgentShapeConnectorBoxForOp(op, sheet) {
+  if (!isLineShapeType(op?.shapeType) || !op?.connector) return null;
+  const from = cwsAgentFindShapeForConnector(sheet, op.connector.fromShape);
+  const to = cwsAgentFindShapeForConnector(sheet, op.connector.toShape);
+  if (!from || !to) {
+    throw new Error(`線の接続先図形が見つかりません: ${op.connector.fromShape} -> ${op.connector.toShape}`);
+  }
+  const fromSite = op.connector.fromSite;
+  const toSite = op.connector.toSite;
+  if (!fromSite || !toSite) {
+    throw new Error(`線の接続点指定がありません: ${op.connector.fromShape} -> ${op.connector.toShape}`);
+  }
+  const start = shapeConnectionPointForSite(sheet, from, fromSite);
+  const end = shapeConnectionPointForSite(sheet, to, toSite);
+  if (!start || !end) {
+    throw new Error(`線の接続点が見つかりません: ${fromSite} -> ${toSite}`);
+  }
+  const result = lineBoxAndPointsFromEndpoints(start, end, { shape: { type: op.shapeType, ...(op.style || {}) } });
+  return {
+    left: Math.max(0, Math.round(result.box.left)),
+    top: Math.max(0, Math.round(result.box.top)),
+    width: cwsAgentClampDimension(result.box.width, CWS_AGENT_MIN_SHAPE_SIZE, CWS_AGENT_MAX_SHAPE_SIZE),
+    height: cwsAgentClampDimension(result.box.height, CWS_AGENT_MIN_SHAPE_SIZE, CWS_AGENT_MAX_SHAPE_SIZE),
+    points: result.points,
+    connections: {
+      start: { imageId: from.id, site: fromSite },
+      end: { imageId: to.id, site: toSite },
+    },
+  };
+}
+
+function cwsAgentFindShapeForConnector(sheet, reference) {
+  const text = String(reference || "").trim();
+  if (!text || !sheet?.images?.length) return null;
+  const images = [...sheet.images].reverse();
+  return images.find((image) =>
+    image?.id === text ||
+    image?.name === text ||
+    image?.shape?.label === text
+  ) || null;
 }
 
 function applyCwsAgentSetQuickAnalysisOp(op) {
