@@ -93481,8 +93481,28 @@ function ribbonShapeChoiceHtml(shape) {
   if (!preset) return "";
   const active = preset.type === state.currentShapeType ? " is-active" : "";
   return `<button class="ribbon-shape-choice${active}" type="button" role="menuitem" title="${escapeAttr(preset.label)}" aria-label="${escapeAttr(preset.label)}" data-ribbon-shape-choice="${escapeAttr(preset.type)}">
-    ${shapeSvgMarkup(preset.type, { width: 34, height: 22 })}
+    ${shapeSvgMarkup(preset.type, ribbonShapePreviewOptions(preset.type))}
   </button>`;
+}
+
+function ribbonShapePreviewOptions(type) {
+  const base = { width: 34, height: 22 };
+  switch (type) {
+    case "elbowConnector":
+      return {
+        ...base,
+        points: { x1: 0.08, y1: 0.78, x2: 0.92, y2: 0.22 },
+        adjust: { bend: 0.5 },
+      };
+    case "curvedConnector":
+      return {
+        ...base,
+        points: { x1: 0.08, y1: 0.74, x2: 0.92, y2: 0.26 },
+        adjust: { curve: 0.08 },
+      };
+    default:
+      return base;
+  }
 }
 
 function ribbonUnderlineMenuHtml(current) {
@@ -93792,20 +93812,113 @@ function cwsClipboardPayloadJson(payload) {
 }
 
 function cwsClipboardHtmlForPayload(payload, text = "") {
-  const json = escapeHtml(cwsClipboardPayloadJson(payload));
   const visibleHtml = payload?.kind === "range"
-    ? cwsClipboardTsvHtmlTable(text)
+    ? cwsClipboardRangeHtmlTable(payload.clipboard, text)
     : `<span>${escapeHtml(text || payload?.text || "Cht WebSheet")}</span>`;
-  return `<div ${CWS_CLIPBOARD_HTML_MARKER}="true" style="display:none">${json}</div>${visibleHtml}`;
+  return `${visibleHtml}${cwsClipboardHtmlPayloadComment(payload)}`;
+}
+
+function cwsClipboardHtmlPayloadComment(payload) {
+  return `<!--${CWS_CLIPBOARD_HTML_MARKER}:${encodeURIComponent(cwsClipboardPayloadJson(payload))}-->`;
+}
+
+function cwsClipboardRangeHtmlTable(clipboard, text = "") {
+  const rowCount = Math.max(1, Math.trunc(Number(clipboard?.rowCount) || 1));
+  const colCount = Math.max(1, Math.trunc(Number(clipboard?.colCount) || 1));
+  const textRows = cwsClipboardTsvRows(text);
+  const entriesByKey = new Map(clipboardCellEntries(clipboard).map((cell) => [cellKey(cell.row, cell.col), cell]));
+  const mergeByMaster = new Map();
+  const covered = new Set();
+  (clipboard?.merges || []).forEach((merge) => {
+    const top = Math.max(1, Math.trunc(Number(merge.top) || 1));
+    const left = Math.max(1, Math.trunc(Number(merge.left) || 1));
+    const bottom = Math.min(rowCount, Math.max(top, Math.trunc(Number(merge.bottom) || top)));
+    const right = Math.min(colCount, Math.max(left, Math.trunc(Number(merge.right) || left)));
+    if (bottom <= top && right <= left) return;
+    mergeByMaster.set(cellKey(top, left), { top, left, bottom, right });
+    for (let row = top; row <= bottom; row += 1) {
+      for (let col = left; col <= right; col += 1) {
+        if (row !== top || col !== left) covered.add(cellKey(row, col));
+      }
+    }
+  });
+  const colHtml = Array.from({ length: colCount }, (_item, index) => {
+    const width = Number(clipboard?.columns?.[index]?.width);
+    return width > 0 ? `<col style="width:${roundCssNumber(width)}px">` : "<col>";
+  }).join("");
+  const rowHtml = Array.from({ length: rowCount }, (_rowItem, rowIndex) => {
+    const row = rowIndex + 1;
+    const height = Number(clipboard?.rows?.[rowIndex]?.height);
+    const rowStyle = height > 0 ? ` style="height:${roundCssNumber(height)}px"` : "";
+    const cells = Array.from({ length: colCount }, (_colItem, colIndex) => {
+      const col = colIndex + 1;
+      const key = cellKey(row, col);
+      if (covered.has(key)) return "";
+      const merge = mergeByMaster.get(key);
+      const spanAttrs = merge
+        ? `${merge.bottom > merge.top ? ` rowspan="${merge.bottom - merge.top + 1}"` : ""}${merge.right > merge.left ? ` colspan="${merge.right - merge.left + 1}"` : ""}`
+        : "";
+      const cell = entriesByKey.get(key);
+      const value = textRows[rowIndex]?.[colIndex] ?? "";
+      return `<td${spanAttrs}${cwsClipboardCellHtmlStyleAttr(cell)}>${escapeHtml(value)}</td>`;
+    }).join("");
+    return `<tr${rowStyle}>${cells}</tr>`;
+  }).join("");
+  return `<table><colgroup>${colHtml}</colgroup><tbody>${rowHtml}</tbody></table>`;
 }
 
 function cwsClipboardTsvHtmlTable(text = "") {
-  const rows = String(text ?? "")
+  const rows = cwsClipboardTsvRows(text);
+  return `<table><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function cwsClipboardTsvRows(text = "") {
+  return String(text ?? "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .split("\n")
     .map((line) => line.split("\t"));
-  return `<table><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function cwsClipboardCellHtmlStyleAttr(cell) {
+  const declarations = cwsClipboardCellHtmlStyleDeclarations(cell);
+  return declarations.length ? ` style="${escapeAttr(declarations.join(";"))}"` : "";
+}
+
+function cwsClipboardCellHtmlStyleDeclarations(cell) {
+  if (!cell) return [];
+  const css = cell.css || {};
+  const declarations = [];
+  const append = (property, value) => {
+    const text = String(value ?? "").trim();
+    if (text) declarations.push(`${property}:${text}`);
+  };
+  append("font-family", css.fontFamily);
+  append("font-size", css.fontSize);
+  append("color", css.color);
+  append("background-color", css.backgroundColor);
+  append("font-weight", css.fontWeight);
+  append("font-style", css.fontStyle);
+  append("text-decoration", css.textDecoration);
+  append("text-align", css.textAlign);
+  append("vertical-align", css.verticalAlign);
+  if (css.whiteSpace) append("white-space", css.whiteSpace);
+  Object.entries(cell.borders || {}).forEach(([side, border]) => {
+    if (!CELL_BORDER_SIDES.includes(side)) return;
+    const borderCss = cwsClipboardBorderHtmlStyle(border);
+    if (borderCss) append(`border-${side}`, borderCss);
+  });
+  return declarations;
+}
+
+function cwsClipboardBorderHtmlStyle(border) {
+  if (!border || typeof border !== "object") return "";
+  const style = ["solid", "dashed", "dotted", "double"].includes(String(border.style || "").toLowerCase())
+    ? String(border.style).toLowerCase()
+    : "solid";
+  const width = Math.max(1, Math.round(Number(border.width || border.weight) || 1));
+  const color = normalizeColorValue(border.color) || "#000000";
+  return `${width}px ${style} ${color}`;
 }
 
 function parseCwsClipboardPayload(value) {
@@ -93824,15 +93937,30 @@ function parseCwsClipboardPayload(value) {
 function cwsClipboardPayloadFromHtml(html) {
   const text = String(html || "");
   if (!text.includes(CWS_CLIPBOARD_HTML_MARKER)) return null;
+  const commentPayload = cwsClipboardPayloadFromHtmlComment(text);
+  if (commentPayload) return commentPayload;
   try {
     const doc = new DOMParser().parseFromString(text, "text/html");
     const holder = doc.querySelector(`[${CWS_CLIPBOARD_HTML_MARKER}]`);
-    return parseCwsClipboardPayload(holder?.textContent || "");
+    const payload = parseCwsClipboardPayload(holder?.textContent || "");
+    if (payload) return payload;
   } catch (error) {
-    const pattern = new RegExp(`<[^>]+${CWS_CLIPBOARD_HTML_MARKER}=["']?true["']?[^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i");
-    const match = text.match(pattern);
-    if (!match) return null;
-    return parseCwsClipboardPayload(match[1].replace(/&quot;/g, "\"").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+    // Fall through to the legacy regex parser below.
+  }
+  const pattern = new RegExp(`<[^>]+${escapeRegExp(CWS_CLIPBOARD_HTML_MARKER)}=["']?true["']?[^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i");
+  const match = text.match(pattern);
+  if (!match) return null;
+  return parseCwsClipboardPayload(match[1].replace(/&quot;/g, "\"").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+}
+
+function cwsClipboardPayloadFromHtmlComment(html) {
+  const pattern = new RegExp(`<!--\\s*${escapeRegExp(CWS_CLIPBOARD_HTML_MARKER)}:([\\s\\S]*?)\\s*-->`, "i");
+  const match = String(html || "").match(pattern);
+  if (!match) return null;
+  try {
+    return parseCwsClipboardPayload(decodeURIComponent(match[1].trim()));
+  } catch (error) {
+    return null;
   }
 }
 
@@ -100333,15 +100461,19 @@ function restoreCellsFromHistory(sheet, cells) {
   cells.forEach(({ row, col, cell }) => {
     ensureSheetSize(sheet, row, col);
     const key = cellKey(row, col);
+    const previousFormula = sheet.cells?.[key]?.formula || null;
+    removeSheetStyleRangesAtCell(sheet, row, col);
     if (cell) {
       const nextCell = cloneCellModel(cell);
       nextCell.row = row;
       nextCell.col = col;
       storeCellModelForSheet(sheet, key, nextCell);
     } else {
+      if (previousFormula) invalidateFormulaSpillAnchorCache(sheet);
       delete sheet.cells[key];
     }
   });
+  invalidateSheetUsedRangeCache(sheet);
 }
 
 function restoreDimensionsFromHistory(sheet, dimensions) {
@@ -103987,7 +104119,10 @@ function renderShapeAdjustmentHandles(image) {
     .join("");
 }
 
-function shapeAdjustmentHandlesForFrame(shape) {
+function shapeAdjustmentHandlesForFrame(shape, box = null) {
+  if (shape?.type === "elbowConnector") {
+    return elbowConnectorAdjustmentHandlesForFrame(shape, box || shapeAdjustmentBoxFromShape(shape));
+  }
   const handles = shapeAdjustmentHandles(shape?.type, shape?.adjust);
   if (!isCalloutShapeType(shape?.type)) return handles;
   const body = calloutBodySelectionBounds(shape.type);
@@ -103998,6 +104133,39 @@ function shapeAdjustmentHandlesForFrame(shape) {
     x: ((handle.x * 100) - body.left) / bodyWidth,
     y: ((handle.y * 60) - body.top) / bodyHeight,
   }));
+}
+
+function elbowConnectorAdjustmentHandlesForFrame(shape, box = {}) {
+  const normalized = normalizeShapeAdjustments("elbowConnector", shape?.adjust) || { bend: 0.5 };
+  const points = normalizeShapeLinePoints(shape?.points);
+  if (elbowConnectorUsesHorizontalMiddle(shape, box)) {
+    return [{ key: "bend", x: (points.x1 + points.x2) / 2, y: normalized.bend }];
+  }
+  return [{ key: "bend", x: normalized.bend, y: (points.y1 + points.y2) / 2 }];
+}
+
+function elbowConnectorUsesHorizontalMiddle(shape, box = {}) {
+  const points = normalizeShapeLinePoints(shape?.points);
+  const width = Math.max(1, Number(box?.width ?? shape?.width) || 1);
+  const height = Math.max(1, Number(box?.height ?? shape?.height) || 1);
+  const dx = Math.abs(points.x2 - points.x1) * width;
+  const dy = Math.abs(points.y2 - points.y1) * height;
+  return dy > dx * 1.2;
+}
+
+function shapeAdjustmentBoxFromShape(shape) {
+  return {
+    width: Math.max(1, Number(shape?.width) || 1),
+    height: Math.max(1, Number(shape?.height) || 1),
+  };
+}
+
+function shapeAdjustmentBoxFromFrame(frame) {
+  const rect = frame?.getBoundingClientRect?.();
+  return {
+    width: Math.max(1, Number(rect?.width) || 1),
+    height: Math.max(1, Number(rect?.height) || 1),
+  };
 }
 
 function shapeCustomPathHandles(customPath) {
@@ -104118,7 +104286,10 @@ function renderLineShapeHandles(image) {
     })
     .join("");
   const adjustmentHandles = activeSelectedImageIds().length === 1
-    ? shapeAdjustmentHandles(image?.shape?.type, image?.shape?.adjust)
+    ? shapeAdjustmentHandlesForFrame(
+      image?.shape,
+      { width: Number(image?.ext?.width) || 1, height: Number(image?.ext?.height) || 1 },
+    )
       .map((handle) => `<span class="sheet-shape-adjust-handle" data-shape-adjust="${escapeAttr(handle.key)}" style="left:${roundCssNumber(handle.x * 100)}%;top:${roundCssNumber(handle.y * 100)}%" aria-hidden="true"></span>`)
       .join("")
     : "";
@@ -110707,7 +110878,10 @@ function imageTransformShapeAdjustment(job, pointer) {
       ? clampNumber((pointer.y - box.top) / Math.max(1, box.height), -2, 3, 0.5)
       : clamp01((pointer.y - box.top) / Math.max(1, box.height)),
   };
-  return shapeAdjustmentFromPointer(job.shapeType, job.startAdjust, job.handle, point);
+  return shapeAdjustmentFromPointer(job.shapeType, job.startAdjust, job.handle, point, {
+    box,
+    points: job.startLinePoints,
+  });
 }
 
 function imageTransformCustomPathPoint(job, pointer) {
@@ -110732,12 +110906,14 @@ function imageTransformCustomPathPoint(job, pointer) {
   return normalizeShapeCustomPath({ commands }) || path;
 }
 
-function shapeAdjustmentFromPointer(type, startAdjust, handle, point) {
+function shapeAdjustmentFromPointer(type, startAdjust, handle, point, context = {}) {
   const next = { ...(normalizeShapeAdjustments(type, startAdjust) || {}) };
   if (!Object.keys(next).length) return null;
   switch (handle) {
     case "bend":
-      next.bend = point.x;
+      next.bend = type === "elbowConnector" && elbowConnectorUsesHorizontalMiddle({ points: context.points }, context.box)
+        ? point.y
+        : point.x;
       break;
     case "curve":
       next.curve = point.y;
@@ -110983,7 +111159,7 @@ function updateShapeAdjustmentHandlePositions(frame, shape) {
     });
     return;
   }
-  shapeAdjustmentHandlesForFrame(shape).forEach((handle) => {
+  shapeAdjustmentHandlesForFrame(shape, shapeAdjustmentBoxFromFrame(frame)).forEach((handle) => {
     const element = frame.querySelector(`[data-shape-adjust="${cssEscape(handle.key)}"]`);
     if (!element) return;
     element.style.left = `${roundCssNumber(handle.x * 100)}%`;

@@ -7140,6 +7140,10 @@ body.workbook-hide-sheet-tabs .sheet-footer-splitter {
   pointer-events: auto;
 }
 
+.sheet-image-selection-frame.is-line-shape .sheet-shape-adjust-handle {
+  pointer-events: auto;
+}
+
 .sheet-connection-preview-layer {
   position: absolute;
   inset: 0;
