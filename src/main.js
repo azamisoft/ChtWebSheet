@@ -89667,7 +89667,7 @@ function normalizeShapeAdjustments(type, adjust = {}) {
   const source = adjust && typeof adjust === "object" ? adjust : {};
   switch (type) {
     case "elbowConnector":
-      return { bend: clampNumber(source.bend, 0.08, 0.92, 0.5) };
+      return { bend: clampNumber(source.bend, 0, 1, 0.5) };
     case "curvedConnector":
       return { curve: clampNumber(source.curve, 0.04, 0.96, 0.16) };
     case "roundRect":
@@ -90449,14 +90449,14 @@ function linePointToPixelPoint(x, y, width, height) {
 }
 
 function elbowConnectorRoutePointsPx(p1, p2, adjust = {}, width = 180, height = 70) {
-  const bend = clampNumber(adjust?.bend, 0.08, 0.92, 0.5);
+  const bend = clampNumber(adjust?.bend, 0, 1, 0.5);
   const dx = Math.abs(p2.x - p1.x);
   const dy = Math.abs(p2.y - p1.y);
   if (dy > dx * 1.2) {
-    const bendY = roundSvgNumber(bend * height);
+    const bendY = roundSvgNumber(clampNumber(bend * height, Math.min(p1.y, p2.y), Math.max(p1.y, p2.y), (p1.y + p2.y) / 2));
     return [p1, { x: p1.x, y: bendY }, { x: p2.x, y: bendY }, p2];
   }
-  const bendX = roundSvgNumber(bend * width);
+  const bendX = roundSvgNumber(clampNumber(bend * width, Math.min(p1.x, p2.x), Math.max(p1.x, p2.x), (p1.x + p2.x) / 2));
   return [p1, { x: bendX, y: p1.y }, { x: bendX, y: p2.y }, p2];
 }
 
@@ -90843,14 +90843,14 @@ function shapeLineDashArray(type, width = DEFAULT_SHAPE_OUTLINE_WIDTH) {
 }
 
 function elbowConnectorRoutePoints(p1, p2, adjust = {}) {
-  const bend = clampNumber(adjust?.bend, 0.08, 0.92, 0.5);
+  const bend = clampNumber(adjust?.bend, 0, 1, 0.5);
   const dx = Math.abs(p2.x - p1.x);
   const dy = Math.abs(p2.y - p1.y);
   if (dy > dx * 1.2) {
-    const bendY = roundSvgNumber(6 + bend * 48);
+    const bendY = roundSvgNumber(clampNumber(6 + bend * 48, Math.min(p1.y, p2.y), Math.max(p1.y, p2.y), (p1.y + p2.y) / 2));
     return [p1, { x: p1.x, y: bendY }, { x: p2.x, y: bendY }, p2];
   }
-  const bendX = roundSvgNumber(6 + bend * 88);
+  const bendX = roundSvgNumber(clampNumber(6 + bend * 88, Math.min(p1.x, p2.x), Math.max(p1.x, p2.x), (p1.x + p2.x) / 2));
   return [p1, { x: bendX, y: p1.y }, { x: bendX, y: p2.y }, p2];
 }
 
@@ -95390,11 +95390,14 @@ function pasteObjectClipboard(options = {}) {
   const target = objectPasteTargetPoint(sheet, boxes, options);
   const inserted = [];
   const pastedGroupIds = new Map();
+  const pastedObjectIds = new Map();
   clipboard.objects.forEach((source, index) => {
     const sourceBox = boxes[index] || boxes[0];
     if (!sourceBox) return;
     const image = cloneImages([source])[0];
+    const sourceId = image.id;
     image.id = uniqueWorksheetObjectId("image");
+    if (sourceId) pastedObjectIds.set(String(sourceId), image.id);
     image.name = isCutPaste ? source.name || (source.shape ? "図形" : "画像") : copiedObjectName(source.name);
     if (image.groupId) {
       if (!pastedGroupIds.has(image.groupId)) pastedGroupIds.set(image.groupId, uniqueWorksheetObjectId("group"));
@@ -95412,6 +95415,7 @@ function pasteObjectClipboard(options = {}) {
     inserted.push(image);
   });
   if (!inserted.length) return false;
+  remapPastedLineShapeConnections(inserted, pastedObjectIds, { preserveExternal: isCutPaste });
 
   if (isCutPaste) {
     if (sourceSheet) {
@@ -103890,7 +103894,7 @@ function renderImageSelectionFrame(sheet, visibleRange, image) {
   if (!box || !pixelBoxesIntersect(box, imageViewportBounds(sheet, visibleRange))) return "";
   const style = imageSelectionFrameStyle(image, box, sheet);
   const isLine = isLineShapeObject(image);
-  const isCopySource = isCopiedSourceImage(image.id);
+  const isCopySource = !isLine && isCopiedSourceImage(image.id);
   const isPointEdit = (state.shapePointEditIds || []).includes(image.id);
   const isCropMode = isPictureCropModeActive(image);
   const frameClass = `sheet-image-selection-frame${image.shape ? " is-shape" : ""}${isLine ? " is-line-shape" : ""}${isCopySource ? " is-copy-source" : ""}${isPointEdit ? " is-editing-points" : ""}${isCropMode ? " is-picture-crop-mode" : ""}`;
@@ -104138,10 +104142,12 @@ function shapeAdjustmentHandlesForFrame(shape, box = null) {
 function elbowConnectorAdjustmentHandlesForFrame(shape, box = {}) {
   const normalized = normalizeShapeAdjustments("elbowConnector", shape?.adjust) || { bend: 0.5 };
   const points = normalizeShapeLinePoints(shape?.points);
-  if (elbowConnectorUsesHorizontalMiddle(shape, box)) {
-    return [{ key: "bend", x: (points.x1 + points.x2) / 2, y: normalized.bend }];
+  const horizontalMiddle = elbowConnectorUsesHorizontalMiddle(shape, box);
+  const bend = clampElbowConnectorBendForPoints(points, normalized.bend, horizontalMiddle);
+  if (horizontalMiddle) {
+    return [{ key: "bend", x: (points.x1 + points.x2) / 2, y: bend }];
   }
-  return [{ key: "bend", x: normalized.bend, y: (points.y1 + points.y2) / 2 }];
+  return [{ key: "bend", x: bend, y: (points.y1 + points.y2) / 2 }];
 }
 
 function elbowConnectorUsesHorizontalMiddle(shape, box = {}) {
@@ -104151,6 +104157,15 @@ function elbowConnectorUsesHorizontalMiddle(shape, box = {}) {
   const dx = Math.abs(points.x2 - points.x1) * width;
   const dy = Math.abs(points.y2 - points.y1) * height;
   return dy > dx * 1.2;
+}
+
+function clampElbowConnectorBendForPoints(points, bend, horizontalMiddle) {
+  const normalized = normalizeShapeLinePoints(points);
+  const a = horizontalMiddle ? normalized.y1 : normalized.x1;
+  const b = horizontalMiddle ? normalized.y2 : normalized.x2;
+  const min = Math.min(a, b);
+  const max = Math.max(a, b);
+  return clampNumber(bend, min, max, (a + b) / 2);
 }
 
 function shapeAdjustmentBoxFromShape(shape) {
@@ -109898,6 +109913,30 @@ function lineConnectionForGroupedTarget(connection, sourceSheet, targetSheet) {
   return target ? { imageId: target.id, site: connection.site } : null;
 }
 
+function remapPastedLineShapeConnections(images, idMap, options = {}) {
+  const map = idMap instanceof Map ? idMap : new Map();
+  const preserveExternal = options.preserveExternal === true;
+  (images || []).forEach((image) => {
+    if (!isLineShapeObject(image)) return;
+    const connections = normalizeLineShapeConnections(image.shape?.connections);
+    if (!connections) return;
+    const next = {};
+    ["start", "end"].forEach((side) => {
+      const connection = connections[side];
+      if (!connection?.imageId || !connection.site) return;
+      const mappedId = map.get(String(connection.imageId));
+      if (mappedId) {
+        next[side] = { imageId: mappedId, site: connection.site };
+      } else if (preserveExternal) {
+        next[side] = connection;
+      }
+    });
+    const normalized = normalizeLineShapeConnections(next);
+    if (normalized) image.shape.connections = normalized;
+    else delete image.shape.connections;
+  });
+}
+
 function setImageRotation(image, value) {
   if (!image) return;
   const rotation = normalizeRotationDegrees(value);
@@ -109923,13 +109962,16 @@ function insertCopiedImagesFromMoveTransform(sheet, job) {
   const sourceIds = job.imageIds?.length ? job.imageIds : [job.imageId];
   const inserted = [];
   const groupMap = new Map();
+  const copiedObjectIds = new Map();
   sourceIds.forEach((sourceId) => {
     const source = sheet.images?.find((item) => item.id === sourceId);
     if (!source) return;
     const nextBox = job.currentBoxes?.[sourceId] || (sourceId === job.imageId ? job.currentBox : null);
     if (!nextBox) return;
     const image = cloneImages([source])[0];
+    const originalId = image.id;
     image.id = uniqueWorksheetObjectId("image");
+    if (originalId) copiedObjectIds.set(String(originalId), image.id);
     image.name = copiedObjectName(source.name || source.shape?.label || "図形");
     if (image.shape) image.shape = { ...image.shape, label: image.name };
     if (image.groupId) {
@@ -109941,6 +109983,7 @@ function insertCopiedImagesFromMoveTransform(sheet, job) {
     sheet.images.push(image);
     inserted.push(image);
   });
+  remapPastedLineShapeConnections(inserted, copiedObjectIds);
   if (inserted.length) {
     setSelectedImageIds(inserted.map((image) => image.id), inserted[0].id);
     state.selected = null;
@@ -110911,9 +110954,12 @@ function shapeAdjustmentFromPointer(type, startAdjust, handle, point, context = 
   if (!Object.keys(next).length) return null;
   switch (handle) {
     case "bend":
-      next.bend = type === "elbowConnector" && elbowConnectorUsesHorizontalMiddle({ points: context.points }, context.box)
-        ? point.y
-        : point.x;
+      if (type === "elbowConnector") {
+        const horizontalMiddle = elbowConnectorUsesHorizontalMiddle({ points: context.points }, context.box);
+        next.bend = clampElbowConnectorBendForPoints(context.points, horizontalMiddle ? point.y : point.x, horizontalMiddle);
+      } else {
+        next.bend = point.x;
+      }
       break;
     case "curve":
       next.curve = point.y;
