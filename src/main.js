@@ -137,6 +137,9 @@ const SCROLL_EXTEND_THRESHOLD = 120;
 const SCROLL_TRIM_BUFFER_PX = 600;
 const SCROLL_TRIM_IDLE_MS = 180;
 const IMAGE_RENDER_BUFFER_PX = 160;
+const TEXT_OVERFLOW_LOOKBACK_MIN_PX = 2400;
+const TEXT_OVERFLOW_LOOKBACK_MAX_PX = 8192;
+const TEXT_OVERFLOW_LOOKBACK_VIEWPORT_FACTOR = 2;
 const SELECTION_AUTOSCROLL_EDGE_PX = 34;
 const SELECTION_AUTOSCROLL_MIN_STEP_PX = 2;
 const SELECTION_AUTOSCROLL_MAX_STEP_PX = 26;
@@ -102788,9 +102791,10 @@ function paintCanvasCells(context, sheet, mergeMaps, sheetId, visibleRange, pixe
   const showGridLines = sheet.showGridLines !== false;
   const rendered = new Set();
   const editedCellKey = phase === "base" ? "" : canvasEditedCellKey();
+  const paintRange = phase === "text" ? canvasTextPaintRange(sheet, visibleRange, pixelCache) : visibleRange;
 
-  for (let row = visibleRange.top; row <= visibleRange.bottom; row += 1) {
-    for (let col = visibleRange.left; col <= visibleRange.right; col += 1) {
+  for (let row = paintRange.top; row <= paintRange.bottom; row += 1) {
+    for (let col = paintRange.left; col <= paintRange.right; col += 1) {
       const key = cellKey(row, col);
       const coveredMasterKey = mergeMaps.coveredToMaster.get(key);
       const masterKey = coveredMasterKey || key;
@@ -102805,11 +102809,26 @@ function paintCanvasCells(context, sheet, mergeMaps, sheetId, visibleRange, pixe
       } else {
         range = { top: row, left: col, bottom: row, right: col };
       }
-      if (!rangeIntersects(range, visibleRange)) continue;
+      if (phase !== "text" && !rangeIntersects(range, visibleRange)) continue;
       rendered.add(masterKey);
       paintCanvasCell(context, sheet, mergeMaps, sheetId, range.top, range.left, range, showGridLines, pixelCache, phase, editedCellKey);
     }
   }
+}
+
+function canvasTextPaintRange(sheet, visibleRange, pixelCache = null) {
+  if (!visibleRange || sheetColumnsRightToLeft(sheet)) return visibleRange;
+  const visibleLeft = cachedCoordinateToPixels(sheet, pixelCache, "col", Math.max(0, visibleRange.left - 1));
+  const visibleRight = cachedCoordinateToPixels(sheet, pixelCache, "col", visibleRange.right);
+  const visibleWidth = Math.max(1, visibleRight - visibleLeft);
+  const lookbackPx = Math.max(
+    TEXT_OVERFLOW_LOOKBACK_MIN_PX,
+    Math.min(TEXT_OVERFLOW_LOOKBACK_MAX_PX, visibleWidth * TEXT_OVERFLOW_LOOKBACK_VIEWPORT_FACTOR),
+  );
+  const gridLeft = sheetHeadingsVisible(sheet) ? rowHeaderWidthForSheet(sheet) : 0;
+  const scanLeft = Math.max(gridLeft, visibleLeft - lookbackPx);
+  const left = Math.min(visibleRange.left, Math.max(1, indexForPixelExtent(sheet, "col", scanLeft)));
+  return { ...visibleRange, left };
 }
 
 function paintCanvasCell(context, sheet, mergeMaps, sheetId, row, col, range, showGridLines, pixelCache = null, phase = "all", editedCellKey = "") {
@@ -122131,8 +122150,9 @@ function standaloneRuntime() {
     const showGridLines = sheet.showGridLines !== false;
     const rendered = new Set();
     const editedCellKey = phase === "base" ? "" : standaloneCanvasEditedCellKey();
-    for (let row = range.top; row <= range.bottom; row += 1) {
-      for (let col = range.left; col <= range.right; col += 1) {
+    const paintRange = phase === "text" ? canvasTextPaintRange(sheet, range) : range;
+    for (let row = paintRange.top; row <= paintRange.bottom; row += 1) {
+      for (let col = paintRange.left; col <= paintRange.right; col += 1) {
         const key = row + ":" + col;
         const masterKey = maps.coveredToMaster.get(key) || key;
         if (rendered.has(masterKey)) continue;
@@ -122141,11 +122161,33 @@ function standaloneRuntime() {
         const masterCol = Number(parts[1]);
         const merge = maps.master.get(masterKey);
         const cellRange = merge || { top: masterRow, left: masterCol, bottom: masterRow, right: masterCol };
-        if (!rangeIntersects(cellRange, range)) continue;
+        if (phase !== "text" && !rangeIntersects(cellRange, range)) continue;
         rendered.add(masterKey);
         paintCanvasCell(context, sheet, maps, sheetId, cellRange.top, cellRange.left, cellRange, showGridLines, phase || "all", editedCellKey);
       }
     }
+  }
+
+  function canvasTextPaintRange(sheet, range) {
+    if (!range || sheetColumnsRightToLeft(sheet)) return range;
+    const visibleLeft = coordinateToPixels(sheet, "col", Math.max(0, range.left - 1));
+    const visibleRight = coordinateToPixels(sheet, "col", range.right);
+    const visibleWidth = Math.max(1, visibleRight - visibleLeft);
+    const lookbackPx = Math.max(2400, Math.min(8192, visibleWidth * 2));
+    const gridLeft = rowHeaderWidthForSheet(sheet);
+    const scanLeft = Math.max(gridLeft, visibleLeft - lookbackPx);
+    let left = range.left;
+    let x = gridLeft;
+    for (let col = 1; col <= range.left; col += 1) {
+      const width = sheet.columns[col - 1]?.hidden ? 0 : sheet.columns[col - 1]?.width || sheet.defaultColumnWidth || 0;
+      const next = x + width;
+      if (next >= scanLeft) {
+        left = Math.min(range.left, col);
+        break;
+      }
+      x = next;
+    }
+    return { ...range, left };
   }
 
   function paintCanvasCell(context, sheet, maps, sheetId, row, col, range, showGridLines, phase, editedCellKey) {
