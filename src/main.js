@@ -156,6 +156,7 @@ const EMU_PER_PIXEL = 9525;
 const LINE_SHAPE_MIN_BOX_SIZE = 12;
 const LINE_SHAPE_BASE_PADDING_PX = 4;
 const LINE_SHAPE_ARROW_PADDING_EXTRA_PX = 3;
+const LINE_CONNECTION_RETENTION_TOLERANCE_PX = 4;
 const HYPERFORMULA_LICENSE = "gpl-v3";
 const VERSION_INFO_FALLBACK_VERSION = "0.0.0";
 const STANDALONE_RUNTIME_VERSION = VERSION_INFO_FALLBACK_VERSION;
@@ -21388,6 +21389,8 @@ function init() {
   $sheetFooterSplitter.on("pointerdown", startSheetFooterResize);
 
   $sheetHost.on("pointerdown", startCellRangeSelection);
+  $sheetHost.on("pointermove", updatePendingShapeDrawingConnectionPreview);
+  $sheetHost.on("pointerleave", clearPendingShapeDrawingConnectionPreview);
   $sheetHost.on("pointermove", extendCellRangeSelection);
   $sheetHost.on("pointerdown", ".sheet-image-selection-frame", startSelectedImageTransform);
   $sheetHost.on("pointerdown", ".sheet-picture-crop-handle", startPictureCropDrag);
@@ -88352,6 +88355,7 @@ function cancelShapeDrawing(options = {}) {
   const drawing = state.shapeDrawing;
   if (drawing?.preview) drawing.preview.remove();
   state.shapeDrawing = null;
+  removeLineConnectionPreviewOverlay();
   if (!options.keepPending) {
     state.pendingShapeType = null;
     document.body.classList.remove("is-drawing-shape");
@@ -88382,6 +88386,8 @@ function startShapeDrawing(event) {
     type: shapeType,
     start,
     current: start,
+    startConnection: isLineShapeType(shapeType) ? snapLineEndpointToShape(start, "") : null,
+    currentConnection: null,
     pointerId: event.pointerId,
     preview: createShapeDrawingPreview(shapeType),
   };
@@ -88405,6 +88411,18 @@ function updateShapeDrawing(event) {
   event.preventDefault?.();
 }
 
+function updatePendingShapeDrawingConnectionPreview(event) {
+  if (state.shapeDrawing || !isLineShapeType(state.pendingShapeType)) return;
+  if (state.imageTransform?.mode === "line-point") return;
+  const point = sheetPixelFromClientPosition(event.clientX, event.clientY, { clampToGrid: false });
+  updateLineDrawingConnectionPreview(point);
+}
+
+function clearPendingShapeDrawingConnectionPreview() {
+  if (state.shapeDrawing || !isLineShapeType(state.pendingShapeType)) return;
+  removeLineConnectionPreviewOverlay();
+}
+
 function finishShapeDrawing(event) {
   const drawing = state.shapeDrawing;
   if (!drawing) return;
@@ -88419,6 +88437,7 @@ function finishShapeDrawing(event) {
   state.pendingShapeType = null;
   document.body.classList.remove("is-drawing-shape");
   $sheetHost.removeClass("is-drawing-shape");
+  removeLineConnectionPreviewOverlay();
   insertShapeAtPixelBox(type, box, { editText: type === "textBox" });
   event.preventDefault?.();
 }
@@ -88434,6 +88453,17 @@ function lineDrawingBoxWithConnections(type, start, end) {
   return normalizedConnections
     ? { ...result.boxWithPoints, connections: normalizedConnections }
     : result.boxWithPoints;
+}
+
+function updateLineDrawingConnectionPreview(point) {
+  if (!point) {
+    removeLineConnectionPreviewOverlay();
+    return null;
+  }
+  const snap = snapLineEndpointToShape(point, "");
+  const previewTargetId = snap?.imageId || lineConnectionPreviewTarget(point, "");
+  updateLineConnectionPreviewOverlay(snap, "", previewTargetId);
+  return snap;
 }
 
 function createShapeDrawingPreview(shapeType) {
@@ -88453,7 +88483,11 @@ function updateShapeDrawingPreview() {
   if (!drawing?.preview) return;
   const box = normalizedShapeDrawingBox(drawing.start, drawing.current);
   if (isLineShapeType(drawing.type)) {
-    const lineGeometry = lineBoxAndPointsFromEndpoints(drawing.start, drawing.current, { type: drawing.type });
+    const currentSnap = updateLineDrawingConnectionPreview(drawing.current);
+    drawing.currentConnection = currentSnap;
+    const startPoint = drawing.startConnection?.point || drawing.start;
+    const currentPoint = currentSnap?.point || drawing.current;
+    const lineGeometry = lineBoxAndPointsFromEndpoints(startPoint, currentPoint, { type: drawing.type });
     const image = drawing.preview.querySelector("img");
     if (image) image.src = shapeDescriptorForType(drawing.type, { points: lineGeometry.points, width: lineGeometry.box.width, height: lineGeometry.box.height, useThemeEffects: true }).src;
     Object.assign(drawing.preview.style, {
@@ -96865,7 +96899,7 @@ function handleSelectedObjectKeyboardShortcut(event) {
     const image = selectedObjects.find((item) => item?.shape && !isLineShapeObject(item));
     if (image) {
       event.preventDefault();
-      openShapeTextEditor(image.id, { initialText: text, replaceText: true });
+      openShapeTextEditor(image.id, { initialText: "", replaceText: true });
       return true;
     }
   }
@@ -97008,6 +97042,7 @@ function selectionKeyboardSinkState() {
       focusFrame: 0,
       suppressInputUntil: 0,
       edit: null,
+      shapeEdit: null,
     };
   }
   return state.selectionKeyboardSink;
@@ -97019,21 +97054,35 @@ function selectedPointForKeyboardSink() {
   return state.selected;
 }
 
-function isSelectionKeyboardSinkEligibleActiveElement(element = document.activeElement) {
+function selectedShapeForKeyboardSink() {
+  if (!state.model || state.formulaEdit || state.shapeTextEditor) return null;
+  if (state.selected && state.selected.sheetIndex === state.activeSheetIndex) return null;
+  const objects = selectedImageObjects();
+  if (objects.length !== 1) return null;
+  const image = objects[0];
+  if (!image?.shape || isLineShapeObject(image)) return null;
+  return image;
+}
+
+function isSelectionKeyboardSinkEligibleActiveElement(element = document.activeElement, options = {}) {
   if (!element || element === document.body || element === document.documentElement) return true;
   if (isSelectionKeyboardSink(element)) return true;
   if (element === $sheetHost[0]) return true;
   if (element.closest?.(".sheet-cell[data-row][data-col], .sheet-grid")) return true;
+  if (options.allowShape && !isTextEditingTarget(element)) return true;
   return false;
 }
 
 function shouldFocusSelectionKeyboardSink() {
   if (!$selectionKeyboardSink[0]) return false;
-  if (!selectedPointForKeyboardSink()) return false;
+  const point = selectedPointForKeyboardSink();
+  const shape = selectedShapeForKeyboardSink();
+  if (!point && !shape) return false;
   if (activeSheetEditElement()) return false;
+  if (state.shapeTextEditor) return false;
   if (state.formulaEdit || state.isSelecting || state.selectionDrag || state.fillDrag) return false;
   if (document.querySelector("#messageBoxOverlay, #dataDialog, #findDialog, #goToDialog, #specialDialog, #formatCellsDialog, #linkDialog")) return false;
-  return isSelectionKeyboardSinkEligibleActiveElement();
+  return isSelectionKeyboardSinkEligibleActiveElement(document.activeElement, { allowShape: Boolean(shape) });
 }
 
 function scheduleSelectionKeyboardSinkFocus() {
@@ -97075,7 +97124,16 @@ function hideSelectionKeyboardSink() {
 function positionSelectionKeyboardSink() {
   const sink = $selectionKeyboardSink[0];
   const point = selectedPointForKeyboardSink();
-  if (!sink || !point || activeSheetEditElement()) {
+  const shape = selectedShapeForKeyboardSink();
+  if (!sink || activeSheetEditElement() || state.shapeTextEditor) {
+    hideSelectionKeyboardSink();
+    return;
+  }
+  if (!point && shape) {
+    positionSelectionKeyboardSinkForShape(sink, shape);
+    return;
+  }
+  if (!point) {
     hideSelectionKeyboardSink();
     return;
   }
@@ -97100,13 +97158,47 @@ function positionSelectionKeyboardSink() {
   sink.style.padding = computed.padding;
 }
 
+function positionSelectionKeyboardSinkForShape(sink, image) {
+  const element =
+    primaryImagePositionElement(image.id) ||
+    $sheetHost.find(`.sheet-image-selection-frame[data-image-id="${cssEscape(image.id)}"]`)[0];
+  if (!element?.isConnected) {
+    hideSelectionKeyboardSink();
+    return;
+  }
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    hideSelectionKeyboardSink();
+    return;
+  }
+  const shape = image.shape || {};
+  const margin = normalizeShapeTextMargin(shape.textMargin, shape.type === "textBox");
+  sink.style.left = `${Math.round(rect.left)}px`;
+  sink.style.top = `${Math.round(rect.top)}px`;
+  sink.style.width = `${Math.max(1, Math.round(rect.width))}px`;
+  sink.style.height = `${Math.max(1, Math.round(rect.height))}px`;
+  sink.style.fontFamily = shape.textFontFamily || fontFamilyForExcel("Calibri") || '"Yu Gothic UI", Meiryo, sans-serif';
+  sink.style.fontSize = `${Math.max(8, Math.round((Number(shape.textFontSize) || 11) * 96 / 72))}px`;
+  sink.style.fontWeight = shape.textBold ? "700" : "400";
+  sink.style.fontStyle = shape.textItalic ? "italic" : "normal";
+  sink.style.lineHeight = "1.22";
+  sink.style.textAlign = shape.textAlign || "center";
+  sink.style.padding = `${margin.top}px ${margin.right}px ${margin.bottom}px ${margin.left}px`;
+}
+
 function syncSelectionKeyboardSinkEditWithSelection() {
   const sinkState = selectionKeyboardSinkState();
   const edit = sinkState.edit;
   const point = selectedPointForKeyboardSink();
-  if (!edit || !point || sinkState.composing) return;
-  if (edit.sheetIndex !== point.sheetIndex || edit.row !== point.row || edit.col !== point.col) {
+  const shapeEdit = sinkState.shapeEdit;
+  const shape = selectedShapeForKeyboardSink();
+  if (sinkState.composing) return;
+  if (edit && (!point || edit.sheetIndex !== point.sheetIndex || edit.row !== point.row || edit.col !== point.col)) {
     sinkState.edit = null;
+    resetSelectionKeyboardSinkValue();
+  }
+  if (shapeEdit && (!shape || shapeEdit.sheetIndex !== state.activeSheetIndex || shapeEdit.imageId !== shape.id)) {
+    sinkState.shapeEdit = null;
     resetSelectionKeyboardSinkValue();
   }
 }
@@ -97136,6 +97228,24 @@ function ensureSelectionKeyboardImeEdit() {
   return sinkState.edit;
 }
 
+function ensureSelectionKeyboardShapeImeEdit() {
+  const sinkState = selectionKeyboardSinkState();
+  const image = selectedShapeForKeyboardSink();
+  if (!image) return null;
+  const edit = sinkState.shapeEdit;
+  if (edit && edit.sheetIndex === state.activeSheetIndex && edit.imageId === image.id) {
+    return edit;
+  }
+  sinkState.shapeEdit = {
+    sheetIndex: state.activeSheetIndex,
+    imageId: image.id,
+    before: shapeTextPlainValue(image.shape),
+    value: "",
+  };
+  sinkState.edit = null;
+  return sinkState.shapeEdit;
+}
+
 function promoteSelectionKeyboardImeEditToCellEditor(edit) {
   if (!edit || edit.sheetIndex !== state.activeSheetIndex) return;
   const sinkState = selectionKeyboardSinkState();
@@ -97154,6 +97264,23 @@ function promoteSelectionKeyboardImeEditToCellEditor(edit) {
   $(cellElement).data("beforeEdit", edit.before);
 }
 
+function promoteSelectionKeyboardShapeImeEditToEditor(edit) {
+  if (!edit || edit.sheetIndex !== state.activeSheetIndex) return;
+  const sinkState = selectionKeyboardSinkState();
+  sinkState.shapeEdit = null;
+  resetSelectionKeyboardSinkValue();
+  hideSelectionKeyboardSink();
+  const image = selectedImageObjectById(edit.imageId);
+  if (!image?.shape || isLineShapeObject(image)) return;
+  if (!isActiveImage(image.id)) {
+    setSelectedImageIds([image.id], image.id);
+    renderSheet();
+    updateSelectionUi();
+  }
+  openShapeTextEditor(image.id, { initialText: edit.value, replaceText: true });
+  if (state.shapeTextEditor) state.shapeTextEditor.beforeText = edit.before;
+}
+
 function appendSelectionKeyboardImeText(text) {
   const committedText = String(text ?? "");
   if (!committedText) return;
@@ -97163,9 +97290,19 @@ function appendSelectionKeyboardImeText(text) {
   promoteSelectionKeyboardImeEditToCellEditor(edit);
 }
 
+function appendSelectionKeyboardShapeImeText(text) {
+  const committedText = String(text ?? "");
+  if (!committedText) return;
+  const edit = ensureSelectionKeyboardShapeImeEdit();
+  if (!edit) return;
+  edit.value += committedText;
+  promoteSelectionKeyboardShapeImeEditToEditor(edit);
+}
+
 function cancelSelectionKeyboardImeEdit() {
   const sinkState = selectionKeyboardSinkState();
   sinkState.edit = null;
+  sinkState.shapeEdit = null;
   resetSelectionKeyboardSinkValue();
   scheduleSelectionKeyboardSinkFocus();
 }
@@ -97176,7 +97313,23 @@ function handleSelectionKeyboardSinkKeydown(event) {
     event.stopPropagation();
     return;
   }
+  if (
+    (sinkState.shapeEdit || selectedShapeForKeyboardSink()) &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    directTypingText(event) != null
+  ) {
+    event.stopPropagation();
+    return;
+  }
   if (event.key === "Escape" && sinkState.edit) {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelSelectionKeyboardImeEdit();
+    return;
+  }
+  if (event.key === "Escape" && sinkState.shapeEdit) {
     event.preventDefault();
     event.stopPropagation();
     cancelSelectionKeyboardImeEdit();
@@ -97198,6 +97351,13 @@ function handleSelectionKeyboardSinkKeydown(event) {
     edit.value = Array.from(String(edit.value || "")).slice(0, -1).join("");
     if (edit.value) promoteSelectionKeyboardImeEditToCellEditor(edit);
   }
+  if (event.key === "Backspace" && sinkState.shapeEdit && !event.currentTarget.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    const edit = sinkState.shapeEdit;
+    edit.value = Array.from(String(edit.value || "")).slice(0, -1).join("");
+    if (edit.value) promoteSelectionKeyboardShapeImeEditToEditor(edit);
+  }
 }
 
 function handleSelectionKeyboardSinkBeforeInput(event) {
@@ -97218,6 +97378,11 @@ function handleSelectionKeyboardSinkInput(event) {
     appendSelectionKeyboardImeText(text);
     return;
   }
+  if (sinkState.shapeEdit || selectedShapeForKeyboardSink()) {
+    state.internalClipboard = null;
+    appendSelectionKeyboardShapeImeText(text);
+    return;
+  }
   state.internalClipboard = null;
   const editor = startSelectedCellEdit({ initialText: text, replaceText: true, caretAtEnd: true });
   if (!editor) return;
@@ -97227,7 +97392,8 @@ function handleSelectionKeyboardSinkInput(event) {
 function handleSelectionKeyboardSinkCompositionStart(event) {
   const sinkState = selectionKeyboardSinkState();
   sinkState.composing = true;
-  ensureSelectionKeyboardImeEdit();
+  if (selectedShapeForKeyboardSink()) ensureSelectionKeyboardShapeImeEdit();
+  else ensureSelectionKeyboardImeEdit();
   positionSelectionKeyboardSink();
   markElementImeComposition(event.currentTarget, true);
 }
@@ -97246,7 +97412,8 @@ function handleSelectionKeyboardSinkCompositionEnd(event) {
     const sink = $selectionKeyboardSink[0];
     const committedText = committedFromEvent || String(sink?.value || "");
     resetSelectionKeyboardSinkValue();
-    appendSelectionKeyboardImeText(committedText);
+    if (sinkState.shapeEdit || selectedShapeForKeyboardSink()) appendSelectionKeyboardShapeImeText(committedText);
+    else appendSelectionKeyboardImeText(committedText);
     scheduleSelectionKeyboardSinkFocus();
   }, 0);
 }
@@ -109724,6 +109891,7 @@ function moveSelectedImagesBySheetGroup(objects, dx, dy) {
   try {
     items.forEach((item) => {
       const movedShapeIds = [];
+      const movedLineIds = [];
       item.images.forEach((image) => {
         const box = imageBoxToPixels(item.sheet, image);
         if (!box) return;
@@ -109732,9 +109900,11 @@ function moveSelectedImagesBySheetGroup(objects, dx, dy) {
           left: box.left + dx,
           top: box.top + dy,
         });
-        if (!isLineShapeObject(image)) movedShapeIds.push(image.id);
+        if (isLineShapeObject(image)) movedLineIds.push(image.id);
+        else movedShapeIds.push(image.id);
       });
       updateConnectedLinesForTargets(item.sheet, movedShapeIds);
+      pruneDetachedLineShapeConnectionsForIds(item.sheet, movedLineIds);
     });
     pushHistory({
       sheetIndex: state.activeSheetIndex,
@@ -109934,6 +110104,8 @@ function moveSelectedImagesBy(dx, dy) {
   if (moveSelectedImagesBySheetGroup(objects, dx, dy)) return true;
   if (!ensureSheetProtectionPermission(sheet, "allowEditObjects", "保護されたシートではオブジェクトを移動できません。")) return false;
   const sheetBefore = captureSheetForHistory(sheet);
+  const movedLineIds = [];
+  const movedShapeIds = [];
   objects.forEach((image) => {
     const box = imageBoxToPixels(sheet, image);
     if (!box) return;
@@ -109942,8 +110114,11 @@ function moveSelectedImagesBy(dx, dy) {
       left: box.left + dx,
       top: box.top + dy,
     });
+    if (isLineShapeObject(image)) movedLineIds.push(image.id);
+    else movedShapeIds.push(image.id);
   });
-  updateConnectedLinesForTargets(sheet, objects.filter((image) => image && !isLineShapeObject(image)).map((image) => image.id));
+  updateConnectedLinesForTargets(sheet, movedShapeIds);
+  pruneDetachedLineShapeConnectionsForIds(sheet, movedLineIds);
   pushHistory({
     sheetIndex: state.activeSheetIndex,
     sheetBefore,
@@ -110192,7 +110367,8 @@ function finishSelectedImageTransform(event) {
 	  if (job.mode === "rotate") {
 	    setImageRotation(image, job.currentRotation);
 	    if (image.shape) refreshShapeSource(image);
-	    updateConnectedLinesForTargets(sheet, isLineShapeObject(image) ? [] : [image.id]);
+	    if (isLineShapeObject(image)) pruneDetachedLineShapeConnections(sheet, image);
+	    else updateConnectedLinesForTargets(sheet, [image.id]);
 	  } else if (job.mode === "shape-adjust") {
     image.shape = {
       ...(image.shape || {}),
@@ -110202,6 +110378,7 @@ function finishSelectedImageTransform(event) {
     refreshShapeSource(image);
   } else if ((job.mode === "move" && (job.imageIds || []).length > 1) || job.mode === "group-resize" || job.mode === "group-rotate") {
     const movedShapeIds = [];
+    const movedLineIds = [];
     (job.imageIds || []).forEach((imageId) => {
       const target = sheet.images?.find((item) => item.id === imageId);
 	      const box = job.currentBoxes?.[imageId];
@@ -110211,20 +110388,25 @@ function finishSelectedImageTransform(event) {
 	        setImageRotation(target, job.currentRotations?.[imageId]);
 	      }
       if (target.shape) refreshShapeSource(target);
-      if (!isLineShapeObject(target)) movedShapeIds.push(target.id);
+      if (isLineShapeObject(target)) movedLineIds.push(target.id);
+      else movedShapeIds.push(target.id);
     });
     updateConnectedLinesForTargets(sheet, movedShapeIds);
+    pruneDetachedLineShapeConnectionsForIds(sheet, movedLineIds);
   } else {
     setImagePixelBox(sheet, image, job.currentBox);
     if (job.mode === "line-point" && image.shape) {
       image.shape.points = normalizeShapeLinePoints(job.currentLinePoints);
-      image.shape.connections = updateLineShapeConnection(image.shape.connections, job.handle, job.currentLineConnection);
+      setLineShapeConnections(image, updateLineShapeConnection(image.shape.connections, job.handle, job.currentLineConnection));
+      pruneDetachedLineShapeConnections(sheet, image);
       refreshShapeSource(image);
     } else if (job.mode === "resize" && image.shape) {
       refreshShapeSource(image);
-      updateConnectedLinesForTargets(sheet, isLineShapeObject(image) ? [] : [image.id]);
+      if (isLineShapeObject(image)) pruneDetachedLineShapeConnections(sheet, image);
+      else updateConnectedLinesForTargets(sheet, [image.id]);
     } else {
-      updateConnectedLinesForTargets(sheet, isLineShapeObject(image) ? [] : [image.id]);
+      if (isLineShapeObject(image)) pruneDetachedLineShapeConnections(sheet, image);
+      else updateConnectedLinesForTargets(sheet, [image.id]);
     }
   }
   const actionLabel = job.mode === "rotate" || job.mode === "group-rotate" ? "回転" : job.mode === "line-point" ? "線の調整" : job.mode === "shape-adjust" ? "図形の調整" : job.mode === "group-resize" ? "グループ サイズ変更" : job.mode === "resize" ? "サイズ変更" : "移動";
@@ -110259,13 +110441,15 @@ function finishSelectedImageTransformForSheetGroup(job, sourceImage, event) {
   try {
     items.forEach((item) => {
       const movedShapeIds = [];
+      const movedLineIds = [];
       item.images.forEach((target, index) => {
         const source = sourceImages[index];
         if (!source) return;
         if (job.mode === "rotate") {
           setImageRotation(target, job.currentRotation);
           if (target.shape) refreshShapeSource(target);
-          if (!isLineShapeObject(target)) movedShapeIds.push(target.id);
+          if (isLineShapeObject(target)) movedLineIds.push(target.id);
+          else movedShapeIds.push(target.id);
           return;
         }
         if (job.mode === "shape-adjust") {
@@ -110286,18 +110470,21 @@ function finishSelectedImageTransformForSheetGroup(job, sourceImage, event) {
         }
         if (job.mode === "line-point" && target.shape) {
           target.shape.points = normalizeShapeLinePoints(job.currentLinePoints);
-          target.shape.connections = updateLineShapeConnection(
+          setLineShapeConnections(target, updateLineShapeConnection(
             target.shape.connections,
             job.handle,
             lineConnectionForGroupedTarget(job.currentLineConnection, sourceSheet, item.sheet),
-          );
+          ));
+          pruneDetachedLineShapeConnections(item.sheet, target);
           refreshShapeSource(target);
         } else {
           if (target.shape) refreshShapeSource(target);
-          if (!isLineShapeObject(target)) movedShapeIds.push(target.id);
+          if (isLineShapeObject(target)) movedLineIds.push(target.id);
+          else movedShapeIds.push(target.id);
         }
       });
       updateConnectedLinesForTargets(item.sheet, movedShapeIds);
+      pruneDetachedLineShapeConnectionsForIds(item.sheet, movedLineIds);
     });
     const actionLabel = job.mode === "rotate" || job.mode === "group-rotate" ? "回転" : job.mode === "line-point" ? "線の調整" : job.mode === "shape-adjust" ? "図形の調整" : job.mode === "group-resize" ? "グループ サイズ変更" : job.mode === "resize" ? "サイズ変更" : "移動";
     const statusAction = job.mode === "line-point" || job.mode === "shape-adjust" ? "調整" : actionLabel;
@@ -111237,6 +111424,56 @@ function updateLineShapeConnection(connections, handle, connection) {
   return next.start || next.end ? next : null;
 }
 
+function setLineShapeConnections(image, connections) {
+  if (!image?.shape) return false;
+  const normalized = normalizeLineShapeConnections(connections);
+  if (normalized) {
+    image.shape.connections = normalized;
+  } else {
+    delete image.shape.connections;
+  }
+  return true;
+}
+
+function pruneDetachedLineShapeConnections(sheet, image, tolerance = LINE_CONNECTION_RETENTION_TOLERANCE_PX) {
+  if (!sheet || !isLineShapeObject(image)) return false;
+  const connections = normalizeLineShapeConnections(image.shape?.connections);
+  if (!connections) {
+    if (image?.shape && "connections" in image.shape) delete image.shape.connections;
+    return false;
+  }
+  const box = imageBoxToPixels(sheet, image);
+  if (!box) return false;
+  const endpoints = lineEndpointPixelsFromBox(box, normalizeShapeLinePoints(image.shape?.points));
+  const next = {};
+  let changed = false;
+  ["start", "end"].forEach((side) => {
+    const connection = connections[side];
+    if (!connection?.imageId || !connection.site) return;
+    const target = sheet.images?.find((item) => item.id === connection.imageId);
+    const point = target ? shapeConnectionPointForSite(sheet, target, connection.site) : null;
+    const endpoint = endpoints[side];
+    const keep = point && endpoint && Math.hypot(point.x - endpoint.x, point.y - endpoint.y) <= tolerance;
+    if (keep) {
+      next[side] = connection;
+    } else {
+      changed = true;
+    }
+  });
+  if (!changed) return false;
+  setLineShapeConnections(image, next);
+  return true;
+}
+
+function pruneDetachedLineShapeConnectionsForIds(sheet, imageIds) {
+  let changed = 0;
+  (imageIds || []).forEach((imageId) => {
+    const image = sheet?.images?.find((item) => item.id === imageId);
+    if (pruneDetachedLineShapeConnections(sheet, image)) changed += 1;
+  });
+  return changed;
+}
+
 function updateConnectedLinesForTargets(sheet, targetIds) {
   const targetSet = new Set((targetIds || []).filter(Boolean));
   if (!sheet?.images?.length || !targetSet.size) return 0;
@@ -112044,6 +112281,7 @@ function alignSelectedShapes(action) {
   const sheetBefore = captureSheetForHistory(sheet);
   movements.forEach((movement) => moveShapeAlignmentUnit(sheet, movement.unit, movement.dx, movement.dy));
   updateConnectedLinesForTargets(sheet, images.filter((image) => image && !isLineShapeObject(image)).map((image) => image.id));
+  pruneDetachedLineShapeConnectionsForIds(sheet, images.filter((image) => isLineShapeObject(image)).map((image) => image.id));
   pushHistory({
     sheetIndex: state.activeSheetIndex,
     sheetBefore,
@@ -112076,14 +112314,17 @@ function alignSelectedShapesForSheetGroup(images, movements, action) {
   try {
     items.forEach((item) => {
       const movedShapeIds = [];
+      const movedLineIds = [];
       item.images.forEach((target, index) => {
         const source = images[index];
         const movement = source ? moveBySourceId.get(source.id) : null;
         if (!movement) return;
         moveShapeAlignmentUnit(item.sheet, { images: [target] }, movement.dx, movement.dy);
-        if (!isLineShapeObject(target)) movedShapeIds.push(target.id);
+        if (isLineShapeObject(target)) movedLineIds.push(target.id);
+        else movedShapeIds.push(target.id);
       });
       updateConnectedLinesForTargets(item.sheet, movedShapeIds);
+      pruneDetachedLineShapeConnectionsForIds(item.sheet, movedLineIds);
     });
     pushHistory({
       sheetIndex: state.activeSheetIndex,
@@ -112174,6 +112415,7 @@ function resizeSelectedShapeGroup(axis, value, group) {
   const scaleX = axis === "width" ? targetSize / Math.max(1, groupBox.width) : 1;
   const scaleY = axis === "height" ? targetSize / Math.max(1, groupBox.height) : 1;
   const sheetBefore = captureSheetForHistory(sheet);
+  const movedLineIds = [];
 	  group.images.forEach((image) => {
 	    const box = imageBoxToPixels(sheet, image);
 	    if (!box) return;
@@ -112184,8 +112426,10 @@ function resizeSelectedShapeGroup(axis, value, group) {
 	      height: Math.max(1, box.height * scaleY),
 	    });
 	    if (image.shape) refreshShapeSource(image);
+    if (isLineShapeObject(image)) movedLineIds.push(image.id);
 	  });
   updateConnectedLinesForTargets(sheet, group.images.filter((image) => image && !isLineShapeObject(image)).map((image) => image.id));
+  pruneDetachedLineShapeConnectionsForIds(sheet, movedLineIds);
   pushHistory({
     sheetIndex: state.activeSheetIndex,
     sheetBefore,
@@ -112217,6 +112461,7 @@ function resizeSelectedShapeGroupForSheetGroup(axis, value, group) {
       if (!groupBox) return;
       const scaleX = axis === "width" ? targetSize / Math.max(1, groupBox.width) : 1;
       const scaleY = axis === "height" ? targetSize / Math.max(1, groupBox.height) : 1;
+      const movedLineIds = [];
       item.images.forEach((image) => {
         const box = imageBoxToPixels(item.sheet, image);
         if (!box) return;
@@ -112227,8 +112472,10 @@ function resizeSelectedShapeGroupForSheetGroup(axis, value, group) {
           height: Math.max(1, box.height * scaleY),
         });
         if (image.shape) refreshShapeSource(image);
+        if (isLineShapeObject(image)) movedLineIds.push(image.id);
       });
       updateConnectedLinesForTargets(item.sheet, item.images.filter((image) => image && !isLineShapeObject(image)).map((image) => image.id));
+      pruneDetachedLineShapeConnectionsForIds(item.sheet, movedLineIds);
     });
     pushHistory({
       sheetIndex: state.activeSheetIndex,
@@ -112641,6 +112888,7 @@ function mutateShapeObjectsForSheetGroup(images, mutator, label, options = {}) {
       item.images.forEach((image) => mutator(image, item.sheet));
       if (options.updateConnectedLines) {
         updateConnectedLinesForTargets(item.sheet, item.images.filter((image) => image && !isLineShapeObject(image)).map((image) => image.id));
+        pruneDetachedLineShapeConnectionsForIds(item.sheet, item.images.filter((image) => isLineShapeObject(image)).map((image) => image.id));
       }
     });
     pushHistory({
@@ -112677,6 +112925,7 @@ function mutateShapeObjects(images, mutator, label, options = {}) {
   images.forEach((image) => mutator(image, sheet));
   if (options.updateConnectedLines) {
     updateConnectedLinesForTargets(sheet, images.filter((image) => image && !isLineShapeObject(image)).map((image) => image.id));
+    pruneDetachedLineShapeConnectionsForIds(sheet, images.filter((image) => isLineShapeObject(image)).map((image) => image.id));
   }
   pushHistory({
     sheetIndex: state.activeSheetIndex,
