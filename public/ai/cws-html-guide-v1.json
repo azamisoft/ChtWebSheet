@@ -554,6 +554,28 @@
       "value": 120
     }
   },
+  "agentOpsContract": {
+    "version": 1,
+    "maxOps": 80,
+    "maxRangeCells": 400,
+    "responseShape": "Return exactly one JSON object with a reply string and an ops array. Each operation must be one object inside ops.",
+    "jsonRules": [
+      "Do not output duplicate object keys.",
+      "Do not combine multiple operations into one object.",
+      "Do not wrap the JSON object in Markdown fences or explanatory text when an operation response is requested."
+    ],
+    "rangeRules": [
+      "setRange requires a rectangular values matrix. The matrix height and width must exactly match the target range.",
+      "Use setStyle for formatting-only changes. Never use setRange as a visual placeholder without values.",
+      "Use setColumnWidth and setRowHeight for dimensions, setBorders for borders, and mergeCells only for actual merged ranges.",
+      "Planner, executor, retry, and default prompts must keep the same sheet, allowed ranges, required ops, and maxRangeCells contract for every step."
+    ],
+    "retryRules": [
+      "On retry, fix only the invalid operation or step. Do not expand the range, change the sheet, or invent a new layout.",
+      "If host validation reports out-of-scope coordinates, move the op back inside the planner allowed range instead of creating a new range.",
+      "If setRange values are missing or the matrix does not match the range, regenerate the complete rectangular matrix or replace the op with setStyle when only formatting is needed."
+    ]
+  },
   "fallbackPolicy": {
     "unsupportedShape": "If an imported Excel shape type is not recognized by CWS, preserve its original metadata and use a rectangle fallback for display. Do not delete originalPreset or imported raw drawing data.",
     "unknownField": "Preserve unknown object fields exactly.",
@@ -583,6 +605,13 @@
       "- セル値は raw、数式は formula、表示文字列は display、計算済み値は cached に保持します。",
       "- セル書式は css、部分文字書式は richText、罫線は borders、リンクは hyperlink、メモは note、コメントは comment を使います。",
       "",
+      "CWS Agent ops の契約:",
+      "- 操作応答は reply と ops を持つ 1 つの JSON object だけにしてください。Markdown fence、説明文、重複 key は出力しません。",
+      "- ops は配列で、各操作は必ず 1 object です。複数の type/range/ops を 1 object に詰め込まないでください。",
+      "- setRange は必ず矩形の values 配列を持ち、values の行数・列数は対象 range と完全に一致させます。",
+      "- 書式だけを整える場合は setRange を使わず setStyle を使います。列幅は setColumnWidth、行高は setRowHeight、罫線は setBorders、結合は mergeCells に分けます。",
+      "- planner/executor/retry/default prompt は同じ sheet、allowedRanges、requiredOps、maxRangeCells 契約を共有し、retry で範囲を広げたり別シートへ移したりしないでください。",
+      "",
       "シート要素:",
       "- 結合セルは sheet.merges に {top,left,bottom,right} で保持します。値と主な書式は左上セルに置きます。",
       "- 列幅は sheet.columns[col - 1].width、行高は sheet.rows[row - 1].height を使います。",
@@ -592,6 +621,7 @@
       "- 画像は images に id、src または assetId、left、top、width、height、rotation、crop、zIndex を保持します。",
       "- 図形は shapes または既存の drawing object 構造に、type、left、top、width、height、rotation、fill、stroke、strokeWidth、text、textStyle、adjustments、zIndex を保持します。",
       "- 線・矢印・コネクタは endpoint または connection 情報を壊さず保持します。",
+      "- CWS Agent のフローチャート操作では、接続される各図形に一意な name を付け、接続線は同じ応答内で先に作成した name を fromShape/toShape に指定します。表示文字は style.text に入れ、shapeId/id を接続先 handle として使わないでください。fromSite/toSite は right/left/top/bottom のいずれかで明示します。",
       "- 手書き線は drawings に points、stroke、width、opacity を保持します。",
       "- 未対応の Excel 図形は矩形 fallback で表示される場合がありますが、originalPreset や imported raw drawing data は削除しないでください。",
       "",
