@@ -110,6 +110,7 @@ import {
   TableCellsSplit,
   TableProperties,
   TextCursorInput,
+  Trash2,
   Type,
   Underline,
   UnlockKeyhole,
@@ -117,6 +118,7 @@ import {
   Upload,
   UploadCloud,
   WrapText,
+  X,
   PlaySquare,
   ZoomIn,
   createIcons,
@@ -10505,6 +10507,7 @@ const icons = {
   TableCellsSplit,
   TableProperties,
   TextCursorInput,
+  Trash2,
   Type,
   Underline,
   UnlockKeyhole,
@@ -10512,6 +10515,7 @@ const icons = {
   Upload,
   UploadCloud,
   WrapText,
+  X,
   PlaySquare,
   ZoomIn,
 };
@@ -10646,6 +10650,48 @@ const CWS_AGENT_MAX_GOAL_SEEK_ABS_TARGET = 1e15;
 const CWS_AGENT_MAX_OPS = 80;
 const CWS_AGENT_PROGRESSIVE_PREVIEW_DELAY_MS = 90;
 const CWS_AGENT_BORDER_PRESETS = new Set(["none", "outside", "thick-outside", "all", "inside", "top", "right", "bottom", "left", "thick-bottom", "remove-outside"]);
+const CWS_AGENT_CONTRACT_RANGE_OPS = new Set([
+  "setRange",
+  "setStyle",
+  "setCellProtection",
+  "clearCellProtection",
+  "setBorders",
+  "setNumberFormat",
+  "sortRange",
+  "setAutoFilter",
+  "clearAutoFilter",
+  "setFilterCriteria",
+  "clearFilterCriteria",
+  "advancedFilter",
+  "removeDuplicates",
+  "findReplace",
+  "textToColumns",
+  "createTable",
+  "createChart",
+  "createPivotTable",
+  "createForecastSheet",
+  "dataTable",
+  "setQuickAnalysis",
+  "clearQuickAnalysis",
+  "setQuickAnalysisTotal",
+  "setSubtotal",
+  "clearSubtotals",
+  "consolidateRanges",
+  "setDataValidation",
+  "clearDataValidation",
+  "setHyperlink",
+  "clearHyperlink",
+  "setNote",
+  "clearNote",
+  "setComment",
+  "appendComment",
+  "clearComment",
+  "setNamedRange",
+  "clearRange",
+  "mergeCells",
+  "unmergeCells",
+  "selectRange",
+]);
 
 function applyCwsAgentOps(ops = [], options = {}) {
   if (!Array.isArray(ops)) {
@@ -10661,7 +10707,7 @@ function applyCwsAgentOps(ops = [], options = {}) {
   if (!options.keepPreview) {
     clearCwsAgentPreview({ restore: true, quiet: true });
   }
-  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, index));
+  const normalizedOps = normalizeCwsAgentOpsBatch(ops, options);
   const results = normalizedOps.map((op) => applyCwsAgentOp(op));
   if (results.length) {
     setStatus(`CWS Agent: ${results.map((result) => result.address).join(", ")} を更新しました。`);
@@ -10681,7 +10727,7 @@ function previewCwsAgentOps(ops = [], options = {}) {
   }
 
   clearCwsAgentPreview({ restore: true, quiet: true });
-  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, index));
+  const normalizedOps = normalizeCwsAgentOpsBatch(ops, options);
   const sheetIndexes = state.model.sheets.map((_sheet, index) => index);
   const sheetsBefore = captureSheetsForHistory(sheetIndexes);
   const definedNamesBefore = cloneDefinedNames(state.model.definedNames);
@@ -10713,6 +10759,7 @@ function previewCwsAgentOps(ops = [], options = {}) {
       messageId: String(options.messageId || ""),
       historyEntry,
       results,
+      ops: normalizedOps,
       visible: true,
     };
     cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
@@ -10744,7 +10791,7 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
   }
 
   clearCwsAgentPreview({ restore: true, quiet: true });
-  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, index));
+  const normalizedOps = normalizeCwsAgentOpsBatch(ops, options);
   const sheetIndexes = state.model.sheets.map((_sheet, index) => index);
   const sheetsBefore = captureSheetsForHistory(sheetIndexes);
   const definedNamesBefore = cloneDefinedNames(state.model.definedNames);
@@ -10810,6 +10857,7 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
     messageId: String(options.messageId || ""),
     historyEntry,
     results,
+    ops: normalizedOps,
     visible: true,
   };
   cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
@@ -10830,6 +10878,7 @@ async function appendCwsAgentPreviewOpsProgressively(ops = [], options = {}) {
 
   const preview = state.cwsAgentPreview;
   const existingResults = Array.isArray(preview.results) ? preview.results : [];
+  const existingOps = Array.isArray(preview.ops) ? preview.ops : [];
   if (existingResults.length + ops.length > CWS_AGENT_MAX_OPS) {
     throw new Error(`一度にプレビューできる Agent 操作は${CWS_AGENT_MAX_OPS}件までです。`);
   }
@@ -10838,7 +10887,11 @@ async function appendCwsAgentPreviewOpsProgressively(ops = [], options = {}) {
     preview.visible = true;
   }
 
-  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, existingResults.length + index));
+  const normalizedOps = normalizeCwsAgentOpsBatch(ops, {
+    ...options,
+    existingOps,
+    indexOffset: existingOps.length,
+  });
   const baseline = preview.historyEntry;
   const revisionSnapshot = cwsAgentWorkbookRevisionSnapshot();
   const results = [];
@@ -10881,6 +10934,7 @@ async function appendCwsAgentPreviewOpsProgressively(ops = [], options = {}) {
 
   const afterSheetIndexes = state.model.sheets.map((_sheet, index) => index);
   preview.results = existingResults.concat(results);
+  preview.ops = existingOps.concat(normalizedOps);
   preview.historyEntry = {
     ...baseline,
     sheetsAfter: captureSheetsForHistory(afterSheetIndexes),
@@ -10900,6 +10954,246 @@ async function appendCwsAgentPreviewOpsProgressively(ops = [], options = {}) {
     results: preview.results,
     appendedResults: results,
   };
+}
+
+function normalizeCwsAgentOpsBatch(ops = [], options = {}) {
+  const indexOffset = Math.max(0, Math.floor(Number(options.indexOffset) || 0));
+  const normalizedOps = ops.map((op, index) => normalizeCwsAgentOp(op, indexOffset + index));
+  const contractOps = Array.isArray(options.existingOps)
+    ? options.existingOps.concat(normalizedOps)
+    : normalizedOps;
+  validateCwsAgentOpsContract(contractOps, options);
+  return normalizedOps;
+}
+
+function validateCwsAgentOpsContract(ops = [], options = {}) {
+  validateCwsAgentRequiredOpsContract(ops, options);
+  validateCwsAgentAllowedRangeContract(ops, options);
+  validateCwsAgentHeaderStyleScope(ops);
+}
+
+function validateCwsAgentRequiredOpsContract(ops = [], options = {}) {
+  const requiredOps = cwsAgentContractRequiredOps(options);
+  if (!requiredOps.length) return;
+  const present = new Set(ops.map((op) => op?.type).filter(Boolean));
+  const missing = requiredOps.find((type) => !present.has(type));
+  if (!missing) return;
+  throw new Error(`Agent 操作の計画契約に必要な ${missing} が含まれていません。`);
+}
+
+function cwsAgentContractRequiredOps(options = {}) {
+  const contract = cwsAgentPlainObject(options.contract) || cwsAgentPlainObject(options.agentContract) || {};
+  const raw = Array.isArray(options.requiredOps)
+    ? options.requiredOps
+    : Array.isArray(contract.requiredOps)
+      ? contract.requiredOps
+      : [];
+  const supported = [
+    "setCell",
+    "setRange",
+    "setStyle",
+    "setCellProtection",
+    "clearCellProtection",
+    "setSparkline",
+    "clearSparkline",
+    "setBorders",
+    "setNumberFormat",
+    "sortRange",
+    "setAutoFilter",
+    "clearAutoFilter",
+    "setFilterCriteria",
+    "clearFilterCriteria",
+    "advancedFilter",
+    "removeDuplicates",
+    "findReplace",
+    "textToColumns",
+    "createTable",
+    "createChart",
+    "createPivotTable",
+    "createForecastSheet",
+    "goalSeek",
+    "dataTable",
+    "addShape",
+    "setPrintArea",
+    "clearPrintArea",
+    "setPrintTitles",
+    "clearPrintTitles",
+    "setHeaderFooter",
+    "clearHeaderFooter",
+    "setPageTheme",
+    "setPageOrientation",
+    "setPaperSize",
+    "setPageMargins",
+    "setPageScale",
+    "setPrintOptions",
+    "insertPageBreak",
+    "removePageBreak",
+    "resetPageBreaks",
+    "setSheetView",
+    "setQuickAnalysis",
+    "clearQuickAnalysis",
+    "setQuickAnalysisTotal",
+    "setSubtotal",
+    "clearSubtotals",
+    "consolidateRanges",
+    "setDataValidation",
+    "clearDataValidation",
+    "setHyperlink",
+    "clearHyperlink",
+    "setNote",
+    "clearNote",
+    "setComment",
+    "appendComment",
+    "clearComment",
+    "setNamedRange",
+    "clearNamedRange",
+    "protectSheet",
+    "unprotectSheet",
+    "activateSheet",
+    "selectRange",
+    "copyRange",
+    "moveRange",
+    "addSheet",
+    "renameSheet",
+    "duplicateSheet",
+    "moveSheet",
+    "setSheetTabColor",
+    "clearSheetTabColor",
+    "deleteSheet",
+    "hideSheet",
+    "unhideSheet",
+    "setFreezePanes",
+    "clearFreezePanes",
+    "setColumnWidth",
+    "setRowHeight",
+    "autoFitColumns",
+    "autoFitRows",
+    "hideRows",
+    "unhideRows",
+    "hideColumns",
+    "unhideColumns",
+    "groupRows",
+    "ungroupRows",
+    "groupColumns",
+    "ungroupColumns",
+    "clearRange",
+    "mergeCells",
+    "unmergeCells",
+    "insertRows",
+    "deleteRows",
+    "insertColumns",
+    "deleteColumns",
+  ];
+  const supportedByKey = new Map(supported.map((type) => [cwsAgentContractOpTypeKey(type), type]));
+  return [...new Set(raw
+    .map((type) => supportedByKey.get(cwsAgentContractOpTypeKey(type)))
+    .filter(Boolean))];
+}
+
+function cwsAgentContractOpTypeKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[_-]+/g, "");
+}
+
+function validateCwsAgentAllowedRangeContract(ops = [], options = {}) {
+  const allowedRanges = cwsAgentContractAllowedRanges(options);
+  if (!allowedRanges.length) return;
+  for (const op of ops) {
+    const opRange = cwsAgentRangeForContractOp(op);
+    if (!opRange || cwsAgentRangeWithinAny(opRange, allowedRanges)) continue;
+    throw new Error(`Agent 操作の範囲 ${rangeToLabel(opRange)} は計画契約の範囲外です。`);
+  }
+}
+
+function cwsAgentContractAllowedRanges(options = {}) {
+  const contract = cwsAgentPlainObject(options.contract) || cwsAgentPlainObject(options.agentContract) || {};
+  const raw = Array.isArray(options.allowedRanges)
+    ? options.allowedRanges
+    : Array.isArray(contract.allowedRanges)
+      ? contract.allowedRanges
+      : [];
+  return raw.map(cwsAgentNormalizeContractRange).filter(Boolean);
+}
+
+function cwsAgentNormalizeContractRange(value) {
+  const parsed = typeof value === "string" ? cwsAgentParseRangeAddress(value) : null;
+  const source = parsed || cwsAgentPlainObject(value);
+  if (!source) return null;
+  const top = cwsAgentPositiveInteger(source.top ?? source.row);
+  const left = cwsAgentColumnValue(source.left ?? source.col);
+  const bottom = cwsAgentPositiveInteger(source.bottom) || top;
+  const right = cwsAgentColumnValue(source.right) || left;
+  if (!top || !left || bottom < top || right < left) return null;
+  return { top, left, bottom, right };
+}
+
+function cwsAgentRangeForContractOp(op) {
+  if (!op || typeof op !== "object") return null;
+  if (op.type === "setCell") {
+    return { top: op.row, left: op.col, bottom: op.row, right: op.col };
+  }
+  if (op.type === "goalSeek") {
+    return {
+      top: op.changingRow,
+      left: op.changingCol,
+      bottom: op.changingRow,
+      right: op.changingCol,
+    };
+  }
+  if (!CWS_AGENT_CONTRACT_RANGE_OPS.has(op.type)) return null;
+  const top = cwsAgentPositiveInteger(op.top);
+  const left = cwsAgentColumnValue(op.left);
+  const bottom = cwsAgentPositiveInteger(op.bottom) || top;
+  const right = cwsAgentColumnValue(op.right) || left;
+  if (!top || !left || bottom < top || right < left) return null;
+  return { top, left, bottom, right };
+}
+
+function cwsAgentRangeWithinAny(candidate, ranges) {
+  return ranges.some((range) =>
+    candidate.top >= range.top &&
+    candidate.left >= range.left &&
+    candidate.bottom <= range.bottom &&
+    candidate.right <= range.right,
+  );
+}
+
+function validateCwsAgentHeaderStyleScope(ops = []) {
+  const generatedRanges = ops.filter((op) =>
+    op?.type === "setRange" &&
+    op.bottom > op.top &&
+    op.right >= op.left &&
+    Array.isArray(op.values) &&
+    op.values.length > 1,
+  );
+  if (!generatedRanges.length) return;
+  for (const op of ops) {
+    if (op?.type !== "setStyle" || !cwsAgentStyleLooksLikeHeaderStyle(op.style)) continue;
+    for (const range of generatedRanges) {
+      if (!cwsAgentStyleCoversGeneratedHeader(op, range)) continue;
+      if (op.bottom === range.top) continue;
+      throw new Error("Agent 操作の見出し書式が表全体に適用されています。見出し用の背景色や白文字は見出し行だけに適用してください。");
+    }
+  }
+}
+
+function cwsAgentStyleLooksLikeHeaderStyle(style) {
+  if (!style || typeof style !== "object") return false;
+  const fontWeight = String(style.fontWeight || "").toLowerCase();
+  const headerSignals = [
+    Boolean(style.backgroundColor),
+    Boolean(style.color),
+    fontWeight === "700" || fontWeight === "bold",
+    String(style.textAlign || "").toLowerCase() === "center",
+  ];
+  return headerSignals.filter(Boolean).length >= 2;
+}
+
+function cwsAgentStyleCoversGeneratedHeader(styleOp, rangeOp) {
+  if (styleOp.sheetIndex !== rangeOp.sheetIndex) return false;
+  if (styleOp.top !== rangeOp.top) return false;
+  if (styleOp.left > rangeOp.left || styleOp.right < rangeOp.right) return false;
+  if (styleOp.bottom === rangeOp.top) return true;
+  return styleOp.bottom >= rangeOp.bottom;
 }
 
 function cwsAgentProgressivePreviewDelayMs(options = {}) {
@@ -11085,7 +11379,7 @@ function normalizeCwsAgentOp(op, index) {
   if (type === "datatable" || type === "whatifdatatable" || type === "datatables" || type === "whatiftable" || type === "sensitivitytable" || type === "sensitivityanalysis") {
     return normalizeCwsAgentDataTableOp(op, index);
   }
-  if (type === "addshape" || type === "createshape" || type === "insertshape" || type === "drawshape" || type === "shape" || type === "autoshape" || type === "textbox" || type === "textshape") {
+  if (type === "addshape" || type === "createshape" || type === "insertshape" || type === "drawshape" || type === "shape" || type === "autoshape" || type === "textbox" || type === "textshape" || type === "addconnector" || type === "createconnector" || type === "insertconnector" || type === "drawconnector" || type === "connector" || type === "line" || type === "arrow") {
     return normalizeCwsAgentAddShapeOp(op, index, type);
   }
   if (type === "setquickanalysis" || type === "quickanalysis" || type === "databar" || type === "databars" || type === "colorscale" || type === "iconset" || type === "greaterthanaverage" || type === "aboveaverage" || type === "duplicatevalues") {
@@ -11324,7 +11618,7 @@ function normalizeCwsAgentSetCellOp(op, index) {
 function normalizeCwsAgentSetRangeOp(op, index) {
   const values = cwsAgentMatrixValues(op?.values || op?.rows || op?.data);
   if (!values.length) {
-    throw new Error(`Agent 操作 ${index + 1} の範囲データが正しくありません。`);
+    throw new Error(`Agent 操作 ${index + 1}: setRange には矩形の values 配列が必要です。書式だけの変更は setStyle を使ってください。`);
   }
   const range = cwsAgentRangeForOp(op, index, values);
   return {
@@ -11799,10 +12093,17 @@ function cwsAgentDataTableInputCellForOp(op, index, label, cellKeys, rowKeys, co
 }
 
 function normalizeCwsAgentAddShapeOp(op, index, aliasType = "") {
-  const shapeType = cwsAgentShapeType(op?.shapeType ?? op?.shapeKind ?? op?.shape ?? op?.kind ?? op?.preset ?? op?.typeName, aliasType);
+  const connector = cwsAgentShapeConnectorForOp(op);
+  let shapeType = cwsAgentShapeType(op?.shapeType ?? op?.shapeKind ?? op?.shape ?? op?.kind ?? op?.preset ?? op?.typeName, aliasType);
+  if (connector && !isLineShapeType(shapeType)) {
+    shapeType = "arrow";
+  }
   const location = cwsAgentShapeLocationForOp(op, index);
   const sheet = state.model?.sheets?.[location.sheetIndex];
   const style = cwsAgentShapeStyleForOp(op, index);
+  if (connector && isLineShapeType(shapeType) && !Object.prototype.hasOwnProperty.call(style, "lineEndArrow")) {
+    style.lineEndArrow = true;
+  }
   const box = cwsAgentShapeBoxForOp(op, index, sheet, location, shapeType, style);
   return {
     type: "addShape",
@@ -11811,21 +12112,64 @@ function normalizeCwsAgentAddShapeOp(op, index, aliasType = "") {
     box,
     style,
     name: cwsAgentShapeObjectName(op?.objectName ?? op?.shapeName ?? op?.name),
-    connector: cwsAgentShapeConnectorForOp(op),
+    connector,
     anchor: location.anchorLabel,
   };
 }
 
 function cwsAgentShapeConnectorForOp(op) {
-  const fromShape = cwsAgentShapeReferenceText(cwsAgentFirstExistingValue(op, ["fromShape", "sourceShape", "startShape", "fromShapeName", "sourceShapeName", "startShapeName"]));
-  const toShape = cwsAgentShapeReferenceText(cwsAgentFirstExistingValue(op, ["toShape", "targetShape", "endShape", "toShapeName", "targetShapeName", "endShapeName"]));
+  const connector = cwsAgentPlainObject(op?.connector);
+  const fromShape = cwsAgentShapeReferenceText(
+    cwsAgentConnectorValue([op, connector], ["fromShape", "sourceShape", "startShape", "fromShapeName", "sourceShapeName", "startShapeName"]) ||
+      cwsAgentConnectorValue([connector], ["from", "source", "start"]) ||
+      cwsAgentConnectorEndpointValue([op, connector], ["from", "source", "start"], ["shape", "shapeName", "objectName", "name", "id", "ref"]),
+  );
+  const toShape = cwsAgentShapeReferenceText(
+    cwsAgentConnectorValue([op, connector], ["toShape", "targetShape", "endShape", "toShapeName", "targetShapeName", "endShapeName"]) ||
+      cwsAgentConnectorValue([connector], ["to", "target", "end"]) ||
+      cwsAgentConnectorEndpointValue([op, connector], ["to", "target", "end"], ["shape", "shapeName", "objectName", "name", "id", "ref"]),
+  );
   if (!fromShape || !toShape) return null;
   return {
     fromShape,
     toShape,
-    fromSite: cwsAgentOptionalLineEndpointSide(cwsAgentFirstExistingValue(op, ["fromSite", "fromSide", "sourceSite", "sourceSide", "startSite", "startSide"])),
-    toSite: cwsAgentOptionalLineEndpointSide(cwsAgentFirstExistingValue(op, ["toSite", "toSide", "targetSite", "targetSide", "endSite", "endSide"])),
+    fromSite: cwsAgentOptionalLineEndpointSide(
+      cwsAgentConnectorValue([op, connector], ["fromSite", "fromSide", "sourceSite", "sourceSide", "startSite", "startSide"]) ||
+        cwsAgentConnectorEndpointValue([op, connector], ["from", "source", "start"], ["site", "side", "position", "edge"]),
+    ),
+    toSite: cwsAgentOptionalLineEndpointSide(
+      cwsAgentConnectorValue([op, connector], ["toSite", "toSide", "targetSite", "targetSide", "endSite", "endSide"]) ||
+        cwsAgentConnectorEndpointValue([op, connector], ["to", "target", "end"], ["site", "side", "position", "edge"]),
+    ),
   };
+}
+
+function cwsAgentPlainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function cwsAgentConnectorValue(sources, keys) {
+  for (const source of sources || []) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+      const value = source[key];
+      if (value !== null && value !== undefined && value !== "" && !Array.isArray(value) && typeof value !== "object") return value;
+    }
+  }
+  return "";
+}
+
+function cwsAgentConnectorEndpointValue(sources, endpointKeys, valueKeys) {
+  for (const source of sources || []) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+    for (const endpointKey of endpointKeys) {
+      const endpoint = cwsAgentPlainObject(source[endpointKey]);
+      const value = cwsAgentConnectorValue([endpoint], valueKeys);
+      if (value !== "") return value;
+    }
+  }
+  return "";
 }
 
 function cwsAgentShapeReferenceText(value) {
@@ -14613,6 +14957,14 @@ function cwsAgentShapeType(value, aliasType = "") {
     drawshape: DEFAULT_SHAPE_TYPE,
     shape: DEFAULT_SHAPE_TYPE,
     autoshape: DEFAULT_SHAPE_TYPE,
+    addconnector: "arrow",
+    createconnector: "arrow",
+    insertconnector: "arrow",
+    drawconnector: "arrow",
+    connectorline: "line",
+    lineconnector: "line",
+    arrowconnector: "arrow",
+    linearrow: "arrow",
     rectangle: "rect",
     rect: "rect",
     square: "rect",
@@ -14659,8 +15011,22 @@ function cwsAgentShapeType(value, aliasType = "") {
     標注: "calloutRect",
     process: "flowProcess",
     flowprocess: "flowProcess",
+    処理: "flowProcess",
+    处理: "flowProcess",
+    處理: "flowProcess",
     decision: "flowDecision",
     flowdecision: "flowDecision",
+    判断: "flowDecision",
+    判定: "flowDecision",
+    条件: "flowDecision",
+    條件: "flowDecision",
+    terminator: "flowTerminator",
+    flowterminator: "flowTerminator",
+    startend: "flowTerminator",
+    startorend: "flowTerminator",
+    開始終了: "flowTerminator",
+    开始结束: "flowTerminator",
+    開始結束: "flowTerminator",
     flowchart: "flowProcess",
   };
   const type = aliases[normalized] || raw;
@@ -14672,9 +15038,9 @@ function cwsAgentShapeType(value, aliasType = "") {
 function cwsAgentShapeStyleForOp(op, index) {
   const merged = op?.style && typeof op.style === "object" ? { ...op, ...op.style } : op || {};
   const style = { useThemeEffects: true };
-  const fillColor = cwsAgentShapeColor(merged.fillColor ?? merged.backgroundColor);
+  const fillColor = cwsAgentShapeColor(merged.fillColor ?? merged.fill ?? merged.backgroundColor);
   if (fillColor !== undefined) style.fillColor = fillColor;
-  const outlineColor = cwsAgentShapeColor(merged.outlineColor ?? merged.lineColor ?? merged.borderColor ?? merged.strokeColor);
+  const outlineColor = cwsAgentShapeColor(merged.outlineColor ?? merged.lineColor ?? merged.borderColor ?? merged.strokeColor ?? merged.stroke);
   if (outlineColor !== undefined) style.outlineColor = outlineColor;
   const textColor = cwsAgentShapeColor(merged.textColor ?? merged.fontColor ?? merged.color);
   if (textColor !== undefined && textColor !== "none") style.textColor = textColor;
@@ -14694,9 +15060,25 @@ function cwsAgentShapeStyleForOp(op, index) {
   if (Object.prototype.hasOwnProperty.call(merged, "italic") || Object.prototype.hasOwnProperty.call(merged, "textItalic")) {
     style.textItalic = cwsAgentBoolean(merged.italic ?? merged.textItalic);
   }
+  const startArrowType = cwsAgentShapeArrowTypeValue(merged.lineStartArrowType ?? merged.startArrowType ?? merged.startArrow);
+  const endArrowType = cwsAgentShapeArrowTypeValue(merged.lineEndArrowType ?? merged.endArrowType ?? merged.endArrow);
   if (Object.prototype.hasOwnProperty.call(merged, "lineStartArrow")) style.lineStartArrow = cwsAgentBoolean(merged.lineStartArrow);
   if (Object.prototype.hasOwnProperty.call(merged, "lineEndArrow")) style.lineEndArrow = cwsAgentBoolean(merged.lineEndArrow);
+  if (startArrowType) {
+    style.lineStartArrow = true;
+    style.lineStartArrowType = startArrowType;
+  }
+  if (endArrowType) {
+    style.lineEndArrow = true;
+    style.lineEndArrowType = endArrowType;
+  }
   return style;
+}
+
+function cwsAgentShapeArrowTypeValue(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "boolean") return value ? "triangle" : "";
+  return normalizeShapeArrowType(value);
 }
 
 function cwsAgentShapeColor(value) {
@@ -17800,8 +18182,9 @@ function cwsAgentShapeConnectorBoxForOp(op, sheet) {
   if (!from || !to) {
     throw new Error(`線の接続先図形が見つかりません: ${op.connector.fromShape} -> ${op.connector.toShape}`);
   }
-  const fromSite = op.connector.fromSite;
-  const toSite = op.connector.toSite;
+  const inferredSites = cwsAgentInferConnectorSites(sheet, from, to);
+  const fromSite = op.connector.fromSite || inferredSites.fromSite;
+  const toSite = op.connector.toSite || inferredSites.toSite;
   if (!fromSite || !toSite) {
     throw new Error(`線の接続点指定がありません: ${op.connector.fromShape} -> ${op.connector.toShape}`);
   }
@@ -17824,14 +18207,44 @@ function cwsAgentShapeConnectorBoxForOp(op, sheet) {
   };
 }
 
+function cwsAgentInferConnectorSites(sheet, from, to) {
+  const fromBox = imageBoxToPixels(sheet, from);
+  const toBox = imageBoxToPixels(sheet, to);
+  if (!fromBox || !toBox) return { fromSite: "", toSite: "" };
+  const fromCenter = {
+    x: fromBox.left + fromBox.width / 2,
+    y: fromBox.top + fromBox.height / 2,
+  };
+  const toCenter = {
+    x: toBox.left + toBox.width / 2,
+    y: toBox.top + toBox.height / 2,
+  };
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { fromSite: "right", toSite: "left" }
+      : { fromSite: "left", toSite: "right" };
+  }
+  return dy >= 0
+    ? { fromSite: "bottom", toSite: "top" }
+    : { fromSite: "top", toSite: "bottom" };
+}
+
 function cwsAgentFindShapeForConnector(sheet, reference) {
   const text = String(reference || "").trim();
   if (!text || !sheet?.images?.length) return null;
+  const normalizedText = text.toLowerCase();
   const images = [...sheet.images].reverse();
   return images.find((image) =>
-    image?.id === text ||
-    image?.name === text ||
-    image?.shape?.label === text
+    String(image?.id || "").trim() === text ||
+    String(image?.name || "").trim() === text ||
+    String(image?.shape?.label || "").trim() === text ||
+    String(image?.shape?.text || "").trim() === text ||
+    String(image?.id || "").trim().toLowerCase() === normalizedText ||
+    String(image?.name || "").trim().toLowerCase() === normalizedText ||
+    String(image?.shape?.label || "").trim().toLowerCase() === normalizedText ||
+    String(image?.shape?.text || "").trim().toLowerCase() === normalizedText
   ) || null;
 }
 
