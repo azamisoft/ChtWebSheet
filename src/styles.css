@@ -7953,14 +7953,60 @@ body.is-drawing-ink .sheet-host {
   text-decoration: underline;
 }
 
-.cell-select {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
+.has-validation-dropdown .cell-content {
+  padding-right: 18px;
+}
+
+.has-filter-button.has-validation-dropdown .cell-content,
+.has-filter-button.has-validation-dropdown .cell-link {
+  padding-right: 34px;
+}
+
+.cell-validation-dropdown-button {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  z-index: 3;
+  display: none;
+  width: 16px;
+  height: 18px;
+  transform: translateY(-50%);
+  border: 1px solid #aeb7c6;
+  border-radius: 0;
+  background: linear-gradient(#ffffff, #e8eef7);
+  color: #1f2937;
+  cursor: default;
   padding: 0;
+}
+
+.sheet-cell.is-selected .cell-validation-dropdown-button,
+.sheet-cell.selected .cell-validation-dropdown-button,
+.cell-validation-dropdown-button:focus-visible {
+  display: block;
+}
+
+.has-filter-button .cell-validation-dropdown-button {
+  right: 17px;
+}
+
+.cell-validation-dropdown-button::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -25%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+}
+
+.cell-validation-dropdown-button:hover,
+.cell-validation-dropdown-button:focus-visible {
+  border-color: var(--selection-strong);
   outline: none;
+  background: #eef4ff;
 }
 
 .validation-dropdown-popup {
