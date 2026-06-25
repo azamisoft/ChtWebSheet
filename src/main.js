@@ -21450,6 +21450,8 @@ function init() {
   $sheetHost.on("mouseenter", ".cell-annotation-marker.is-note", openNotePopupFromMarker);
   $sheetHost.on("mouseleave", ".cell-annotation-marker.is-note", scheduleCloseNotePopup);
   $sheetHost.on("pointerdown", ".cell-filter-button", openAutoFilterMenu);
+  $sheetHost.on("pointerdown", ".cell-validation-dropdown-button", handleValidationDropdownButtonPointerDown);
+  $sheetHost.on("click", ".cell-validation-dropdown-button", handleValidationDropdownButtonClick);
   window.addEventListener("pointermove", updateEditAutoScroll);
   window.addEventListener("pointermove", updateObjectSelectionModeDrag, true);
   window.addEventListener("pointermove", updateInkDrawing);
@@ -21910,12 +21912,6 @@ function init() {
       renderSheet();
       updateSelectionUi();
     }
-  });
-
-  $sheetHost.on("change", ".cell-select", (event) => {
-    const $select = $(event.currentTarget);
-    const $cell = $select.closest(".sheet-cell[data-row][data-col]");
-    commitCellValue(Number($cell.data("row")), Number($cell.data("col")), $select.val() || "");
   });
 
   $formulaInput.on("keydown", (event) => {
@@ -36769,7 +36765,7 @@ function ensureHeaderFormatAllowedForSheet(sheet, kind) {
 
 function openCellContextMenu(event) {
   let point = cellPointFromPointerEvent(event, { allowEditable: true });
-  if (!point && event.target?.closest?.(".cell-select")) {
+  if (!point && event.target?.closest?.(".cell-validation-dropdown-button")) {
     point = cellPointFromElement(event.target.closest(".sheet-cell[data-row][data-col]"));
   }
   if (!point) return;
@@ -40722,7 +40718,7 @@ function hyperlinkFromCellClickEvent(event) {
   if (shouldDeferCellHyperlinkClick()) return "";
   const target = event.target;
   if (!target?.closest) return "";
-  if (target.closest(".cell-select,.cell-filter-button")) return "";
+  if (target.closest(".cell-validation-dropdown-button,.cell-filter-button")) return "";
   const cellElement = target.closest(".sheet-cell[data-row][data-col]") || cellElementFromClientPoint(event.clientX, event.clientY);
   if (!cellElement) return "";
   if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
@@ -77819,6 +77815,23 @@ function clearInvalidDataValidationMarks() {
   setStatus(count ? "入力規則マークをクリアしました。" : "クリアする入力規則マークはありません。");
 }
 
+function handleValidationDropdownButtonPointerDown(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+}
+
+function handleValidationDropdownButtonClick(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+  const cellElement = event.currentTarget.closest(".sheet-cell[data-row][data-col]");
+  const point = cellElement ? cellPointFromElement(cellElement) : null;
+  if (!point || point.sheetIndex !== state.activeSheetIndex) return;
+  selectCellPoint(point);
+  openValidationDropdownPopup(point.row, point.col);
+}
+
 function openValidationDropdownPopup(row, col) {
   const sheet = activeSheet();
   const cell = sheet?.cells?.[cellKey(row, col)];
@@ -104017,7 +104030,6 @@ function cellShowsValidationDropdown(cell, sheet = activeSheet()) {
 }
 
 function paintCanvasCellText(context, sheet, mergeMaps, sheetId, row, col, range, cell, rect) {
-  if (cellShowsValidationDropdown(cell, sheet)) return;
   const formula = cell.formula || getCellFormula(sheetId, row, col);
   const display = state.showFormulas && formula ? formula : getDisplayForCell(sheet, sheetId, row, col);
   if (display == null || display === "") return;
@@ -104482,6 +104494,7 @@ function renderCellHtml(sheet, mergeMaps, sheetId, row, col, visibleRange, rende
   if (isAutoFilterHeaderCell(sheet, row, col)) classNames.push("has-filter-button");
   if (cell?.hyperlink) classNames.push("has-hyperlink");
   if (cell?.sparkline) classNames.push("has-sparkline");
+  if (cellShowsValidationDropdown(cell, sheet)) classNames.push("has-validation-dropdown");
   if (cell?.showPhonetic) classNames.push("show-phonetic");
   if (hasValidationInvalidMark(state.activeSheetIndex, row, col)) classNames.push("has-validation-invalid");
   if (formula) classNames.push("formula-cell");
@@ -105545,18 +105558,7 @@ function cellInnerHtml(cell, display, overflowWidth = null, sheet = activeSheet(
   const indicators = cellAnnotationMarkersHtml(cell);
   const filterButton = cellAutoFilterButtonHtml(cell);
   if (cellShowsValidationDropdown(cell, sheet)) {
-    const listOptions = validationListOptions(sheet, cell.validation);
-    const hasSelectedOption = listOptions.some((option) => String(option) === text);
-    const options = [
-      hasSelectedOption ? "" : `<option value="${escapeAttr(text)}" selected hidden>${escapeHtml(text)}</option>`,
-      ...listOptions.map((option) => {
-        const selected = String(option) === text ? " selected" : "";
-        return `<option value="${escapeAttr(option)}"${selected}>${escapeHtml(option)}</option>`;
-      }),
-    ]
-      .filter(Boolean)
-      .join("");
-    return `${indicators}${filterButton}<select class="cell-select">${options}</select>`;
+    return `${indicators}${filterButton}<span class="cell-content" ${cellContentStyle(overflowWidth)}>${escapeHtml(text)}</span>${cellValidationDropdownButtonHtml(cell)}`;
   }
 
   if (cell.hyperlink) {
@@ -105565,6 +105567,11 @@ function cellInnerHtml(cell, display, overflowWidth = null, sheet = activeSheet(
   }
 
   return `${indicators}${filterButton}<span class="cell-content" ${cellContentStyle(overflowWidth)}>${escapeHtml(text)}</span>`;
+}
+
+function cellValidationDropdownButtonHtml(cell) {
+  const label = `${columnName(cell?.col || 1)}${cell?.row || 1} ドロップダウン リストを表示`;
+  return `<button class="cell-validation-dropdown-button" type="button" aria-label="${escapeAttr(label)}" title="ドロップダウン リストを表示"></button>`;
 }
 
 function cellAutoFilterButtonHtml(cell) {
@@ -106806,7 +106813,6 @@ function beginCellEdit(cellElement, options = {}) {
   const sheet = activeSheet();
   if (!ensureEditableRangeForProtection(sheet, selectionRangeFromPoints({ sheetIndex: state.activeSheetIndex, row, col }, { sheetIndex: state.activeSheetIndex, row, col }), "編集")) return;
   const cell = sheet.cells[cellKey(row, col)] || {};
-  if (cellShowsValidationDropdown(cell, sheet)) return;
 
   cancelViewportRender();
   cancelIdleViewportTrim();
@@ -113880,7 +113886,7 @@ function formatPainterPointFromPointerEvent(event) {
   if (
     target.closest?.(
       [
-        ".cell-select",
+        ".cell-validation-dropdown-button",
         ".sheet-image",
         ".sheet-image-link",
         ".sheet-image-selection-frame",
@@ -113907,7 +113913,7 @@ function isCoordinateCellEvent(event, options = {}) {
   if (
     target.closest(
       [
-        ".cell-select",
+        ".cell-validation-dropdown-button",
         ".sheet-image",
         ".sheet-image-link",
         ".sheet-image-selection-frame",
@@ -121557,6 +121563,7 @@ function standaloneRuntime() {
     formulaComposing: false,
     editDrag: null,
     suppressCellSelectionUntil: 0,
+    validationDropdownPopup: null,
   };
   const CELL_EDIT_TRAILING_LINE_SENTINEL = "\u200b";
   function formulaCellRawValue(cell) {
@@ -122541,6 +122548,7 @@ function standaloneRuntime() {
         if (cellHasNote(cell)) classNames.push("has-note");
         if (cellHasPhonetics(cell)) classNames.push("has-phonetic");
         if (cell?.hyperlink) classNames.push("has-hyperlink");
+        if (cellShowsValidationDropdown(cell) && standaloneValidationListOptions(cell).length) classNames.push("has-validation-dropdown");
         if (cell?.showPhonetic) classNames.push("show-phonetic");
         if (formula) classNames.push("formula-cell");
         if (state.selected?.row === row && state.selected?.col === col) classNames.push("selected");
@@ -122560,17 +122568,147 @@ function standaloneRuntime() {
   function cellInnerHtml(cell, value, overflowWidth) {
     const text = value == null ? "" : String(value);
     const indicators = cellAnnotationMarkersHtml(cell);
-    if (cellShowsValidationDropdown(cell)) {
-      const hasSelectedOption = cell.validation.options.some((option) => String(option) === text);
-      const options = (hasSelectedOption ? "" : "<option value='" + escapeAttr(text) + "' selected>" + escapeHtml(text) + "</option>") +
-        cell.validation.options.map((option) => "<option value='" + escapeAttr(option) + "'" + (String(option) === text ? " selected" : "") + ">" + escapeHtml(option) + "</option>").join("");
-      return indicators + "<select class='cell-select'>" + options + "</select>";
+    if (cellShowsValidationDropdown(cell) && standaloneValidationListOptions(cell).length) {
+      return indicators + "<span class='cell-content' " + cellContentStyle(overflowWidth) + ">" + escapeHtml(text) + "</span>" + standaloneValidationDropdownButtonHtml(cell);
     }
     if (cell.hyperlink) {
       const hyperlink = escapeAttr(cell.hyperlink);
       return indicators + "<a class='cell-link cell-content' " + cellContentStyle(overflowWidth) + " href='" + hyperlink + "' data-hyperlink='" + hyperlink + "' target='_blank' rel='noopener noreferrer'>" + escapeHtml(text) + "</a>";
     }
     return indicators + "<span class='cell-content' " + cellContentStyle(overflowWidth) + ">" + escapeHtml(text) + "</span>";
+  }
+  function standaloneValidationDropdownButtonHtml(cell) {
+    const label = columnName(cell?.col || 1) + (cell?.row || 1) + " ドロップダウン リストを表示";
+    return "<button class='cell-validation-dropdown-button' type='button' aria-label='" + escapeAttr(label) + "' title='ドロップダウン リストを表示'></button>";
+  }
+  function standaloneValidationListOptions(cell) {
+    const rule = cell?.validation;
+    if (!rule || rule.type !== "list" || rule.showDropDown === false) return [];
+    if (Array.isArray(rule.options) && rule.options.length) {
+      return rule.options.map(function (option) {
+        return String(option ?? "");
+      });
+    }
+    return parseValidationOptions(rule.formula || "").map(function (option) {
+      return String(option ?? "");
+    });
+  }
+  function handleStandaloneValidationDropdownButtonPointerDown(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+  function handleStandaloneValidationDropdownButtonClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    openStandaloneValidationDropdown($(event.currentTarget).closest(".sheet-cell[data-row][data-col]"));
+  }
+  function openStandaloneValidationDropdown($cell) {
+    if (!$cell?.length) return false;
+    const row = Number($cell.data("row"));
+    const col = Number($cell.data("col"));
+    const sheet = model.sheets[state.active];
+    const cell = sheet?.cells?.[row + ":" + col];
+    const options = standaloneValidationListOptions(cell);
+    if (!row || !col || !options.length) {
+      $status.text("このセルには選択できるドロップダウン リストがありません。");
+      return false;
+    }
+    select($cell);
+    closeStandaloneValidationDropdownPopup();
+    const current = String(cell?.raw ?? getValue(sheet, hf.getSheetId(sheet.name), row, col) ?? "");
+    const popup = document.createElement("div");
+    popup.id = "wxValidationDropdownPopup";
+    popup.className = "validation-dropdown-popup";
+    popup.setAttribute("role", "listbox");
+    popup.setAttribute("aria-label", columnName(col) + row + " ドロップダウン リスト");
+    popup.dataset.row = String(row);
+    popup.dataset.col = String(col);
+    popup.innerHTML = options.map(function (option) {
+      const value = String(option);
+      const selected = value === current ? " is-selected" : "";
+      return "<button class='validation-dropdown-choice" + selected + "' type='button' role='option' aria-selected='" + (selected ? "true" : "false") + "' data-standalone-validation-dropdown-choice='" + escapeAttr(value) + "'>" + escapeHtml(value) + "</button>";
+    }).join("");
+    document.body.appendChild(popup);
+    positionStandaloneValidationDropdownPopup(popup, $cell[0].getBoundingClientRect());
+    state.validationDropdownPopup = { row, col };
+    (popup.querySelector(".is-selected") || popup.querySelector("[data-standalone-validation-dropdown-choice]"))?.focus({ preventScroll: true });
+    return true;
+  }
+  function positionStandaloneValidationDropdownPopup(popup, cellRect) {
+    const margin = 6;
+    popup.style.visibility = "hidden";
+    popup.style.left = "0px";
+    popup.style.top = "0px";
+    const rect = popup.getBoundingClientRect();
+    const width = Math.max(rect.width, cellRect.width, 120);
+    popup.style.width = Math.round(width) + "px";
+    const adjusted = popup.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(cellRect.left, window.innerWidth - adjusted.width - margin));
+    const top = Math.max(margin, Math.min(cellRect.bottom, window.innerHeight - adjusted.height - margin));
+    popup.style.left = Math.round(left) + "px";
+    popup.style.top = Math.round(top) + "px";
+    popup.style.visibility = "visible";
+  }
+  function handleStandaloneValidationDropdownChoice(event) {
+    const popup = event.currentTarget.closest("#wxValidationDropdownPopup");
+    const row = Number(popup?.dataset.row);
+    const col = Number(popup?.dataset.col);
+    const value = event.currentTarget.dataset.standaloneValidationDropdownChoice || "";
+    closeStandaloneValidationDropdownPopup();
+    if (!row || !col) return;
+    commit(row, col, value);
+    $status.text(columnName(col) + row + " に「" + value + "」を入力しました。");
+  }
+  function handleStandaloneValidationDropdownKeydown(event) {
+    const popup = event.currentTarget.closest("#wxValidationDropdownPopup");
+    const choices = Array.prototype.slice.call(popup?.querySelectorAll("[data-standalone-validation-dropdown-choice]") || []);
+    if (!choices.length) return;
+    const currentIndex = Math.max(0, choices.indexOf(event.currentTarget));
+    const focusChoice = function (index) {
+      const next = choices[Math.max(0, Math.min(choices.length - 1, index))];
+      next?.focus({ preventScroll: true });
+    };
+    const consume = function () {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    };
+    if (event.key === "ArrowDown") {
+      consume();
+      focusChoice(currentIndex + 1);
+    } else if (event.key === "ArrowUp") {
+      consume();
+      focusChoice(currentIndex - 1);
+    } else if (event.key === "Home") {
+      consume();
+      focusChoice(0);
+    } else if (event.key === "End") {
+      consume();
+      focusChoice(choices.length - 1);
+    } else if (event.key === "PageDown") {
+      consume();
+      focusChoice(currentIndex + 8);
+    } else if (event.key === "PageUp") {
+      consume();
+      focusChoice(currentIndex - 8);
+    } else if (event.key === "Enter" || event.key === " ") {
+      consume();
+      event.currentTarget.click();
+    }
+  }
+  function closeStandaloneValidationDropdownOnOutsidePointer(event) {
+    if (!state.validationDropdownPopup) return;
+    if (event.target.closest?.("#wxValidationDropdownPopup")) return;
+    closeStandaloneValidationDropdownPopup();
+  }
+  function closeStandaloneValidationDropdownOnEscape(event) {
+    if (event.key === "Escape" && state.validationDropdownPopup) closeStandaloneValidationDropdownPopup();
+  }
+  function closeStandaloneValidationDropdownPopup() {
+    document.querySelector("#wxValidationDropdownPopup")?.remove();
+    state.validationDropdownPopup = null;
   }
   function cellContentStyle(overflowWidth) {
     return overflowWidth ? "style='width:" + overflowWidth + "px'" : "";
@@ -123259,7 +123397,6 @@ function standaloneRuntime() {
   }
 
   function paintCanvasCellText(context, sheet, maps, sheetId, row, col, range, cell, rect) {
-  if (cellShowsValidationDropdown(cell)) return;
     const formula = cell.formula || getFormula(sheetId, row, col);
     const display = state.showFormulas && formula ? formula : getValue(sheet, sheetId, row, col);
     if (display == null || display === "") return;
@@ -124032,7 +124169,7 @@ function standaloneRuntime() {
     if (event.defaultPrevented || event.button > 0) return "";
     const target = event.target;
     if (!target?.closest) return "";
-    if (target.closest(".cell-select")) return "";
+    if (target.closest(".cell-validation-dropdown-button")) return "";
     const cellElement = target.closest(".sheet-cell[data-row][data-col]") || standaloneCellElementFromClientPoint(event.clientX, event.clientY);
     if (!cellElement) return "";
     if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
@@ -124482,7 +124619,7 @@ function standaloneRuntime() {
     return Math.max(1, range.bottom - range.top + 1) * Math.max(1, range.right - range.left + 1);
   }
   function beginCellEdit($cell, options = {}) {
-    if (!$cell.length || $cell.find(".cell-select").length) return;
+    if (!$cell.length) return;
     select($cell);
     const row = Number($cell.data("row"));
     const col = Number($cell.data("col"));
@@ -124780,6 +124917,7 @@ function standaloneRuntime() {
     $status.text("新しいワークシートを追加しました：" + name);
   });
   $sheet.on("scroll", function () {
+    closeStandaloneValidationDropdownPopup();
     syncHorizontalScrollbarFromSheet();
     scheduleCanvasPaint();
   });
@@ -124829,6 +124967,12 @@ function standaloneRuntime() {
   window.addEventListener("blur", finishRuntimeEditDrag);
   $sheet.on("pointerdown", ".sheet-cell[contenteditable='true']", startRuntimeEditDrag);
   $sheet.on("click", ".cell-link", handleStandaloneCellHyperlinkClick);
+  $sheet.on("pointerdown", ".cell-validation-dropdown-button", handleStandaloneValidationDropdownButtonPointerDown);
+  $sheet.on("click", ".cell-validation-dropdown-button", handleStandaloneValidationDropdownButtonClick);
+  $(document).on("click", "[data-standalone-validation-dropdown-choice]", handleStandaloneValidationDropdownChoice);
+  $(document).on("keydown", "[data-standalone-validation-dropdown-choice]", handleStandaloneValidationDropdownKeydown);
+  $(document).on("pointerdown", closeStandaloneValidationDropdownOnOutsidePointer);
+  $(document).on("keydown", closeStandaloneValidationDropdownOnEscape);
   $sheet.on("click focusin", ".sheet-cell[data-row][data-col]", function (event) {
     if (event.type === "click") {
       const hyperlink = standaloneHyperlinkFromCellClickEvent(event);
@@ -124896,10 +125040,6 @@ function standaloneRuntime() {
     $(this).removeAttr("contenteditable");
     if (before !== after) commit(Number($(this).data("row")), Number($(this).data("col")), after);
     else renderSheet();
-  });
-  $sheet.on("change", ".cell-select", function () {
-    const $cell = $(this).closest(".sheet-cell");
-    commit(Number($cell.data("row")), Number($cell.data("col")), $(this).val());
   });
   $apply.on("click", function () {
     if (state.selected) commit(state.selected.row, state.selected.col, $formula.val());
@@ -125749,7 +125889,7 @@ html,body{height:100%;overflow:hidden}body{margin:0;background:#eef2f7;color:#1d
 .sheet-cell[contenteditable=true]{background:transparent;box-sizing:border-box;cursor:text;display:block;height:var(--cell-edit-overlay-height,100%);isolation:isolate;min-height:100%;overflow:visible;padding-top:var(--cell-edit-padding-top,2px);text-overflow:clip;white-space:pre;user-select:text;scrollbar-width:none;z-index:40}.sheet-cell[contenteditable=true]::before{content:"";position:absolute;z-index:-1;left:var(--cell-edit-overlay-left,0);top:0;width:var(--cell-edit-overlay-width,100%);height:var(--cell-edit-overlay-height,100%);background:var(--cell-fill-color,#fff);pointer-events:none}.sheet-cell[contenteditable=true]::-webkit-scrollbar{width:0;height:0;display:none}.sheet-cell[contenteditable=true] .cell-content{opacity:1;overflow:visible;pointer-events:auto}.sheet-cell[contenteditable=true]:focus{outline:2px solid #22c55e;outline-offset:-2px;z-index:41}.sheet-cell.selected{outline:2px solid #22c55e;outline-offset:-2px;z-index:4}
 .formula-cell:after{content:"";position:absolute;right:3px;top:3px;width:0;height:0;border-left:6px solid transparent;border-top:6px solid #2563eb}
 .cell-annotation-marker{position:absolute;top:0;right:0;z-index:6;width:0;height:0;pointer-events:none;border-left:8px solid transparent}.cell-annotation-marker.is-comment{border-top:8px solid #8064a2}.cell-annotation-marker.is-note{border-top:8px solid #c00000}.sheet-cell.has-comment.has-note .cell-annotation-marker.is-comment{right:9px}
-a{color:#1d4ed8}.cell-select{width:100%;height:100%;border:0;background:transparent;color:inherit}
+a{color:#1d4ed8}.has-validation-dropdown .cell-content{padding-right:18px}.cell-validation-dropdown-button{position:absolute;right:0;top:50%;z-index:3;display:none;width:16px;height:18px;transform:translateY(-50%);border:1px solid #aeb7c6;border-radius:0;background:linear-gradient(#fff,#e8eef7);color:#1f2937;cursor:default;padding:0}.sheet-cell.selected .cell-validation-dropdown-button,.cell-validation-dropdown-button:focus-visible{display:block}.cell-validation-dropdown-button:after{content:"";position:absolute;left:50%;top:50%;width:0;height:0;transform:translate(-50%,-25%);border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor}.cell-validation-dropdown-button:hover,.cell-validation-dropdown-button:focus-visible{border-color:#22c55e;outline:none;background:#eef4ff}.validation-dropdown-popup{position:fixed;z-index:2140;max-height:220px;overflow-y:auto;border:1px solid #7f9db9;background:#fff;box-shadow:0 6px 18px rgba(15,23,42,.18);color:#111827;font:12px "Yu Gothic UI","Meiryo UI","Segoe UI",sans-serif}.validation-dropdown-choice{display:block;width:100%;min-height:22px;padding:2px 8px;border:0;background:#fff;color:inherit;text-align:left;white-space:nowrap}.validation-dropdown-choice:hover,.validation-dropdown-choice:focus,.validation-dropdown-choice.is-selected{background:#dcfce7;outline:none}
 `;
 }
 
