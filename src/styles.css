@@ -4768,6 +4768,11 @@ body.is-dragging-print-area * {
   line-height: 1.18;
 }
 
+.sheet-tab-navigator-menu {
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
+}
+
 .menu-access-key {
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -4805,6 +4810,23 @@ body.is-dragging-print-area * {
 .sheet-tab-menu-item:disabled,
 .sheet-tab-menu-item.is-disabled {
   color: #9aa4b2;
+}
+
+.sheet-navigator-menu-item.is-active {
+  font-weight: 600;
+}
+
+.sheet-navigator-check {
+  width: 14px;
+  flex: 0 0 14px;
+  color: var(--accent-strong);
+  text-align: center;
+}
+
+.sheet-navigator-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sheet-tab-menu-separator {
@@ -12400,6 +12422,12 @@ body.is-drawing-ink .sheet-host {
   margin: 0 0 12px;
   border: 1px solid #b7b7b7;
   padding: 10px 10px 12px;
+}
+
+.format-group.is-hidden,
+.format-number-setting.is-hidden,
+[data-format-number-setting].is-hidden {
+  display: none !important;
 }
 
 .format-group legend {
