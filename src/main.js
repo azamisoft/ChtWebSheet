@@ -10248,6 +10248,7 @@ const state = {
   activeSheetIndex: 0,
   selectedSheetIndexes: [],
   sheetContextMenu: null,
+  sheetNavigatorMenu: null,
   sheetTabRename: null,
   sheetTabDrag: null,
   sheetTabKeyboardActivation: null,
@@ -21301,6 +21302,8 @@ function init() {
   $addSheetButton.on("click", addBlankSheet);
   $sheetTabScrollLeft.on("click", () => scrollSheetTabs(-1));
   $sheetTabScrollRight.on("click", () => scrollSheetTabs(1));
+  $sheetTabScrollLeft.on("contextmenu", openSheetNavigatorMenu);
+  $sheetTabScrollRight.on("contextmenu", openSheetNavigatorMenu);
   $sheetFooter.on("click", "[data-sheet-view]", (event) => {
     setActiveSheetView(event.currentTarget.dataset.sheetView);
   });
@@ -21447,6 +21450,8 @@ function init() {
   $sheetHost.on("mouseenter", ".cell-annotation-marker.is-note", openNotePopupFromMarker);
   $sheetHost.on("mouseleave", ".cell-annotation-marker.is-note", scheduleCloseNotePopup);
   $sheetHost.on("pointerdown", ".cell-filter-button", openAutoFilterMenu);
+  $sheetHost.on("pointerdown", ".cell-validation-dropdown-button", handleValidationDropdownButtonPointerDown);
+  $sheetHost.on("click", ".cell-validation-dropdown-button", handleValidationDropdownButtonClick);
   window.addEventListener("pointermove", updateEditAutoScroll);
   window.addEventListener("pointermove", updateObjectSelectionModeDrag, true);
   window.addEventListener("pointermove", updateInkDrawing);
@@ -21487,6 +21492,7 @@ function init() {
   window.addEventListener("blur", stopEditAutoScroll);
   window.addEventListener("beforeunload", handleWorkbookBeforeUnload);
   $(document).on("pointerdown", closeSheetTabContextMenuOnOutsidePointer);
+  $(document).on("pointerdown", closeSheetNavigatorMenuOnOutsidePointer);
   $(document).on("pointerdown", commitSheetTabRenameOnOutsidePointer);
   $(document).on("pointerdown", closeCellContextMenuOnOutsidePointer);
   $(document).on("pointerdown", closeFileSideMenuOnOutsidePointer);
@@ -21495,6 +21501,7 @@ function init() {
   $(document).on("pointerdown", closeAutoFilterMenuOnOutsidePointer);
   $(document).on("pointerdown", closeHomeCommandMenuOnOutsidePointer);
   $(document).on("click", "[data-sheet-menu-action]", handleSheetTabContextMenuAction);
+  $(document).on("click", "[data-sheet-navigator-index]", handleSheetNavigatorMenuChoice);
   $(document).on("click", "[data-sheet-tab-color]", handleSheetTabColorChoice);
   $(document).on("click", "[data-cell-menu-action]", handleCellContextMenuAction);
   $(document).on("click", "[data-ribbon-color-choice]", handleRibbonColorChoice);
@@ -21560,8 +21567,8 @@ function init() {
   $(document).on("dblclick", "[data-data-field='macroIndex']", handleMacroListDoubleClick);
   $(document).on("change", "[data-data-field='sheetCodeProcedure']", handleSheetCodeProcedureChange);
   $(document).on("click", "[data-data-menu-action]", handleDataCommandMenuAction);
-  $(document).on("click", "#homeCommandMenu button, #dataCommandMenu button, #dataValidationMenu button, #whatIfMenu button, #viewCommandMenu button, #ribbonUnderlineMenu button, #ribbonBorderMenu button, #ribbonInkEraserMenu button, #ribbonColorPalette button, #ribbonShapeMenu button, #shapeFormatMenu button, #sheetTabContextMenu button, #cellContextMenu button, #statusBarContextMenu button, #queryPaneContextMenu button, #quickAnalysisPopup button, #fileSideMenu button", scheduleWorksheetFocusAfterCommandPopup);
-  $(document).on("keydown", "#homeCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #viewCommandMenu, #ribbonUnderlineMenu, #ribbonBorderMenu, #ribbonInkEraserMenu, #ribbonColorPalette, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #nameBoxMenu", handleRibbonCommandMenuKeydown);
+  $(document).on("click", "#homeCommandMenu button, #dataCommandMenu button, #dataValidationMenu button, #whatIfMenu button, #viewCommandMenu button, #ribbonUnderlineMenu button, #ribbonBorderMenu button, #ribbonInkEraserMenu button, #ribbonColorPalette button, #ribbonShapeMenu button, #shapeFormatMenu button, #sheetTabContextMenu button, #sheetTabNavigatorMenu button, #cellContextMenu button, #statusBarContextMenu button, #queryPaneContextMenu button, #quickAnalysisPopup button, #fileSideMenu button", scheduleWorksheetFocusAfterCommandPopup);
+  $(document).on("keydown", "#homeCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #viewCommandMenu, #ribbonUnderlineMenu, #ribbonBorderMenu, #ribbonInkEraserMenu, #ribbonColorPalette, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #sheetTabNavigatorMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #nameBoxMenu", handleRibbonCommandMenuKeydown);
   $(document).on("keydown", handleGlobalCommandMenuAccessKey);
   $(document).on("change", "[data-existing-connection-list]", handleExistingConnectionDialogSync);
   $(document).on("change", "[data-workbook-link-list]", handleWorkbookLinksDialogSync);
@@ -21675,7 +21682,7 @@ function init() {
   $(document).on("click", "[data-comment-thread-action]", handleCommentThreadAction);
   $(document).on("click", "[data-status-bar-item]", handleStatusBarMenuItem);
   $(document).on("change", 'input[name="zoomDialogOption"]', handleZoomDialogOptionChange);
-  $(document).on("input change", "#formatCellsDialog [data-format-field]", updateFormatDialogPreview);
+  $(document).on("input change", "#formatCellsDialog [data-format-field]", handleFormatDialogFieldChange);
   $(document).on("keydown", "#cellAnnotationEditor textarea", handleAnnotationEditorKeydown);
   $(document).on("keydown", "#cellCommentThreadPopup textarea", handleCommentThreadKeydown);
   $(document).on("keydown", "#shapeTextEditor", handleShapeTextEditorKeydown);
@@ -21813,6 +21820,14 @@ function init() {
   });
 
   $sheetHost.on("keydown", ".sheet-cell[contenteditable='true']", (event) => {
+    const dateTimeShortcut = keyboardDateTimeShortcutKind(event, String(event.key || "").toLowerCase());
+    if (dateTimeShortcut) {
+      if (isImeCompositionEvent(event, event.currentTarget, "cell")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      insertKeyboardDateTimeIntoEditable(event.currentTarget, dateTimeShortcut);
+      return;
+    }
     if (isEnterKeyEvent(event) && isAltModifierEvent(event)) {
       event.preventDefault();
       event.stopPropagation();
@@ -21897,12 +21912,6 @@ function init() {
       renderSheet();
       updateSelectionUi();
     }
-  });
-
-  $sheetHost.on("change", ".cell-select", (event) => {
-    const $select = $(event.currentTarget);
-    const $cell = $select.closest(".sheet-cell[data-row][data-col]");
-    commitCellValue(Number($cell.data("row")), Number($cell.data("col")), $select.val() || "");
   });
 
   $formulaInput.on("keydown", (event) => {
@@ -25642,10 +25651,54 @@ function parsePersistedDateString(text) {
   const japaneseDate = source.match(/^(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if (japaneseDate) {
     const [, year, month, day, hour = "0", minute = "0", second = "0"] = japaneseDate;
-    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-    return Number.isNaN(date.getTime()) ? null : date;
+    return localDateFromPersistedParts(year, month, day, hour, minute, second);
+  }
+  const slashDate = source.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?)?$/);
+  if (slashDate) {
+    const [, year, month, day, hour = "0", minute = "0", second = "0"] = slashDate;
+    return localDateFromPersistedParts(year, month, day, hour, minute, second);
   }
   return null;
+}
+
+function localDateFromPersistedParts(year, month, day, hour = "0", minute = "0", second = "0") {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  const h = Number(hour);
+  const min = Number(minute);
+  const sec = Number(second);
+  if (
+    !Number.isInteger(y) ||
+    !Number.isInteger(m) ||
+    !Number.isInteger(d) ||
+    !Number.isInteger(h) ||
+    !Number.isInteger(min) ||
+    !Number.isInteger(sec) ||
+    m < 1 ||
+    m > 12 ||
+    d < 1 ||
+    h < 0 ||
+    h > 23 ||
+    min < 0 ||
+    min > 59 ||
+    sec < 0 ||
+    sec > 59
+  ) {
+    return null;
+  }
+  const date = new Date(y, m - 1, d, h, min, sec);
+  if (
+    date.getFullYear() !== y ||
+    date.getMonth() !== m - 1 ||
+    date.getDate() !== d ||
+    date.getHours() !== h ||
+    date.getMinutes() !== min ||
+    date.getSeconds() !== sec
+  ) {
+    return null;
+  }
+  return date;
 }
 
 function isIsoDateTimeString(value) {
@@ -33937,9 +33990,18 @@ function renderSheetTabs() {
       const group = groupSelection.has(index) ? " is-group-selected" : "";
       const renaming = state.sheetTabRename?.sheetIndex === index;
       const renameClass = renaming ? " is-renaming" : "";
-      const tabColor = sheet.tabColor ? ` data-tab-color="true" style="--sheet-tab-color:${escapeAttr(sheet.tabColor)}"` : "";
+      const styleParts = [];
+      if (sheet.tabColor) styleParts.push(`--sheet-tab-color:${escapeAttr(sheet.tabColor)}`);
+      if (renaming) {
+        const widthPx = Number(state.sheetTabRename?.widthPx || 0);
+        if (Number.isFinite(widthPx) && widthPx > 0) {
+          styleParts.push(`width:${Math.ceil(widthPx)}px`);
+        }
+      }
+      const tabColor = sheet.tabColor ? ` data-tab-color="true"` : "";
+      const styleAttr = styleParts.length ? ` style="${styleParts.join(";")}"` : "";
       const className = `sheet-tab${active}${group}${renameClass}`;
-      const attrs = `class="${className}" data-sheet-index="${index}"${tabColor}`;
+      const attrs = `class="${className}" data-sheet-index="${index}"${tabColor}${styleAttr}`;
       if (renaming) {
         const value = state.sheetTabRename.value ?? sheet.name;
         return `<div ${attrs} role="button" tabindex="0" aria-label="${escapeAttr(sheet.name)} の名前を変更"><input class="sheet-tab-rename-input" type="text" value="${escapeAttr(value)}" maxlength="31" spellcheck="false" aria-label="シート名" /></div>`;
@@ -34047,6 +34109,12 @@ function focusSheetTabRenameInput({ select = true } = {}) {
 
 function resizeSheetTabRenameInput(input) {
   if (!input) return;
+  const lockedWidthPx = Number(state.sheetTabRename?.widthPx || 0);
+  if (Number.isFinite(lockedWidthPx) && lockedWidthPx > 0) {
+    input.style.width = "100%";
+    input.style.maxWidth = "none";
+    return;
+  }
   const textLength = Math.max(3, String(input.value || "").length);
   input.style.width = `${Math.min(220, Math.max(48, textLength * 9 + 24))}px`;
 }
@@ -34061,11 +34129,14 @@ function beginSheetTabInlineRename(sheetIndex) {
   closeSheetTabContextMenu();
   closeCellContextMenu();
   closeDataDialog({ keepState: true });
+  const existingTab = sheetTabButtonByIndex(sheetIndex);
+  const widthPx = existingTab ? existingTab.getBoundingClientRect().width : 0;
   state.activeSheetIndex = sheetIndex;
   state.selectedSheetIndexes = [];
   state.sheetTabRename = {
     sheetIndex,
     value: sheet.name,
+    widthPx: Number.isFinite(widthPx) && widthPx > 0 ? widthPx : null,
   };
   renderSheetTabs();
   setStatus(`${sheet.name} の名前を変更します。`);
@@ -36142,6 +36213,64 @@ function renderSheetTabContextMenu(sheetIndex, clientX, clientY) {
   menu.querySelector("button:not([disabled])")?.focus({ preventScroll: true });
 }
 
+function openSheetNavigatorMenu(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!state.model?.sheets?.length) return;
+  renderSheetNavigatorMenu(event.clientX, event.clientY);
+}
+
+function renderSheetNavigatorMenu(clientX, clientY) {
+  closeSheetTabContextMenu();
+  closeSheetNavigatorMenu();
+  closeCellContextMenu();
+  closeFileSideMenu({ restoreHome: true });
+  const indexes = visibleSheetIndexes();
+  if (!indexes.length) return;
+  state.sheetNavigatorMenu = { open: true };
+  const html = indexes.map((sheetIndex) => {
+    const sheet = state.model.sheets[sheetIndex];
+    const active = sheetIndex === state.activeSheetIndex;
+    return `<button class="sheet-tab-menu-item sheet-navigator-menu-item${active ? " is-active" : ""}" type="button" role="menuitemradio" aria-checked="${active ? "true" : "false"}" data-sheet-navigator-index="${sheetIndex}" title="${escapeAttr(sheet.name)}"><span class="sheet-navigator-check" aria-hidden="true">${active ? "✓" : ""}</span><span class="sheet-navigator-name">${escapeHtml(sheet.name)}</span></button>`;
+  }).join("");
+  const menu = document.createElement("div");
+  menu.id = "sheetTabNavigatorMenu";
+  menu.className = "sheet-tab-context-menu sheet-tab-navigator-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "シートの選択");
+  menu.innerHTML = html;
+  document.body.append(menu);
+  positionSheetTabContextMenu(menu, clientX, clientY);
+  (menu.querySelector(".is-active") || menu.querySelector("button"))?.focus({ preventScroll: true });
+}
+
+function closeSheetNavigatorMenuOnOutsidePointer(event) {
+  if (!state.sheetNavigatorMenu) return;
+  if (event.target.closest?.("#sheetTabNavigatorMenu")) return;
+  closeSheetNavigatorMenu();
+}
+
+function closeSheetNavigatorMenu() {
+  document.querySelector("#sheetTabNavigatorMenu")?.remove();
+  state.sheetNavigatorMenu = null;
+}
+
+function handleSheetNavigatorMenuChoice(event) {
+  const button = event.currentTarget;
+  if (!button.closest("#sheetTabNavigatorMenu")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const sheetIndex = Number(button.dataset.sheetNavigatorIndex);
+  const sheet = state.model?.sheets?.[sheetIndex];
+  closeSheetNavigatorMenu();
+  if (!sheet || !isSheetVisible(sheet)) return;
+  if (sheetIndex !== state.activeSheetIndex || (state.selectedSheetIndexes || []).length) {
+    setActiveSheet(sheetIndex);
+  }
+  scheduleFocusSheetTabByIndex(sheetIndex, 24, { forceUntil: nowMs() + 800 });
+  setStatus(`${sheet.name} シートを表示しました。`);
+}
+
 function sheetTabContextMenuItems(sheetIndex) {
   const hiddenCount = hiddenSheetIndexes().length;
   const visibleCount = visibleSheetIndexes().length;
@@ -36201,9 +36330,10 @@ function closeSheetTabContextMenuOnOutsidePointer(event) {
 
 function closeSheetTabContextMenuOnEscape(event) {
   if (event.key !== "Escape") return;
-  if (!document.querySelector("#sheetTabContextMenu, #cellContextMenu")) return;
+  if (!document.querySelector("#sheetTabContextMenu, #sheetTabNavigatorMenu, #cellContextMenu")) return;
   consumeCommandMenuKey(event);
   closeSheetTabContextMenu();
+  closeSheetNavigatorMenu();
   closeCellContextMenu();
 }
 
@@ -36635,7 +36765,7 @@ function ensureHeaderFormatAllowedForSheet(sheet, kind) {
 
 function openCellContextMenu(event) {
   let point = cellPointFromPointerEvent(event, { allowEditable: true });
-  if (!point && event.target?.closest?.(".cell-select")) {
+  if (!point && event.target?.closest?.(".cell-validation-dropdown-button")) {
     point = cellPointFromElement(event.target.closest(".sheet-cell[data-row][data-col]"));
   }
   if (!point) return;
@@ -39920,6 +40050,7 @@ function openFormatCellsDialog(row, col) {
     range: { ...activeRange },
     ranges: formatRanges.map((range) => ({ ...range })),
     point: { ...point },
+    activeTab: "number",
   };
 
   const overlay = document.createElement("div");
@@ -39927,9 +40058,30 @@ function openFormatCellsDialog(row, col) {
   overlay.className = "format-dialog-overlay";
   overlay.innerHTML = formatCellsDialogHtml(cell, activeSheet());
   document.body.append(overlay);
+  updateFormatDialogNumberSettingVisibility(overlay);
   updateFormatDialogPreview();
   overlay.querySelector("[data-format-dialog-action='ok']")?.focus({ preventScroll: true });
 }
+
+const FORMAT_DIALOG_DATE_FORMATS = [
+  "yyyy/m/d",
+  "yyyy/mm/dd",
+  "yy/m/d",
+  "m/d",
+  "m/d/yy",
+  "d-mmm",
+  "mmm-yy",
+  "mmmm d, yyyy",
+  "yyyy年m月d日",
+  "yyyy\"年\"m\"月\"d\"日",
+  "m月d日",
+  "yyyy/m/d h:mm",
+  "yyyy/mm/dd h:mm",
+  "yyyy/m/d h:mm:ss",
+  "h:mm",
+  "h:mm:ss",
+  "h:mm AM/PM",
+];
 
 function formatCellsDialogHtml(cell, sheet = activeSheet()) {
   const css = cellEffectiveCss(sheet, cell);
@@ -39946,6 +40098,9 @@ function formatCellsDialogHtml(cell, sheet = activeSheet()) {
   const currentFill = normalizeColorValue(css.backgroundColor) || "#FFFFFF";
   const currentColor = normalizeColorValue(css.color) || "#000000";
   const protection = cell.protection || {};
+  const currentNumberCategory = numberCategoryFromFormat(cell.numFmt);
+  const currentDateFormat = currentNumberCategory === "date" && cell.numFmt ? cell.numFmt : "yyyy/m/d";
+  const currentCustomFormat = cell.numFmt || "yyyy/m/d";
 
   return `
     <div id="formatCellsDialog" class="format-dialog" role="dialog" aria-modal="true" aria-labelledby="formatCellsDialogTitle">
@@ -39961,12 +40116,12 @@ function formatCellsDialogHtml(cell, sheet = activeSheet()) {
             <fieldset class="format-group format-category-group">
               <legend>${accessKeyLabelHtml("分類(C)")}</legend>
               <select class="format-listbox" size="8" data-format-field="numberCategory">
-                ${formatOption("general", "標準", numberCategoryFromFormat(cell.numFmt) === "general")}
-                ${formatOption("number", "数値", numberCategoryFromFormat(cell.numFmt) === "number")}
-                ${formatOption("currency", "通貨", numberCategoryFromFormat(cell.numFmt) === "currency")}
-                ${formatOption("percent", "パーセンテージ", numberCategoryFromFormat(cell.numFmt) === "percent")}
-                ${formatOption("date", "日付", numberCategoryFromFormat(cell.numFmt) === "date")}
-                ${formatOption("text", "文字列", numberCategoryFromFormat(cell.numFmt) === "text")}
+                ${formatOption("general", "標準", currentNumberCategory === "general")}
+                ${formatOption("number", "数値", currentNumberCategory === "number")}
+                ${formatOption("currency", "通貨", currentNumberCategory === "currency")}
+                ${formatOption("percent", "パーセンテージ", currentNumberCategory === "percent")}
+                ${formatOption("date", "日付", currentNumberCategory === "date")}
+                ${formatOption("text", "文字列", currentNumberCategory === "text")}
               </select>
             </fieldset>
             <div class="format-number-details">
@@ -39974,23 +40129,25 @@ function formatCellsDialogHtml(cell, sheet = activeSheet()) {
                 <legend>サンプル</legend>
                 <div class="format-sample"><strong data-format-sample>1234</strong></div>
               </fieldset>
-              <fieldset class="format-group">
+              <fieldset class="format-group" data-format-settings-group>
                 <legend>設定</legend>
                 <div class="format-dialog-grid two">
-                  <label class="format-field">${accessKeyLabelHtml("小数点以下の桁数(D)")}
+                  <label class="format-field" data-format-number-setting="decimals">${accessKeyLabelHtml("小数点以下の桁数(D)")}
                     <input type="number" min="0" max="6" value="${formatDecimalPlaces(cell.numFmt)}" data-format-field="decimals" />
                   </label>
-                  <label class="format-check"><input type="checkbox" ${formatUsesSeparator(cell.numFmt) ? "checked" : ""} data-format-field="useSeparator" /> 桁区切り(,)を使用する</label>
-                  <label class="format-field">${accessKeyLabelHtml("記号(S)")}
+                  <label class="format-check" data-format-number-setting="useSeparator"><input type="checkbox" ${formatUsesSeparator(cell.numFmt) ? "checked" : ""} data-format-field="useSeparator" /> 桁区切り(,)を使用する</label>
+                  <label class="format-field" data-format-number-setting="currencySymbol">${accessKeyLabelHtml("記号(S)")}
                     <select data-format-field="currencySymbol">
                       ${["¥", "$", "€", "£"].map((symbol) => formatOption(symbol, symbol, currencySymbol(cell.numFmt) === symbol)).join("")}
                     </select>
                   </label>
-                  <label class="format-field">${accessKeyLabelHtml("日付の種類(T)")}
+                  <label class="format-field" data-format-number-setting="dateFormat">${accessKeyLabelHtml("日付の種類(T)")}
                     <select data-format-field="dateFormat">
-                      ${formatOption("yyyy/mm/dd", "yyyy/mm/dd", true)}
-                      ${formatOption("yyyy年m月d日", "yyyy年m月d日", false)}
+                      ${formatDialogDateFormatOptions(currentDateFormat)}
                     </select>
+                  </label>
+                  <label class="format-field" data-format-number-setting="customFormat">${accessKeyLabelHtml("ユーザー定義(U)")}
+                    <input type="text" value="${escapeAttr(currentCustomFormat)}" data-format-field="customFormat" placeholder="yyyy/m/d h:mm" />
                   </label>
                 </div>
               </fieldset>
@@ -40130,6 +40287,14 @@ function formatOption(value, label, selected) {
   return `<option value="${escapeAttr(value)}"${selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
 }
 
+function formatDialogDateFormatOptions(currentFormat = "") {
+  const current = String(currentFormat || "yyyy/m/d");
+  const formats = FORMAT_DIALOG_DATE_FORMATS.includes(current)
+    ? FORMAT_DIALOG_DATE_FORMATS
+    : [current, ...FORMAT_DIALOG_DATE_FORMATS];
+  return formats.map((format) => formatOption(format, format, format === current)).join("");
+}
+
 function formatFontOptions(currentFont) {
   const select = $ribbonPanels.find('[data-ribbon-style="fontFamily"]')[0];
   const values = select ? [...select.options].map((option) => option.value) : ["Calibri", "MS Pゴシック", "Yu Gothic", "Meiryo", "Arial"];
@@ -40147,6 +40312,7 @@ function handleFormatDialogTabClick(event) {
   const id = tab.dataset.formatDialogTab;
   dialog.querySelectorAll("[data-format-dialog-tab]").forEach((item) => item.classList.toggle("is-active", item === tab));
   dialog.querySelectorAll("[data-format-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.dataset.formatPanel === id));
+  if (state.formatDialog) state.formatDialog.activeTab = id;
 }
 
 function handleFormatDialogAction(event) {
@@ -40157,6 +40323,54 @@ function handleFormatDialogAction(event) {
   }
   const applied = applyFormatDialogChanges();
   if (applied && action === "ok") closeFormatCellsDialog();
+}
+
+function handleFormatDialogFieldChange(event) {
+  const fieldName = event.target?.dataset?.formatField || "";
+  const dialog = event.target?.closest?.("#formatCellsDialog");
+  if (dialog && event.type === "change" && (fieldName === "dateFormat" || fieldName === "numberCategory")) {
+    syncFormatDialogCustomFormat(dialog, fieldName);
+  }
+  if (dialog && fieldName === "numberCategory") {
+    updateFormatDialogNumberSettingVisibility(dialog);
+  }
+  updateFormatDialogPreview();
+}
+
+function updateFormatDialogNumberSettingVisibility(root = document) {
+  const dialog = root.matches?.("#formatCellsDialog") ? root : root.querySelector?.("#formatCellsDialog");
+  if (!dialog) return;
+  const category = dialog.querySelector('[data-format-field="numberCategory"]')?.value || "general";
+  const visibleSettings = formatDialogSettingsForCategory(category);
+  dialog.querySelectorAll("[data-format-number-setting]").forEach((item) => {
+    item.classList.toggle("is-hidden", !visibleSettings.has(item.dataset.formatNumberSetting));
+  });
+  const group = dialog.querySelector("[data-format-settings-group]");
+  group?.classList.toggle("is-hidden", visibleSettings.size === 0);
+}
+
+function formatDialogSettingsForCategory(category) {
+  switch (category) {
+    case "number":
+      return new Set(["decimals", "useSeparator"]);
+    case "currency":
+      return new Set(["decimals", "useSeparator", "currencySymbol"]);
+    case "percent":
+      return new Set(["decimals"]);
+    case "date":
+      return new Set(["dateFormat", "customFormat"]);
+    default:
+      return new Set();
+  }
+}
+
+function syncFormatDialogCustomFormat(dialog, fieldName) {
+  const category = dialog.querySelector('[data-format-field="numberCategory"]')?.value || "general";
+  if (fieldName === "numberCategory" && category !== "date") return;
+  const dateFormat = dialog.querySelector('[data-format-field="dateFormat"]')?.value || "";
+  const customFormat = dialog.querySelector('[data-format-field="customFormat"]');
+  if (!dateFormat || !customFormat) return;
+  customFormat.value = dateFormat;
 }
 
 function updateFormatDialogPreview() {
@@ -40172,12 +40386,15 @@ function updateFormatDialogPreview() {
 function collectFormatDialogValues(dialog = document.querySelector("#formatCellsDialog")) {
   const field = (name) => dialog?.querySelector(`[data-format-field="${name}"]`);
   const checked = (name) => Boolean(field(name)?.checked);
+  const activeTab = dialog?.querySelector("[data-format-dialog-tab].is-active")?.dataset.formatDialogTab || state.formatDialog?.activeTab || "number";
   return {
+    activeTab,
     numberCategory: field("numberCategory")?.value || "general",
     decimals: Math.max(0, Math.min(6, Number(field("decimals")?.value || 0))),
     useSeparator: checked("useSeparator"),
     currencySymbol: field("currencySymbol")?.value || "¥",
     dateFormat: field("dateFormat")?.value || "yyyy/mm/dd",
+    customFormat: String(field("customFormat")?.value || "").trim(),
     horizontal: field("horizontal")?.value || "",
     vertical: field("vertical")?.value || "middle",
     wrapText: checked("wrapText"),
@@ -40269,23 +40486,52 @@ function applyFormatDialogChangesToSheetGroup(targetRanges, activeRange, values)
 }
 
 function applyFormatDialogValuesToSheetRanges(sheet, ranges, values) {
-  const border = borderModelFromDialog(values);
-  const numFmt = numberFormatFromDialog(values);
+  const activeTab = values.activeTab || "number";
+  const border = activeTab === "border" ? borderModelFromDialog(values) : null;
+  const numFmt = activeTab === "number" ? numberFormatFromDialog(values) : "";
   ranges.forEach((range) => {
     forEachCellInRange(range, (row, col) => {
       const cell = ensureCellModel(sheet, row, col);
-      applyCellNumberFormat(cell, numFmt);
-      cell.css = cell.css || {};
-      applyDialogCss(cell, values);
-      applyDialogBorders(cell, range, row, col, values, border);
-      cell.protection = { locked: values.locked, hidden: values.hiddenFormula };
+      switch (activeTab) {
+        case "number":
+          applyCellNumberFormat(cell, numFmt);
+          break;
+        case "alignment":
+          applyDialogAlignmentCss(cell, values);
+          break;
+        case "font":
+          applyDialogFontCss(cell, values);
+          break;
+        case "border":
+          applyDialogBorders(cell, range, row, col, values, border);
+          break;
+        case "fill":
+          applyDialogFillCss(cell, values);
+          break;
+        case "protection":
+          cell.protection = { locked: values.locked, hidden: values.hiddenFormula };
+          break;
+        default:
+          applyCellNumberFormat(cell, numFmt || numberFormatFromDialog(values));
+          cell.css = cell.css || {};
+          applyDialogCss(cell, values);
+          applyDialogBorders(cell, range, row, col, values, borderModelFromDialog(values));
+          cell.protection = { locked: values.locked, hidden: values.hiddenFormula };
+          break;
+      }
     });
   });
   internCellsInRanges(sheet, ranges);
 }
 
 function applyDialogCss(cell, values) {
-  const css = cell.css;
+  applyDialogFontCss(cell, values);
+  applyDialogAlignmentCss(cell, values);
+  applyDialogFillCss(cell, values);
+}
+
+function applyDialogFontCss(cell, values) {
+  const css = ensureDialogCellCss(cell);
   css.fontFamily = fontFamilyForExcel(values.fontFamily);
   css.fontSize = `${values.fontSize}pt`;
   css.color = values.fontColor;
@@ -40296,6 +40542,10 @@ function applyDialogCss(cell, values) {
   else delete css.fontStyle;
   if (values.underline) css.textDecoration = "underline";
   else delete css.textDecoration;
+}
+
+function applyDialogAlignmentCss(cell, values) {
+  const css = ensureDialogCellCss(cell);
   if (values.horizontal) css.textAlign = values.horizontal;
   else delete css.textAlign;
   css.verticalAlign = values.vertical;
@@ -40309,6 +40559,10 @@ function applyDialogCss(cell, values) {
   }
   if (values.shrinkToFit) css.fontSizeAdjust = "from-font";
   else delete css.fontSizeAdjust;
+}
+
+function applyDialogFillCss(cell, values) {
+  const css = ensureDialogCellCss(cell);
   if (values.noFill || values.fillPattern === "none") {
     delete css.backgroundColor;
     cell.hasFill = false;
@@ -40316,6 +40570,11 @@ function applyDialogCss(cell, values) {
     css.backgroundColor = values.fillColor;
     cell.hasFill = true;
   }
+}
+
+function ensureDialogCellCss(cell) {
+  cell.css = cell.css || {};
+  return cell.css;
 }
 
 function applyDialogBorders(cell, range, row, col, values, border) {
@@ -40369,7 +40628,7 @@ function numberFormatFromDialog(values) {
     case "percent":
       return `${base}%`;
     case "date":
-      return values.dateFormat;
+      return values.customFormat || values.dateFormat;
     case "text":
       return "@";
     default:
@@ -40378,9 +40637,15 @@ function numberFormatFromDialog(values) {
 }
 
 function previewNumberFormat(value, values) {
+  const numFmt = numberFormatFromDialog(values);
+  if (!numFmt || numFmt === "@") return displayValue(value, numFmt);
+  if (isDateFormat(numFmt)) {
+    const serial = dateSerialFromValueForNumberFormat(value, numFmt);
+    if (serial != null) return displayValue(serial, numFmt);
+  }
   const number = typeof value === "number" ? value : Number.parseFloat(String(value || "1234.56").replace(/,/g, ""));
   const sampleValue = Number.isFinite(number) ? number : 1234.56;
-  return displayValue(sampleValue, numberFormatFromDialog(values));
+  return displayValue(sampleValue, numFmt);
 }
 
 function numberCategoryFromFormat(numFmt = "") {
@@ -40453,7 +40718,7 @@ function hyperlinkFromCellClickEvent(event) {
   if (shouldDeferCellHyperlinkClick()) return "";
   const target = event.target;
   if (!target?.closest) return "";
-  if (target.closest(".cell-select,.cell-filter-button")) return "";
+  if (target.closest(".cell-validation-dropdown-button,.cell-filter-button")) return "";
   const cellElement = target.closest(".sheet-cell[data-row][data-col]") || cellElementFromClientPoint(event.clientX, event.clientY);
   if (!cellElement) return "";
   if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
@@ -42301,7 +42566,7 @@ function handleRibbonFocusShortcut(event, key) {
 function handleWorkbookPaneFocusShortcut(event, key) {
   if (key !== "f6" || event.ctrlKey || event.metaKey || event.altKey) return false;
   if (!state.model || activeSheetEditElement()) return false;
-  if (commandMenuEscapeBlockedByDialog() || document.querySelector("#fileSideMenu:not(.hidden), #ribbonDisplayMenu:not(.hidden), #homeCommandMenu, #viewCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #ribbonColorPalette, #ribbonBorderMenu, #ribbonUnderlineMenu, #ribbonInkEraserMenu, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #nameBoxMenu")) {
+  if (commandMenuEscapeBlockedByDialog() || document.querySelector("#fileSideMenu:not(.hidden), #ribbonDisplayMenu:not(.hidden), #homeCommandMenu, #viewCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #ribbonColorPalette, #ribbonBorderMenu, #ribbonUnderlineMenu, #ribbonInkEraserMenu, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #sheetTabNavigatorMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #nameBoxMenu")) {
     return false;
   }
   event.preventDefault();
@@ -42361,7 +42626,7 @@ function handleKeyboardContextMenuShortcut(event, key) {
   const isShiftF10 = key === "f10" && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
   if (!isContextMenuKey && !isShiftF10) return false;
   if (!state.model || isTextEditingTarget(event.target)) return false;
-  if (commandMenuEscapeBlockedByDialog() || document.querySelector("#fileSideMenu:not(.hidden), #ribbonDisplayMenu:not(.hidden), #homeCommandMenu, #viewCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #ribbonColorPalette, #ribbonBorderMenu, #ribbonUnderlineMenu, #ribbonInkEraserMenu, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #nameBoxMenu")) {
+  if (commandMenuEscapeBlockedByDialog() || document.querySelector("#fileSideMenu:not(.hidden), #ribbonDisplayMenu:not(.hidden), #homeCommandMenu, #viewCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #ribbonColorPalette, #ribbonBorderMenu, #ribbonUnderlineMenu, #ribbonInkEraserMenu, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #sheetTabNavigatorMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #nameBoxMenu")) {
     return false;
   }
   const sheetTab = event.target?.closest?.(".sheet-tab") || document.activeElement?.closest?.(".sheet-tab");
@@ -53982,7 +54247,7 @@ function restoreWorksheetFocusAfterCommandPopup() {
   const restore = () => {
     if (!state.model) return;
     if (state.sheetTabRename) return;
-    if (document.querySelector("#dataDialog, #messageBox, #zoomDialog, #findDialog, #goToDialog, #specialDialog, #homeCommandMenu, #viewCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #ribbonColorPalette, #ribbonBorderMenu, #ribbonUnderlineMenu, #ribbonInkEraserMenu, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #fileSideMenu:not(.hidden), #ribbonDisplayMenu:not(.hidden), #nameBoxMenu, #cellAnnotationEditor, #cellCommentThreadPopup, #cellNotePopup, #translationPane, #shapeTextEditor")) return;
+    if (document.querySelector("#dataDialog, #messageBox, #zoomDialog, #findDialog, #goToDialog, #specialDialog, #homeCommandMenu, #viewCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #ribbonColorPalette, #ribbonBorderMenu, #ribbonUnderlineMenu, #ribbonInkEraserMenu, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #sheetTabNavigatorMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #fileSideMenu:not(.hidden), #ribbonDisplayMenu:not(.hidden), #nameBoxMenu, #cellAnnotationEditor, #cellCommentThreadPopup, #cellNotePopup, #translationPane, #shapeTextEditor")) return;
     const editor = activeCellEditElementForFormatting();
     if (editor) {
       editor.focus?.({ preventScroll: true });
@@ -60366,6 +60631,9 @@ function closeActiveCommandMenu(menu) {
     case "sheetTabContextMenu":
       closeSheetTabContextMenu();
       return true;
+    case "sheetTabNavigatorMenu":
+      closeSheetNavigatorMenu();
+      return true;
     case "cellContextMenu":
       closeCellContextMenu();
       return true;
@@ -60420,7 +60688,7 @@ function handleRibbonCommandMenuKeydown(event) {
 }
 
 function activeCommandMenuForGlobalAccessKey() {
-  return document.querySelector("#homeCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #viewCommandMenu, #ribbonUnderlineMenu, #ribbonBorderMenu, #ribbonInkEraserMenu, #ribbonColorPalette, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #fileSideMenu:not(.hidden), #nameBoxMenu");
+  return document.querySelector("#homeCommandMenu, #dataCommandMenu, #dataValidationMenu, #whatIfMenu, #viewCommandMenu, #ribbonUnderlineMenu, #ribbonBorderMenu, #ribbonInkEraserMenu, #ribbonColorPalette, #ribbonShapeMenu, #shapeFormatMenu, #sheetTabContextMenu, #sheetTabNavigatorMenu, #cellContextMenu, #statusBarContextMenu, #queryPaneContextMenu, #quickAnalysisPopup, #fileSideMenu:not(.hidden), #nameBoxMenu");
 }
 
 function handleGlobalCommandMenuAccessKey(event) {
@@ -77545,6 +77813,23 @@ function clearInvalidDataValidationMarks() {
   state.validationInvalidMarks[state.activeSheetIndex] = {};
   renderWorkbook();
   setStatus(count ? "入力規則マークをクリアしました。" : "クリアする入力規則マークはありません。");
+}
+
+function handleValidationDropdownButtonPointerDown(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+}
+
+function handleValidationDropdownButtonClick(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+  const cellElement = event.currentTarget.closest(".sheet-cell[data-row][data-col]");
+  const point = cellElement ? cellPointFromElement(cellElement) : null;
+  if (!point || point.sheetIndex !== state.activeSheetIndex) return;
+  selectCellPoint(point);
+  openValidationDropdownPopup(point.row, point.col);
 }
 
 function openValidationDropdownPopup(row, col) {
@@ -96437,6 +96722,12 @@ function handleWorkbookKeyboardShortcut(event) {
 }
 
 function handleWorkbookEditingShortcut(event, key, isModifier) {
+  const dateTimeShortcut = keyboardDateTimeShortcutKind(event, key);
+  if (dateTimeShortcut) {
+    event.preventDefault();
+    insertKeyboardDateTimeByKeyboard(dateTimeShortcut);
+    return true;
+  }
   if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && key === "=") {
     event.preventDefault();
     applyAutoSumToSelection("SUM");
@@ -96566,11 +96857,6 @@ function handleWorkbookEditingShortcut(event, key, isModifier) {
       fillSelectionByKeyboard("right");
       return true;
     }
-    if (isSemicolonShortcutKey(event, key)) {
-      event.preventDefault();
-      insertCurrentDateByKeyboard();
-      return true;
-    }
   }
 
   if (event.shiftKey) {
@@ -96664,18 +96950,26 @@ function handleWorkbookEditingShortcut(event, key, isModifier) {
       setHeaderHidden("column", false, state.selected?.row, state.selected?.col);
       return true;
     }
-    if (key === ":" || isSemicolonShortcutKey(event, key)) {
-      event.preventDefault();
-      insertCurrentTimeByKeyboard();
-      return true;
-    }
   }
 
   return false;
 }
 
+function keyboardDateTimeShortcutKind(event, key = String(event?.key || "").toLowerCase()) {
+  const isModifier = Boolean(event?.ctrlKey || event?.metaKey);
+  if (!isModifier || event?.altKey) return "";
+  if (isColonShortcutKey(event, key)) return "time";
+  if (event?.shiftKey && isSemicolonShortcutKey(event, key)) return "time";
+  if (!event?.shiftKey && isSemicolonShortcutKey(event, key)) return "date";
+  return "";
+}
+
 function isSemicolonShortcutKey(event, key) {
-  return key === ";" || String(event.code || "") === "Semicolon";
+  return key === ";" || key === "；" || String(event.code || "") === "Semicolon";
+}
+
+function isColonShortcutKey(event, key) {
+  return key === ":" || key === "：" || String(event.code || "") === "Colon";
 }
 
 function isBackquoteShortcutKey(event, key) {
@@ -96709,22 +97003,44 @@ function openCellStructureDialogForShortcut(kind) {
   openCellStructureDialog(kind, point.row, point.col);
 }
 
-function insertCurrentDateByKeyboard() {
+function insertKeyboardDateTimeByKeyboard(kind) {
   const point = selectionToolbarPoint() || state.selected;
   if (!point) {
     setStatus("セルを選択してください。");
     return;
   }
-  commitCellValue(point.row, point.col, formatKeyboardShortcutDate(new Date()), { skipValidation: true });
+  const value = keyboardDateTimeShortcutText(kind, new Date());
+  if (!value) return;
+  if (state.selected?.sheetIndex !== state.activeSheetIndex || state.selected.row !== point.row || state.selected.col !== point.col) {
+    state.selected = { sheetIndex: state.activeSheetIndex, row: point.row, col: point.col };
+    state.selectionRange = selectionRangeFromPoints(state.selected, state.selected);
+    state.selectionRanges = [state.selectionRange];
+    state.selectionStart = state.selected;
+    state.selectionAnchor = state.selected;
+    state.selectionDrag = null;
+  }
+  const editor = startSelectedCellEdit({ initialText: value, replaceText: true, caretAtEnd: true });
+  if (!editor) return;
+  setStatus(`${columnName(point.col)}${point.row} に${kind === "time" ? "時刻" : "日付"}を入力しました。`);
 }
 
-function insertCurrentTimeByKeyboard() {
-  const point = selectionToolbarPoint() || state.selected;
-  if (!point) {
-    setStatus("セルを選択してください。");
-    return;
-  }
-  commitCellValue(point.row, point.col, formatKeyboardShortcutTime(new Date()), { skipValidation: true });
+function insertKeyboardDateTimeIntoEditable(editor, kind) {
+  if (!editor) return false;
+  const value = keyboardDateTimeShortcutText(kind, new Date());
+  if (!value) return false;
+  const inserted = insertTextIntoEditable(editor, value);
+  if (!inserted) return false;
+  syncEditableCellAlignment(editor);
+  saveCellEditSelection(editor);
+  updateFormulaReferenceUi();
+  setStatus(`${kind === "time" ? "時刻" : "日付"}を挿入しました。`);
+  return true;
+}
+
+function keyboardDateTimeShortcutText(kind, date = new Date()) {
+  if (kind === "date") return formatKeyboardShortcutDate(date);
+  if (kind === "time") return formatKeyboardShortcutTime(date);
+  return "";
 }
 
 function formatKeyboardShortcutDate(date) {
@@ -97313,6 +97629,16 @@ function handleSelectionKeyboardSinkKeydown(event) {
     event.stopPropagation();
     return;
   }
+  const dateTimeShortcut = keyboardDateTimeShortcutKind(event, String(event.key || "").toLowerCase());
+  if (dateTimeShortcut) {
+    event.preventDefault();
+    event.stopPropagation();
+    sinkState.edit = null;
+    sinkState.shapeEdit = null;
+    resetSelectionKeyboardSinkValue();
+    insertKeyboardDateTimeByKeyboard(dateTimeShortcut);
+    return;
+  }
   if (
     (sinkState.shapeEdit || selectedShapeForKeyboardSink()) &&
     !event.ctrlKey &&
@@ -97452,6 +97778,7 @@ function isSheetSelectionShortcutTarget(target) {
     "#autoFilterMenu",
     "#cellContextMenu",
     "#sheetTabContextMenu",
+    "#sheetTabNavigatorMenu",
     "#fileSideMenu",
     "#nameBoxMenu",
     ".excel-mini-dialog",
@@ -101545,10 +101872,34 @@ function applyCellNumberFormat(cell, numFmt) {
   if (!cell) return;
   const nextNumFmt = String(numFmt || "");
   const previousNumFmt = String(cell.numFmt || "");
+  if (isDateFormat(nextNumFmt)) {
+    normalizeCellDateValueForNumberFormat(cell, nextNumFmt);
+  }
   cell.numFmt = nextNumFmt;
   if (nextNumFmt !== previousNumFmt && cellCanRecomputeDisplayText(cell)) {
     cell.display = "";
   }
+}
+
+function normalizeCellDateValueForNumberFormat(cell, numFmt) {
+  if (!cell || !isDateFormat(numFmt)) return;
+  const serial =
+    dateSerialFromValueForNumberFormat(cell.raw, numFmt) ??
+    dateSerialFromValueForNumberFormat(cell.cached, numFmt) ??
+    dateSerialFromValueForNumberFormat(cell.display, numFmt);
+  if (serial == null) return;
+  if (cell.formula) cell.cached = serial;
+  else cell.raw = serial;
+  if (cell.cached != null && !cell.formula) cell.cached = serial;
+  if (cell.display) cell.display = "";
+}
+
+function dateSerialFromValueForNumberFormat(value, numFmt = "") {
+  if (value == null || value === "") return null;
+  const serial = dateSerialFromPersistedValue(value, numFmt);
+  if (serial == null) return null;
+  const number = Number(serial);
+  return Number.isFinite(number) ? number : null;
 }
 
 function cellCanRecomputeDisplayText(cell) {
@@ -103679,7 +104030,6 @@ function cellShowsValidationDropdown(cell, sheet = activeSheet()) {
 }
 
 function paintCanvasCellText(context, sheet, mergeMaps, sheetId, row, col, range, cell, rect) {
-  if (cellShowsValidationDropdown(cell, sheet)) return;
   const formula = cell.formula || getCellFormula(sheetId, row, col);
   const display = state.showFormulas && formula ? formula : getDisplayForCell(sheet, sheetId, row, col);
   if (display == null || display === "") return;
@@ -104144,6 +104494,7 @@ function renderCellHtml(sheet, mergeMaps, sheetId, row, col, visibleRange, rende
   if (isAutoFilterHeaderCell(sheet, row, col)) classNames.push("has-filter-button");
   if (cell?.hyperlink) classNames.push("has-hyperlink");
   if (cell?.sparkline) classNames.push("has-sparkline");
+  if (cellShowsValidationDropdown(cell, sheet)) classNames.push("has-validation-dropdown");
   if (cell?.showPhonetic) classNames.push("show-phonetic");
   if (hasValidationInvalidMark(state.activeSheetIndex, row, col)) classNames.push("has-validation-invalid");
   if (formula) classNames.push("formula-cell");
@@ -105207,18 +105558,7 @@ function cellInnerHtml(cell, display, overflowWidth = null, sheet = activeSheet(
   const indicators = cellAnnotationMarkersHtml(cell);
   const filterButton = cellAutoFilterButtonHtml(cell);
   if (cellShowsValidationDropdown(cell, sheet)) {
-    const listOptions = validationListOptions(sheet, cell.validation);
-    const hasSelectedOption = listOptions.some((option) => String(option) === text);
-    const options = [
-      hasSelectedOption ? "" : `<option value="${escapeAttr(text)}" selected hidden>${escapeHtml(text)}</option>`,
-      ...listOptions.map((option) => {
-        const selected = String(option) === text ? " selected" : "";
-        return `<option value="${escapeAttr(option)}"${selected}>${escapeHtml(option)}</option>`;
-      }),
-    ]
-      .filter(Boolean)
-      .join("");
-    return `${indicators}${filterButton}<select class="cell-select">${options}</select>`;
+    return `${indicators}${filterButton}<span class="cell-content" ${cellContentStyle(overflowWidth)}>${escapeHtml(text)}</span>${cellValidationDropdownButtonHtml(cell)}`;
   }
 
   if (cell.hyperlink) {
@@ -105227,6 +105567,11 @@ function cellInnerHtml(cell, display, overflowWidth = null, sheet = activeSheet(
   }
 
   return `${indicators}${filterButton}<span class="cell-content" ${cellContentStyle(overflowWidth)}>${escapeHtml(text)}</span>`;
+}
+
+function cellValidationDropdownButtonHtml(cell) {
+  const label = `${columnName(cell?.col || 1)}${cell?.row || 1} ドロップダウン リストを表示`;
+  return `<button class="cell-validation-dropdown-button" type="button" aria-label="${escapeAttr(label)}" title="ドロップダウン リストを表示"></button>`;
 }
 
 function cellAutoFilterButtonHtml(cell) {
@@ -106468,7 +106813,6 @@ function beginCellEdit(cellElement, options = {}) {
   const sheet = activeSheet();
   if (!ensureEditableRangeForProtection(sheet, selectionRangeFromPoints({ sheetIndex: state.activeSheetIndex, row, col }, { sheetIndex: state.activeSheetIndex, row, col }), "編集")) return;
   const cell = sheet.cells[cellKey(row, col)] || {};
-  if (cellShowsValidationDropdown(cell, sheet)) return;
 
   cancelViewportRender();
   cancelIdleViewportTrim();
@@ -113542,7 +113886,7 @@ function formatPainterPointFromPointerEvent(event) {
   if (
     target.closest?.(
       [
-        ".cell-select",
+        ".cell-validation-dropdown-button",
         ".sheet-image",
         ".sheet-image-link",
         ".sheet-image-selection-frame",
@@ -113569,7 +113913,7 @@ function isCoordinateCellEvent(event, options = {}) {
   if (
     target.closest(
       [
-        ".cell-select",
+        ".cell-validation-dropdown-button",
         ".sheet-image",
         ".sheet-image-link",
         ".sheet-image-selection-frame",
@@ -115037,7 +115381,7 @@ function updateCellModel(sheet, row, col, content, options = {}) {
   cell.raw = content;
   cell.formula = isFormula ? content : null;
   cell.cached = isFormula ? null : content;
-  cell.display = isFormula || content == null ? "" : String(content);
+  cell.display = initialCellDisplayText(cell, content, isFormula);
   delete cell.dataTableFormula;
   const hasRichTextOption = Object.prototype.hasOwnProperty.call(options, "richText");
   const nextRichText = hasRichTextOption && !isFormula ? normalizeCellEditRichTextForModel(options.richText, content) : null;
@@ -115056,6 +115400,12 @@ function updateCellModel(sheet, row, col, content, options = {}) {
   applyMultilineCellDisplayBehavior(sheet, row, col, cell, content);
   cell.borders = cell.borders || {};
   storeCellModelForSheet(sheet, key, cell);
+}
+
+function initialCellDisplayText(cell, content, isFormula) {
+  if (isFormula || content == null) return "";
+  if (cell?.numFmt && cellCanRecomputeDisplayText({ raw: content, cached: content, formula: null })) return "";
+  return String(content);
 }
 
 function applyMultilineCellDisplayBehavior(sheet, row, col, cell, content) {
@@ -116563,6 +116913,9 @@ function cellDisplayText(cell) {
 function normalizedCellDisplayText(cell) {
   const display = cell?.display;
   if (display == null || display === "") return null;
+  if (isDateFormat(cell?.numFmt) && numericStringValueForNumberFormat(display, cell.numFmt) != null) {
+    return displayValue(display, cell.numFmt);
+  }
   if (display instanceof Date && !Number.isNaN(display.getTime())) {
     const serial = dateToExcelSerial(display);
     return isDateFormat(cell?.numFmt) ? displayValue(serial, cell.numFmt) : displayValue(serial, "yyyy/m/d h:mm");
@@ -121210,6 +121563,7 @@ function standaloneRuntime() {
     formulaComposing: false,
     editDrag: null,
     suppressCellSelectionUntil: 0,
+    validationDropdownPopup: null,
   };
   const CELL_EDIT_TRAILING_LINE_SENTINEL = "\u200b";
   function formulaCellRawValue(cell) {
@@ -122194,6 +122548,7 @@ function standaloneRuntime() {
         if (cellHasNote(cell)) classNames.push("has-note");
         if (cellHasPhonetics(cell)) classNames.push("has-phonetic");
         if (cell?.hyperlink) classNames.push("has-hyperlink");
+        if (cellShowsValidationDropdown(cell) && standaloneValidationListOptions(cell).length) classNames.push("has-validation-dropdown");
         if (cell?.showPhonetic) classNames.push("show-phonetic");
         if (formula) classNames.push("formula-cell");
         if (state.selected?.row === row && state.selected?.col === col) classNames.push("selected");
@@ -122213,17 +122568,147 @@ function standaloneRuntime() {
   function cellInnerHtml(cell, value, overflowWidth) {
     const text = value == null ? "" : String(value);
     const indicators = cellAnnotationMarkersHtml(cell);
-    if (cellShowsValidationDropdown(cell)) {
-      const hasSelectedOption = cell.validation.options.some((option) => String(option) === text);
-      const options = (hasSelectedOption ? "" : "<option value='" + escapeAttr(text) + "' selected>" + escapeHtml(text) + "</option>") +
-        cell.validation.options.map((option) => "<option value='" + escapeAttr(option) + "'" + (String(option) === text ? " selected" : "") + ">" + escapeHtml(option) + "</option>").join("");
-      return indicators + "<select class='cell-select'>" + options + "</select>";
+    if (cellShowsValidationDropdown(cell) && standaloneValidationListOptions(cell).length) {
+      return indicators + "<span class='cell-content' " + cellContentStyle(overflowWidth) + ">" + escapeHtml(text) + "</span>" + standaloneValidationDropdownButtonHtml(cell);
     }
     if (cell.hyperlink) {
       const hyperlink = escapeAttr(cell.hyperlink);
       return indicators + "<a class='cell-link cell-content' " + cellContentStyle(overflowWidth) + " href='" + hyperlink + "' data-hyperlink='" + hyperlink + "' target='_blank' rel='noopener noreferrer'>" + escapeHtml(text) + "</a>";
     }
     return indicators + "<span class='cell-content' " + cellContentStyle(overflowWidth) + ">" + escapeHtml(text) + "</span>";
+  }
+  function standaloneValidationDropdownButtonHtml(cell) {
+    const label = columnName(cell?.col || 1) + (cell?.row || 1) + " ドロップダウン リストを表示";
+    return "<button class='cell-validation-dropdown-button' type='button' aria-label='" + escapeAttr(label) + "' title='ドロップダウン リストを表示'></button>";
+  }
+  function standaloneValidationListOptions(cell) {
+    const rule = cell?.validation;
+    if (!rule || rule.type !== "list" || rule.showDropDown === false) return [];
+    if (Array.isArray(rule.options) && rule.options.length) {
+      return rule.options.map(function (option) {
+        return String(option ?? "");
+      });
+    }
+    return parseValidationOptions(rule.formula || "").map(function (option) {
+      return String(option ?? "");
+    });
+  }
+  function handleStandaloneValidationDropdownButtonPointerDown(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+  function handleStandaloneValidationDropdownButtonClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    openStandaloneValidationDropdown($(event.currentTarget).closest(".sheet-cell[data-row][data-col]"));
+  }
+  function openStandaloneValidationDropdown($cell) {
+    if (!$cell?.length) return false;
+    const row = Number($cell.data("row"));
+    const col = Number($cell.data("col"));
+    const sheet = model.sheets[state.active];
+    const cell = sheet?.cells?.[row + ":" + col];
+    const options = standaloneValidationListOptions(cell);
+    if (!row || !col || !options.length) {
+      $status.text("このセルには選択できるドロップダウン リストがありません。");
+      return false;
+    }
+    select($cell);
+    closeStandaloneValidationDropdownPopup();
+    const current = String(cell?.raw ?? getValue(sheet, hf.getSheetId(sheet.name), row, col) ?? "");
+    const popup = document.createElement("div");
+    popup.id = "wxValidationDropdownPopup";
+    popup.className = "validation-dropdown-popup";
+    popup.setAttribute("role", "listbox");
+    popup.setAttribute("aria-label", columnName(col) + row + " ドロップダウン リスト");
+    popup.dataset.row = String(row);
+    popup.dataset.col = String(col);
+    popup.innerHTML = options.map(function (option) {
+      const value = String(option);
+      const selected = value === current ? " is-selected" : "";
+      return "<button class='validation-dropdown-choice" + selected + "' type='button' role='option' aria-selected='" + (selected ? "true" : "false") + "' data-standalone-validation-dropdown-choice='" + escapeAttr(value) + "'>" + escapeHtml(value) + "</button>";
+    }).join("");
+    document.body.appendChild(popup);
+    positionStandaloneValidationDropdownPopup(popup, $cell[0].getBoundingClientRect());
+    state.validationDropdownPopup = { row, col };
+    (popup.querySelector(".is-selected") || popup.querySelector("[data-standalone-validation-dropdown-choice]"))?.focus({ preventScroll: true });
+    return true;
+  }
+  function positionStandaloneValidationDropdownPopup(popup, cellRect) {
+    const margin = 6;
+    popup.style.visibility = "hidden";
+    popup.style.left = "0px";
+    popup.style.top = "0px";
+    const rect = popup.getBoundingClientRect();
+    const width = Math.max(rect.width, cellRect.width, 120);
+    popup.style.width = Math.round(width) + "px";
+    const adjusted = popup.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(cellRect.left, window.innerWidth - adjusted.width - margin));
+    const top = Math.max(margin, Math.min(cellRect.bottom, window.innerHeight - adjusted.height - margin));
+    popup.style.left = Math.round(left) + "px";
+    popup.style.top = Math.round(top) + "px";
+    popup.style.visibility = "visible";
+  }
+  function handleStandaloneValidationDropdownChoice(event) {
+    const popup = event.currentTarget.closest("#wxValidationDropdownPopup");
+    const row = Number(popup?.dataset.row);
+    const col = Number(popup?.dataset.col);
+    const value = event.currentTarget.dataset.standaloneValidationDropdownChoice || "";
+    closeStandaloneValidationDropdownPopup();
+    if (!row || !col) return;
+    commit(row, col, value);
+    $status.text(columnName(col) + row + " に「" + value + "」を入力しました。");
+  }
+  function handleStandaloneValidationDropdownKeydown(event) {
+    const popup = event.currentTarget.closest("#wxValidationDropdownPopup");
+    const choices = Array.prototype.slice.call(popup?.querySelectorAll("[data-standalone-validation-dropdown-choice]") || []);
+    if (!choices.length) return;
+    const currentIndex = Math.max(0, choices.indexOf(event.currentTarget));
+    const focusChoice = function (index) {
+      const next = choices[Math.max(0, Math.min(choices.length - 1, index))];
+      next?.focus({ preventScroll: true });
+    };
+    const consume = function () {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    };
+    if (event.key === "ArrowDown") {
+      consume();
+      focusChoice(currentIndex + 1);
+    } else if (event.key === "ArrowUp") {
+      consume();
+      focusChoice(currentIndex - 1);
+    } else if (event.key === "Home") {
+      consume();
+      focusChoice(0);
+    } else if (event.key === "End") {
+      consume();
+      focusChoice(choices.length - 1);
+    } else if (event.key === "PageDown") {
+      consume();
+      focusChoice(currentIndex + 8);
+    } else if (event.key === "PageUp") {
+      consume();
+      focusChoice(currentIndex - 8);
+    } else if (event.key === "Enter" || event.key === " ") {
+      consume();
+      event.currentTarget.click();
+    }
+  }
+  function closeStandaloneValidationDropdownOnOutsidePointer(event) {
+    if (!state.validationDropdownPopup) return;
+    if (event.target.closest?.("#wxValidationDropdownPopup")) return;
+    closeStandaloneValidationDropdownPopup();
+  }
+  function closeStandaloneValidationDropdownOnEscape(event) {
+    if (event.key === "Escape" && state.validationDropdownPopup) closeStandaloneValidationDropdownPopup();
+  }
+  function closeStandaloneValidationDropdownPopup() {
+    document.querySelector("#wxValidationDropdownPopup")?.remove();
+    state.validationDropdownPopup = null;
   }
   function cellContentStyle(overflowWidth) {
     return overflowWidth ? "style='width:" + overflowWidth + "px'" : "";
@@ -122912,7 +123397,6 @@ function standaloneRuntime() {
   }
 
   function paintCanvasCellText(context, sheet, maps, sheetId, row, col, range, cell, rect) {
-  if (cellShowsValidationDropdown(cell)) return;
     const formula = cell.formula || getFormula(sheetId, row, col);
     const display = state.showFormulas && formula ? formula : getValue(sheet, sheetId, row, col);
     if (display == null || display === "") return;
@@ -123685,7 +124169,7 @@ function standaloneRuntime() {
     if (event.defaultPrevented || event.button > 0) return "";
     const target = event.target;
     if (!target?.closest) return "";
-    if (target.closest(".cell-select")) return "";
+    if (target.closest(".cell-validation-dropdown-button")) return "";
     const cellElement = target.closest(".sheet-cell[data-row][data-col]") || standaloneCellElementFromClientPoint(event.clientX, event.clientY);
     if (!cellElement) return "";
     if (cellElement.matches?.(".sheet-cell[contenteditable='true']")) return "";
@@ -123881,6 +124365,13 @@ function standaloneRuntime() {
   function handleStandaloneKeyboardShortcut(event) {
     if (!isStandaloneWorkbookShortcutTarget(event.target)) return;
     const key = String(event.key || "").toLowerCase();
+    const dateTimeShortcut = keyboardDateTimeShortcutKind(event, key);
+    if (dateTimeShortcut && state.selected) {
+      event.preventDefault();
+      event.stopPropagation();
+      beginStandaloneDateTimeEdit(dateTimeShortcut);
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && !event.altKey && key === "a") {
       event.preventDefault();
       event.stopPropagation();
@@ -124127,19 +124618,39 @@ function standaloneRuntime() {
     if (!range) return 0;
     return Math.max(1, range.bottom - range.top + 1) * Math.max(1, range.right - range.left + 1);
   }
-  function beginCellEdit($cell) {
-    if (!$cell.length || $cell.find(".cell-select").length) return;
+  function beginCellEdit($cell, options = {}) {
+    if (!$cell.length) return;
     select($cell);
     const row = Number($cell.data("row"));
     const col = Number($cell.data("col"));
     const sheet = model.sheets[state.active];
     const cell = sheet.cells[row + ":" + col];
-    const editValue = cell?.formula || (cell?.raw == null ? "" : String(cell.raw));
-    $cell.data("before", editValue);
+    const beforeValue = cell?.formula || (cell?.raw == null ? "" : String(cell.raw));
+    const editValue = options.replaceText
+      ? String(options.initialText ?? "")
+      : beforeValue;
+    $cell.data("before", beforeValue);
     $cell.attr("contenteditable", "true").text(editValue).focus();
     syncEditableCellAlignment($cell[0]);
     scheduleCanvasPaint();
     placeCaretAtEnd($cell[0]);
+  }
+  function beginStandaloneDateTimeEdit(kind) {
+    const point = state.selected;
+    if (!point) return false;
+    const value = keyboardDateTimeShortcutText(kind, new Date());
+    if (!value) return false;
+    const selector = ".sheet-cell[data-row='" + point.row + "'][data-col='" + point.col + "']";
+    let $cell = $sheet.find(selector);
+    if (!$cell.length) {
+      scrollStandaloneCellIntoView(model.sheets[state.active], point.row, point.col);
+      renderSheet();
+      $cell = $sheet.find(selector);
+    }
+    if (!$cell.length) return false;
+    beginCellEdit($cell, { initialText: value, replaceText: true });
+    $status.text((kind === "time" ? "時刻" : "日付") + "を入力しました。");
+    return true;
   }
   const CELL_EDIT_MIN_PADDING_TOP = 2;
   const CELL_EDIT_PADDING_BOTTOM = 2;
@@ -124244,6 +124755,39 @@ function standaloneRuntime() {
     } catch {
       element.dispatchEvent(new Event("input", { bubbles: true }));
     }
+    return true;
+  }
+  function insertTextIntoStandaloneEditable(element, text) {
+    const selection = window.getSelection?.();
+    if (!selection || !element) return false;
+    let range = selection.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range || !element.contains(range.startContainer) || !element.contains(range.endContainer)) {
+      placeCaretAtEnd(element);
+      range = selection.rangeCount ? selection.getRangeAt(0) : null;
+    }
+    if (!range) return false;
+    range.deleteContents();
+    const node = document.createTextNode(String(text ?? ""));
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    try {
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: String(text ?? "") }));
+    } catch {
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return true;
+  }
+  function insertStandaloneDateTimeIntoEditable(element, kind) {
+    const value = keyboardDateTimeShortcutText(kind, new Date());
+    if (!value) return false;
+    const inserted = insertTextIntoStandaloneEditable(element, value);
+    if (!inserted) return false;
+    syncEditableCellAlignment(element);
+    scheduleCanvasPaint();
+    $status.text((kind === "time" ? "時刻" : "日付") + "を挿入しました。");
     return true;
   }
   function editablePlainText(element) {
@@ -124373,6 +124917,7 @@ function standaloneRuntime() {
     $status.text("新しいワークシートを追加しました：" + name);
   });
   $sheet.on("scroll", function () {
+    closeStandaloneValidationDropdownPopup();
     syncHorizontalScrollbarFromSheet();
     scheduleCanvasPaint();
   });
@@ -124422,6 +124967,12 @@ function standaloneRuntime() {
   window.addEventListener("blur", finishRuntimeEditDrag);
   $sheet.on("pointerdown", ".sheet-cell[contenteditable='true']", startRuntimeEditDrag);
   $sheet.on("click", ".cell-link", handleStandaloneCellHyperlinkClick);
+  $sheet.on("pointerdown", ".cell-validation-dropdown-button", handleStandaloneValidationDropdownButtonPointerDown);
+  $sheet.on("click", ".cell-validation-dropdown-button", handleStandaloneValidationDropdownButtonClick);
+  $(document).on("click", "[data-standalone-validation-dropdown-choice]", handleStandaloneValidationDropdownChoice);
+  $(document).on("keydown", "[data-standalone-validation-dropdown-choice]", handleStandaloneValidationDropdownKeydown);
+  $(document).on("pointerdown", closeStandaloneValidationDropdownOnOutsidePointer);
+  $(document).on("keydown", closeStandaloneValidationDropdownOnEscape);
   $sheet.on("click focusin", ".sheet-cell[data-row][data-col]", function (event) {
     if (event.type === "click") {
       const hyperlink = standaloneHyperlinkFromCellClickEvent(event);
@@ -124439,6 +124990,13 @@ function standaloneRuntime() {
     beginCellEdit($(this));
   });
   $sheet.on("keydown", ".sheet-cell[data-row][data-col]", function (event) {
+    const dateTimeShortcut = keyboardDateTimeShortcutKind(event, String(event.key || "").toLowerCase());
+    if (dateTimeShortcut) {
+      event.preventDefault();
+      beginCellEdit($(this), { initialText: keyboardDateTimeShortcutText(dateTimeShortcut, new Date()), replaceText: true });
+      $status.text((dateTimeShortcut === "time" ? "時刻" : "日付") + "を入力しました。");
+      return;
+    }
     if (event.key === "F2") {
       event.preventDefault();
       beginCellEdit($(this));
@@ -124448,6 +125006,13 @@ function standaloneRuntime() {
     syncEditableCellAlignment(this);
   });
   $sheet.on("keydown", ".sheet-cell[contenteditable='true']", function (event) {
+    const dateTimeShortcut = keyboardDateTimeShortcutKind(event, String(event.key || "").toLowerCase());
+    if (dateTimeShortcut) {
+      if (isImeCompositionEvent(event, this, "cell")) return;
+      event.preventDefault();
+      insertStandaloneDateTimeIntoEditable(this, dateTimeShortcut);
+      return;
+    }
     if (isEnterKeyEvent(event)) {
       if (isAltModifierEvent(event)) {
         event.preventDefault();
@@ -124475,10 +125040,6 @@ function standaloneRuntime() {
     $(this).removeAttr("contenteditable");
     if (before !== after) commit(Number($(this).data("row")), Number($(this).data("col")), after);
     else renderSheet();
-  });
-  $sheet.on("change", ".cell-select", function () {
-    const $cell = $(this).closest(".sheet-cell");
-    commit(Number($cell.data("row")), Number($cell.data("col")), $(this).val());
   });
   $apply.on("click", function () {
     if (state.selected) commit(state.selected.row, state.selected.col, $formula.val());
@@ -125328,7 +125889,7 @@ html,body{height:100%;overflow:hidden}body{margin:0;background:#eef2f7;color:#1d
 .sheet-cell[contenteditable=true]{background:transparent;box-sizing:border-box;cursor:text;display:block;height:var(--cell-edit-overlay-height,100%);isolation:isolate;min-height:100%;overflow:visible;padding-top:var(--cell-edit-padding-top,2px);text-overflow:clip;white-space:pre;user-select:text;scrollbar-width:none;z-index:40}.sheet-cell[contenteditable=true]::before{content:"";position:absolute;z-index:-1;left:var(--cell-edit-overlay-left,0);top:0;width:var(--cell-edit-overlay-width,100%);height:var(--cell-edit-overlay-height,100%);background:var(--cell-fill-color,#fff);pointer-events:none}.sheet-cell[contenteditable=true]::-webkit-scrollbar{width:0;height:0;display:none}.sheet-cell[contenteditable=true] .cell-content{opacity:1;overflow:visible;pointer-events:auto}.sheet-cell[contenteditable=true]:focus{outline:2px solid #22c55e;outline-offset:-2px;z-index:41}.sheet-cell.selected{outline:2px solid #22c55e;outline-offset:-2px;z-index:4}
 .formula-cell:after{content:"";position:absolute;right:3px;top:3px;width:0;height:0;border-left:6px solid transparent;border-top:6px solid #2563eb}
 .cell-annotation-marker{position:absolute;top:0;right:0;z-index:6;width:0;height:0;pointer-events:none;border-left:8px solid transparent}.cell-annotation-marker.is-comment{border-top:8px solid #8064a2}.cell-annotation-marker.is-note{border-top:8px solid #c00000}.sheet-cell.has-comment.has-note .cell-annotation-marker.is-comment{right:9px}
-a{color:#1d4ed8}.cell-select{width:100%;height:100%;border:0;background:transparent;color:inherit}
+a{color:#1d4ed8}.has-validation-dropdown .cell-content{padding-right:18px}.cell-validation-dropdown-button{position:absolute;right:0;top:50%;z-index:3;display:none;width:16px;height:18px;transform:translateY(-50%);border:1px solid #aeb7c6;border-radius:0;background:linear-gradient(#fff,#e8eef7);color:#1f2937;cursor:default;padding:0}.sheet-cell.selected .cell-validation-dropdown-button,.cell-validation-dropdown-button:focus-visible{display:block}.cell-validation-dropdown-button:after{content:"";position:absolute;left:50%;top:50%;width:0;height:0;transform:translate(-50%,-25%);border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor}.cell-validation-dropdown-button:hover,.cell-validation-dropdown-button:focus-visible{border-color:#22c55e;outline:none;background:#eef4ff}.validation-dropdown-popup{position:fixed;z-index:2140;max-height:220px;overflow-y:auto;border:1px solid #7f9db9;background:#fff;box-shadow:0 6px 18px rgba(15,23,42,.18);color:#111827;font:12px "Yu Gothic UI","Meiryo UI","Segoe UI",sans-serif}.validation-dropdown-choice{display:block;width:100%;min-height:22px;padding:2px 8px;border:0;background:#fff;color:inherit;text-align:left;white-space:nowrap}.validation-dropdown-choice:hover,.validation-dropdown-choice:focus,.validation-dropdown-choice.is-selected{background:#dcfce7;outline:none}
 `;
 }
 
