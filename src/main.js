@@ -16568,17 +16568,25 @@ function applyCwsAgentSetRangeOp(op) {
     for (let colOffset = 0; colOffset < rowValues.length; colOffset += 1) {
       const row = range.top + rowOffset;
       const col = range.left + colOffset;
-      const content = coerceUserInput(rowValues[colOffset], { preserveWhitespace: true });
+      const coerced = cwsAgentCoerceInputForCell(sheet, row, col, rowValues[colOffset]);
+      const content = coerced.content;
       const validation = validateCellInput(sheet, row, col, content);
       if (!validation.valid) {
         throw new Error(`${columnName(col)}${row}: ${validation.message || "入力規則に違反しています。"}`);
       }
-      writes.push({ row, col, content });
+      writes.push({ row, col, content, numFmt: coerced.numFmt });
     }
   }
 
   const sheetBefore = captureSheetForHistory(sheet);
-  writes.forEach((item) => writeCellContent(sheet, sheetId, item.row, item.col, item.content, { preserveWhitespace: true }));
+  writes.forEach((item) => {
+    if (item.numFmt) {
+      const cell = ensureCellModel(sheet, item.row, item.col);
+      cell.numFmt = item.numFmt;
+      storeCellModelForSheet(sheet, cellKey(item.row, item.col), cell);
+    }
+    writeCellContent(sheet, sheetId, item.row, item.col, item.content, { preserveWhitespace: true });
+  });
   internCellsInRange(sheet, range);
   refreshWorkbookChartsAfterSourceEdit(op.sheetIndex, range);
   commitDataOperationForSheet(
@@ -16601,6 +16609,44 @@ function applyCwsAgentSetRangeOp(op) {
     right: range.right,
     address: `${sheet.name}!${rangeToLabel(range)}`,
   };
+}
+
+function cwsAgentCoerceInputForCell(sheet, row, col, value) {
+  const content = coerceUserInput(value, { preserveWhitespace: true });
+  const formatted = parseFormattedNumericInput(value);
+  if (!formatted) return { content, numFmt: "" };
+  const cell = sheet?.cells?.[cellKey(row, col)] || null;
+  const existingFormat = String(cell?.numFmt || "");
+  const header = cwsAgentNearestColumnHeaderText(sheet, row, col);
+  const currency = formatted.currency || currencySymbol(existingFormat) || (cwsAgentLooksLikeCurrencyHeader(header) ? "¥" : "");
+  const shouldCoerce = typeof content !== "number" || currencySymbol(existingFormat) || cwsAgentLooksLikeNumericHeader(header);
+  if (!shouldCoerce) return { content, numFmt: "" };
+  let numFmt = "";
+  if (!existingFormat && currency) {
+    numFmt = `${currency}#,##0${Number.isInteger(formatted.number) ? "" : ".00"}`;
+  } else if (!existingFormat && formatted.usedGrouping && cwsAgentLooksLikeNumericHeader(header)) {
+    numFmt = "#,##0";
+  }
+  return { content: formatted.number, numFmt };
+}
+
+function cwsAgentNearestColumnHeaderText(sheet, row, col) {
+  if (!sheet || !row || !col) return "";
+  const top = Math.max(1, row - 12);
+  for (let currentRow = row - 1; currentRow >= top; currentRow -= 1) {
+    const cell = sheet.cells?.[cellKey(currentRow, col)];
+    const text = String(cell?.raw ?? cell?.display ?? (cell ? cellDisplayText(cell) : "") ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function cwsAgentLooksLikeCurrencyHeader(value) {
+  return /金額|金额|金钱|金錢|通貨|货币|貨幣|金銭|金钱|料金|費用|费用|単価|单价|価格|价格|税込|税抜|税額|消費税|小計|小计|合計|合计|total|amount|price|cost|fee|subtotal|tax/i.test(String(value || ""));
+}
+
+function cwsAgentLooksLikeNumericHeader(value) {
+  return cwsAgentLooksLikeCurrencyHeader(value) || /数量|數量|個数|件数|回数|qty|quantity|count|number/i.test(String(value || ""));
 }
 
 function applyCwsAgentSetStyleOp(op) {
@@ -21234,6 +21280,7 @@ function init() {
       getSheetId,
       getCellRawInput,
       getDisplayForCell,
+      getCellValidationInfo: cwsAgentCellValidationInfo,
       columnName,
       rangeToLabel,
       escapeHtml,
@@ -22520,6 +22567,27 @@ function init() {
   } else {
     void restorePersistedWorkbookOrCreateBlank();
   }
+}
+
+function cwsAgentCellValidationInfo(sheet, row, col, options = {}) {
+  const rule = sheet?.cells?.[cellKey(row, col)]?.validation;
+  if (!rule?.type) return null;
+  const type = String(rule.type || "");
+  const info = {
+    type,
+    allowBlank: rule.allowBlank !== false,
+    showErrorMessage: rule.showErrorMessage !== false,
+  };
+  if (type === "list") {
+    const maxOptions = Math.max(1, Math.min(50, Math.floor(Number(options.maxOptions) || 20)));
+    const allOptions = validationListOptions(sheet, rule)
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean);
+    info.showDropDown = rule.showDropDown !== false;
+    info.options = allOptions.slice(0, maxOptions);
+    info.optionsTruncated = allOptions.length > maxOptions;
+  }
+  return info;
 }
 
 function finishStartupBoot() {
@@ -115472,7 +115540,49 @@ function coerceUserInput(input, options = {}) {
   if (preserveWhitespace && text !== text.trim()) return text;
   if (/^(true|false)$/i.test(text)) return /^true$/i.test(text);
   if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
+  const formattedNumber = parseFormattedNumericInput(text);
+  if (formattedNumber) return formattedNumber.number;
   return text;
+}
+
+function parseFormattedNumericInput(input) {
+  if (input === null || input === undefined || typeof input === "object") return null;
+  let text = String(input).trim();
+  if (!text || text.startsWith("'") || text.startsWith("=") || /[\r\n]/.test(text)) return null;
+  text = text.replace(/\u00a0/g, " ");
+  const currencyMatch = text.match(/[¥￥$€£]/);
+  const currency = currencyMatch ? (currencyMatch[0] === "￥" ? "¥" : currencyMatch[0]) : "";
+  const percent = /%$/.test(text);
+  let negative = false;
+  if (/^\s*[-−]/.test(text)) {
+    negative = true;
+    text = text.replace(/^\s*[-−]\s*/, "");
+  }
+  if (/^\(\s*.+\s*\)$/.test(text)) {
+    negative = true;
+    text = text.replace(/^\(\s*|\s*\)$/g, "");
+  }
+  if (currency) {
+    text = text.replace(/[¥￥$€£]/g, "");
+  }
+  text = text.replace(/円|税込|税抜/g, "");
+  if (currency && /-$/.test(text.trim())) {
+    text = text.trim().slice(0, -1);
+  }
+  if (percent) {
+    text = text.replace(/%$/, "");
+  }
+  text = text.replace(/\s+/g, "");
+  const usedGrouping = text.includes(",");
+  if (usedGrouping && !/^[+-]?(?:\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(text)) return null;
+  const normalized = text.replace(/,/g, "");
+  if (!/^[+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
+  let number = Number(normalized);
+  if (!Number.isFinite(number)) return null;
+  if (negative) number *= -1;
+  if (percent) number /= 100;
+  if (!currency && !percent && !usedGrouping) return null;
+  return { number, currency, percent, usedGrouping };
 }
 
 function getCellRawInput(sheet, row, col) {
