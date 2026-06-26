@@ -126687,7 +126687,15 @@ function handleVersionDialogAction(event) {
     return;
   }
   if (action === "download") {
-    window.location.href = versionDownloadPageUrl();
+    openVersionDownloadPage();
+  }
+}
+
+function openVersionDownloadPage() {
+  const downloadPageUrl = versionDownloadPageUrl();
+  const openedWindow = window.open(downloadPageUrl, "_blank", "noopener,noreferrer");
+  if (openedWindow) {
+    openedWindow.opener = null;
   }
 }
 
