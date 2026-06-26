@@ -223,6 +223,20 @@
         line-height: 1.7;
       }
 
+      .cws-concept-community {
+        margin: 14px 0 0;
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 15px;
+        line-height: 1.9;
+      }
+
+      .cws-concept-community a {
+        color: #fff;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 0.18em;
+      }
+
       .cws-ai-prompt-box {
         position: relative;
         margin-top: 24px;
@@ -575,6 +589,7 @@
         <input type="radio" id="radio-cws2" name="cws-download-radio" value="#concept" /><label for="radio-cws2">コンセプト</label>
         <input type="radio" id="radio-cws3" name="cws-download-radio" value="#download" /><label for="radio-cws3">ダウンロード</label>
         <input type="radio" id="radio-cws4" name="cws-download-radio" value="#source" /><label for="radio-cws4">ソースコード</label>
+        <input type="radio" id="radio-cws5" name="cws-download-radio" value="https://chtec.co.jp/product/list/" /><label for="radio-cws5">他の製品</label>
       </fieldset>
     </div>
 
@@ -652,6 +667,7 @@
                   <div class="cws-concept-intro load-in-up">
                     <h2 class="h2org" data-cws-guide-title>人とAIが共に扱える、設計文書の新しい標準へ</h2>
                     <p class="cws-concept-lead"><span data-cws-guide-lead>CWS HTML 形式により、AI生成後の編集性・操作性・構造管理を高め、人とAIがより自然に設計意図を共有できるドキュメントインターフェースを提供します。</span><span class="cws-concept-json-note" data-cws-guide-data-note>（データ保存形式は JSON 形式です）</span></p>
+                    <p class="cws-concept-community">CWS HTML は、W3C の <a href="https://www.w3.org/community/html-workbook/" target="_blank" rel="noopener noreferrer">AI-Editable HTML Workbook Community Group</a> でも、ブラウザーで開ける HTML workbook profile として公開議論・仕様化に向けたインキュベーションを進めています。</p>
                     <div class="cws-ai-prompt-box">
                       <h3 data-cws-guide-prompt-title>大規模言語モデル向けプロンプト例</h3>
                       <button type="button" class="cws-copy-prompt-button" data-cws-copy-prompt aria-label="プロンプトをコピー" title="プロンプトをコピー"><i class="fa-regular fa-copy"></i></button>
@@ -906,6 +922,10 @@
         if (!input || input.name !== "cws-download-radio") return;
         event.preventDefault();
         event.stopPropagation();
+        if (!String(input.value || "").startsWith("#")) {
+          window.location.href = input.value;
+          return;
+        }
         cwsManualJump(input.value);
       });
 
