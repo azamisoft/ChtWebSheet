@@ -303,7 +303,7 @@ const WORKBOOK_OPEN_TRANSFER_MAX_AGE_MS = 10 * 60 * 1000;
 const WORKBOOK_MODEL_VERSION = 8;
 const PERSISTENCE_SAVE_DEBOUNCE_MS = 1500;
 const PERSISTENCE_IDLE_TIMEOUT_MS = 3000;
-const EXCELJS_IMPORT_IGNORE_NODES = ["drawing", "picture"];
+const EXCELJS_IMPORT_IGNORE_NODES = ["drawing", "picture", "tableParts"];
 const DEFAULT_MACRO_SECURITY_LEVEL = "disableWithNotification";
 const WEBSHEET_FORMULA_NA_SENTINEL = "__WEBSHEET_FORMULA_NA__";
 
@@ -23622,7 +23622,7 @@ async function createExcelJsWorkbookForImport(buffer, file, excelJsLoad) {
 
   const fallbackLoad = await workbookBufferForExcelJs(buffer, file, { forceZipPreparation: true });
   workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(fallbackLoad.buffer);
+  await workbook.xlsx.load(fallbackLoad.buffer, { ignoreNodes: EXCELJS_IMPORT_IGNORE_NODES });
   return { workbook, excelJsLoad: fallbackLoad };
 }
 
@@ -23885,6 +23885,7 @@ async function workbookBufferForExcelJs(buffer, file = null, options = {}) {
   try {
     const zip = await JSZip.loadAsync(buffer);
     let changed = false;
+    changed = await normalizeSpreadsheetMainNamespacePrefixesForExcelJs(zip) || changed;
     await Promise.all(Object.keys(zip.files)
       .filter((path) => /^xl\/tables\/table\d+\.xml$/i.test(path))
       .map(async (path) => {
@@ -23905,6 +23906,35 @@ async function workbookBufferForExcelJs(buffer, file = null, options = {}) {
     console.warn("Failed to prepare workbook for ExcelJS load.", error);
     return { buffer, convertedFromLegacyXls: false };
   }
+}
+
+async function normalizeSpreadsheetMainNamespacePrefixesForExcelJs(zip) {
+  let changed = false;
+  await Promise.all(Object.keys(zip.files)
+    .filter((path) => /^xl\/.+\.xml$/i.test(path))
+    .map(async (path) => {
+      const file = zip.file(path);
+      if (!file) return;
+      const xml = await file.async("text");
+      const nextXml = normalizeSpreadsheetMainNamespacePrefixesXml(xml);
+      if (nextXml === xml) return;
+      zip.file(path, nextXml);
+      changed = true;
+    }));
+  return changed;
+}
+
+function normalizeSpreadsheetMainNamespacePrefixesXml(xml) {
+  let next = String(xml || "");
+  const prefixes = new Set();
+  next.replace(/\bxmlns:([A-Za-z_][\w.-]*)=(["'])http:\/\/schemas\.openxmlformats\.org\/spreadsheetml\/2006\/main\2/g, (_match, prefix) => {
+    prefixes.add(prefix);
+    return _match;
+  });
+  prefixes.forEach((prefix) => {
+    next = next.replace(new RegExp(`(<\\/?)${escapeRegExp(prefix)}:`, "g"), "$1");
+  });
+  return next;
 }
 
 function isLegacyXlsWorkbook(file, buffer = null) {
@@ -101604,6 +101634,7 @@ function startFormatPainter(options = {}) {
     sheetIndex: state.activeSheetIndex,
     range: { ...sourceRange },
     formats: captureFormatPainterFormats(activeSheet(), sourceRange),
+    merges: captureFormatPainterMerges(activeSheet(), sourceRange),
     rowCount: sourceRange.bottom - sourceRange.top + 1,
     colCount: sourceRange.right - sourceRange.left + 1,
     repeat: options.repeat === true,
@@ -101658,6 +101689,17 @@ function captureFormatPainterFormats(sheet, range) {
   return formats;
 }
 
+function captureFormatPainterMerges(sheet, range) {
+  return (sheet?.merges || [])
+    .filter((merge) => isRangeInsideRange(merge, range))
+    .map((merge) => ({
+      top: merge.top - range.top + 1,
+      left: merge.left - range.left + 1,
+      bottom: merge.bottom - range.top + 1,
+      right: merge.right - range.left + 1,
+    }));
+}
+
 function cloneCellFormat(cell) {
   return {
     css: { ...(cell?.css || {}) },
@@ -101703,6 +101745,9 @@ function applyFormatPainterToRange(targetRange) {
   }
   ensureSheetSize(sheet, targetRange.bottom, targetRange.right);
   const before = captureCellsForHistory(sheet, targetRange);
+  const mergesBefore = cloneMerges(sheet.merges);
+  sheet.merges = Array.isArray(sheet.merges) ? sheet.merges : [];
+  removeIntersectingMerges(sheet, targetRange);
   for (let row = targetRange.top; row <= targetRange.bottom; row += 1) {
     for (let col = targetRange.left; col <= targetRange.right; col += 1) {
       const sourceRow = (row - targetRange.top) % painter.rowCount;
@@ -101710,24 +101755,28 @@ function applyFormatPainterToRange(targetRange) {
       applyCellFormat(sheet, row, col, painter.formats[sourceRow]?.[sourceCol] || {});
     }
   }
+  applyFormatPainterMerges(sheet, targetRange, painter);
   internCellsInRange(sheet, targetRange);
   const after = captureCellsForHistory(sheet, targetRange);
+  const mergesAfter = cloneMerges(sheet.merges);
   const selectionBefore = painter.range;
   const keepActive = painter.repeat === true;
   if (!keepActive) clearFormatPainter({ silent: true });
   state.selected = { sheetIndex: state.activeSheetIndex, row: targetRange.top, col: targetRange.left };
-  state.selectionRange = targetRange;
-  state.selectionRanges = [targetRange];
+  state.selectionRange = expandRangeForMerges(sheet, targetRange) || targetRange;
+  state.selectionRanges = [state.selectionRange];
   state.selectionStart = state.selected;
   state.selectionAnchor = state.selected;
   pushHistory({
     sheetIndex: state.activeSheetIndex,
     before,
     after,
+    mergesBefore,
+    mergesAfter,
     selectionBefore,
-    selectionAfter: targetRange,
+    selectionAfter: state.selectionRange,
     selectionBeforeRanges: [selectionBefore],
-    selectionAfterRanges: [targetRange],
+    selectionAfterRanges: [state.selectionRange],
     label: `${rangeToLabel(targetRange)} 書式のコピー/貼り付け`,
   });
   renderSheet();
@@ -101738,6 +101787,26 @@ function applyFormatPainterToRange(targetRange) {
       ? `${rangeToLabel(targetRange)} に書式を貼り付けました。続けて貼り付け先を選択できます。`
       : `${rangeToLabel(targetRange)} に書式を貼り付けました。`,
   );
+}
+
+function applyFormatPainterMerges(sheet, targetRange, painter) {
+  const sourceMerges = Array.isArray(painter?.merges) ? painter.merges : [];
+  if (!sourceMerges.length || !painter.rowCount || !painter.colCount) return;
+  for (let rowBase = targetRange.top; rowBase <= targetRange.bottom; rowBase += painter.rowCount) {
+    for (let colBase = targetRange.left; colBase <= targetRange.right; colBase += painter.colCount) {
+      sourceMerges.forEach((merge) => {
+        const nextMerge = {
+          top: rowBase + merge.top - 1,
+          left: colBase + merge.left - 1,
+          bottom: rowBase + merge.bottom - 1,
+          right: colBase + merge.right - 1,
+        };
+        if (!isSingleCellRange(nextMerge) && isRangeInsideRange(nextMerge, targetRange)) {
+          sheet.merges.push(nextMerge);
+        }
+      });
+    }
+  }
 }
 
 function applyCellFormat(sheet, row, col, format = {}) {
