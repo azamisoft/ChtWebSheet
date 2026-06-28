@@ -1,6 +1,6 @@
 const CWS_AGENT_HOST_VERSION = 1;
 const CWS_AGENT_DEFAULT_REMOTE_BASE_URL = "https://chtec.co.jp/cws/cws-agent/";
-const CWS_AGENT_ASSET_VERSION = "20260626-auto-numfmt-1";
+const CWS_AGENT_ASSET_VERSION = "20260628-graphiti-rag-plan-fix-1";
 
 let cwsAgentLoadStarted = false;
 

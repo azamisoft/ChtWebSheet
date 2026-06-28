@@ -10649,7 +10649,9 @@ const CWS_AGENT_MIN_SHAPE_SIZE = 12;
 const CWS_AGENT_MAX_SHAPE_SIZE = 1600;
 const CWS_AGENT_MAX_SHAPE_TEXT = 2000;
 const CWS_AGENT_MAX_GOAL_SEEK_ABS_TARGET = 1e15;
-const CWS_AGENT_MAX_OPS = 80;
+const CWS_AGENT_MAX_WORKBOOK_TEMPLATE_SHEETS = 30;
+const CWS_AGENT_MAX_WORKBOOK_TEMPLATE_CELLS = 5000;
+const CWS_AGENT_MAX_OPS = 1000;
 const CWS_AGENT_PROGRESSIVE_PREVIEW_DELAY_MS = 90;
 const CWS_AGENT_BORDER_PRESETS = new Set(["none", "outside", "thick-outside", "all", "inside", "top", "right", "bottom", "left", "thick-bottom", "remove-outside"]);
 const CWS_AGENT_CONTRACT_RANGE_OPS = new Set([
@@ -10729,6 +10731,7 @@ function previewCwsAgentOps(ops = [], options = {}) {
   }
 
   clearCwsAgentPreview({ restore: true, quiet: true });
+  const workbookSheetsBefore = cwsAgentOpsMayChangeSheetStructure(ops) ? cwsAgentCaptureWorkbookSheetsSnapshot() : null;
   const normalizedOps = normalizeCwsAgentOpsBatch(ops, options);
   const sheetIndexes = state.model.sheets.map((_sheet, index) => index);
   const sheetsBefore = captureSheetsForHistory(sheetIndexes);
@@ -10741,6 +10744,7 @@ function previewCwsAgentOps(ops = [], options = {}) {
   try {
     const results = withCwsAgentPreviewMutation(() => normalizedOps.map((op) => applyCwsAgentOp(op)), revisionSnapshot);
     const afterSheetIndexes = sheetIndexes.filter((index) => state.model?.sheets?.[index]);
+    const workbookSheetsAfter = workbookSheetsBefore ? cwsAgentCaptureWorkbookSheetsSnapshot() : null;
     const historyEntry = {
       sheetIndex: state.activeSheetIndex,
       sheetsBefore,
@@ -10753,6 +10757,7 @@ function previewCwsAgentOps(ops = [], options = {}) {
       selectionAfterRanges: cwsAgentCloneRanges(state.selectionRanges),
       activeSheetBefore,
       activeSheetAfter: state.activeSheetIndex,
+      ...(workbookSheetsBefore ? { workbookSheetsBefore, workbookSheetsAfter } : {}),
       label: "CWS Agent プレビュー",
     };
     const previewId = `cws-agent-preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -10768,7 +10773,8 @@ function previewCwsAgentOps(ops = [], options = {}) {
     setStatus("CWS Agent: 変更プレビューを表示しています。");
     return { ok: true, previewId, visible: true, applied: results.length, results };
   } catch (error) {
-    restoreSheetsFromHistory(sheetsBefore);
+    if (workbookSheetsBefore) cwsAgentRestoreWorkbookSheetsSnapshot(workbookSheetsBefore);
+    else restoreSheetsFromHistory(sheetsBefore);
     state.model.definedNames = cloneDefinedNames(definedNamesBefore);
     state.activeSheetIndex = Math.max(0, Math.min(activeSheetBefore, state.model.sheets.length - 1));
     cwsAgentRestoreSelectionSnapshot(selectionBefore, selectionBeforeRanges, state.activeSheetIndex);
@@ -10793,6 +10799,7 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
   }
 
   clearCwsAgentPreview({ restore: true, quiet: true });
+  const workbookSheetsBefore = cwsAgentOpsMayChangeSheetStructure(ops) ? cwsAgentCaptureWorkbookSheetsSnapshot() : null;
   const normalizedOps = normalizeCwsAgentOpsBatch(ops, options);
   const sheetIndexes = state.model.sheets.map((_sheet, index) => index);
   const sheetsBefore = captureSheetsForHistory(sheetIndexes);
@@ -10824,7 +10831,8 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
       }
     }
   } catch (error) {
-    restoreSheetsFromHistory(sheetsBefore);
+    if (workbookSheetsBefore) cwsAgentRestoreWorkbookSheetsSnapshot(workbookSheetsBefore);
+    else restoreSheetsFromHistory(sheetsBefore);
     state.model.definedNames = cloneDefinedNames(definedNamesBefore);
     state.activeSheetIndex = Math.max(0, Math.min(activeSheetBefore, state.model.sheets.length - 1));
     cwsAgentRestoreSelectionSnapshot(selectionBefore, selectionBeforeRanges, state.activeSheetIndex);
@@ -10839,6 +10847,7 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
   }
 
   const afterSheetIndexes = sheetIndexes.filter((index) => state.model?.sheets?.[index]);
+  const workbookSheetsAfter = workbookSheetsBefore ? cwsAgentCaptureWorkbookSheetsSnapshot() : null;
   const historyEntry = {
     sheetIndex: state.activeSheetIndex,
     sheetsBefore,
@@ -10851,6 +10860,7 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
     selectionAfterRanges: cwsAgentCloneRanges(state.selectionRanges),
     activeSheetBefore,
     activeSheetAfter: state.activeSheetIndex,
+    ...(workbookSheetsBefore ? { workbookSheetsBefore, workbookSheetsAfter } : {}),
     label: "CWS Agent プレビュー",
   };
   const previewId = `cws-agent-preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -10968,6 +10978,39 @@ function normalizeCwsAgentOpsBatch(ops = [], options = {}) {
   return normalizedOps;
 }
 
+function cwsAgentOpsMayChangeSheetStructure(ops = []) {
+  return (Array.isArray(ops) ? ops : []).some((op) => {
+    const type = String(op?.type || op?.op || "").trim().toLowerCase().replace(/[_-]/g, "");
+    return [
+      "addsheet",
+      "createsheet",
+      "insertsheet",
+      "newworksheet",
+      "addworksheet",
+      "createworksheet",
+      "renamesheet",
+      "renameworksheet",
+      "duplicatesheet",
+      "copysheet",
+      "clonesheet",
+      "duplicateworksheet",
+      "copyworksheet",
+      "cloneworksheet",
+      "movesheet",
+      "moveworksheet",
+      "reordersheet",
+      "reorderworksheet",
+      "deletesheet",
+      "removesheet",
+      "deleteworksheet",
+      "removeworksheet",
+      "createworkbooktemplate",
+      "applyworkbooktemplate",
+      "workbooktemplate",
+    ].includes(type);
+  });
+}
+
 function validateCwsAgentOpsContract(ops = [], options = {}) {
   validateCwsAgentRequiredOpsContract(ops, options);
   validateCwsAgentAllowedRangeContract(ops, options);
@@ -11016,6 +11059,7 @@ function cwsAgentContractRequiredOps(options = {}) {
     "goalSeek",
     "dataTable",
     "addShape",
+    "createWorkbookTemplate",
     "setPrintArea",
     "clearPrintArea",
     "setPrintTitles",
@@ -11309,6 +11353,9 @@ function cwsAgentRestoreSelectionSnapshot(selection, ranges, sheetIndex) {
 
 function normalizeCwsAgentOp(op, index) {
   const type = String(op?.type || op?.op || "").trim().toLowerCase().replace(/[_-]/g, "");
+  if (type === "createworkbooktemplate" || type === "applyworkbooktemplate" || type === "workbooktemplate") {
+    return normalizeCwsAgentWorkbookTemplateOp(op, index);
+  }
   if (type === "setcell") {
     return normalizeCwsAgentSetCellOp(op, index);
   }
@@ -11641,6 +11688,83 @@ function normalizeCwsAgentSetStyleOp(op, index) {
     ...range,
     style,
   };
+}
+
+function normalizeCwsAgentWorkbookTemplateOp(op, index) {
+  const sourceSheets = Array.isArray(op?.sheets) ? op.sheets : [];
+  if (!sourceSheets.length || sourceSheets.length > CWS_AGENT_MAX_WORKBOOK_TEMPLATE_SHEETS) {
+    throw new Error(`Agent 操作 ${index + 1}: workbook template のシート数が正しくありません。`);
+  }
+  const mode = ["insert", "replaceBlankWorkbook", "replaceWorkbook"].includes(String(op.mode || ""))
+    ? String(op.mode || "")
+    : "insert";
+  const replaceWorkbook = mode === "replaceWorkbook" || (mode === "replaceBlankWorkbook" && cwsAgentWorkbookLooksBlank());
+  const usedNames = new Set(replaceWorkbook ? [] : (state.model?.sheets || []).map((sheet) => sheet.name));
+  let totalCells = 0;
+  const sheets = sourceSheets.map((source, sheetOffset) => {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error(`Agent 操作 ${index + 1}: workbook template のシート定義が正しくありません。`);
+    }
+    const name = cwsAgentUniqueTemplateSheetName(source.name ?? source.sheetName ?? source.title, usedNames, sheetOffset + 1);
+    usedNames.add(name);
+    const rows = cwsAgentMatrixValues(source.rows || source.values || source.data);
+    if (!rows.length) {
+      throw new Error(`Agent 操作 ${index + 1}: ${name} のテンプレート内容が空です。`);
+    }
+    const width = Math.max(...rows.map((row) => row.length));
+    const height = rows.length;
+    totalCells += width * height;
+    if (totalCells > CWS_AGENT_MAX_WORKBOOK_TEMPLATE_CELLS) {
+      throw new Error(`Agent 操作 ${index + 1}: workbook template のセル数が多すぎます。`);
+    }
+    return {
+      name,
+      rows: rows.map((row) => row.concat(Array(Math.max(0, width - row.length)).fill(""))),
+      columnWidths: cwsAgentTemplateDimensionList(source.columnWidths, width, CWS_AGENT_MIN_COLUMN_WIDTH, CWS_AGENT_MAX_COLUMN_WIDTH),
+      rowHeights: cwsAgentTemplateDimensionList(source.rowHeights, height, CWS_AGENT_MIN_ROW_HEIGHT, CWS_AGENT_MAX_ROW_HEIGHT),
+      titleRows: cwsAgentTemplateIndexList(source.titleRows, height),
+      headerRows: cwsAgentTemplateIndexList(source.headerRows, height),
+    };
+  });
+  return {
+    type: "createWorkbookTemplate",
+    templateId: String(op.templateId || op.id || "").slice(0, 120),
+    mode,
+    replaceWorkbook,
+    sheets,
+  };
+}
+
+function cwsAgentUniqueTemplateSheetName(value, usedNames, fallbackIndex) {
+  const raw = String(value ?? "").trim().replace(/[:\\/?*\[\]]/g, "_").slice(0, 31);
+  const base = raw || `Template${fallbackIndex}`;
+  if (!usedNames.has(base)) return base;
+  return uniqueSheetNameWithBase(base.slice(0, 25), [...usedNames]);
+}
+
+function cwsAgentTemplateDimensionList(value, maxItems, minValue, maxValue) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).map((item) => {
+    const number = Number(item);
+    return Number.isFinite(number) ? cwsAgentClampDimension(number, minValue, maxValue) : 0;
+  });
+}
+
+function cwsAgentTemplateIndexList(value, maxIndex) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 1 && item <= maxIndex))];
+}
+
+function cwsAgentWorkbookLooksBlank() {
+  const sheets = Array.isArray(state.model?.sheets) ? state.model.sheets : [];
+  if (sheets.length !== 1) return false;
+  const sheet = sheets[0];
+  if (!sheet) return true;
+  if ((sheet.merges || []).length || (sheet.images || []).length) return false;
+  return !Object.values(sheet.cells || {}).some((cell) => (
+    cell &&
+    (cell.raw != null || cell.formula || cell.cached != null || cell.display || cell.richText?.length || cell.hyperlink || cell.note || cell.commentThread?.length)
+  ));
 }
 
 function normalizeCwsAgentSetCellProtectionOp(op, index, aliasType = "") {
@@ -16332,6 +16456,9 @@ function applyCwsAgentOp(op) {
   if (op.type === "addShape") {
     return applyCwsAgentAddShapeOp(op);
   }
+  if (op.type === "createWorkbookTemplate") {
+    return applyCwsAgentCreateWorkbookTemplateOp(op);
+  }
   if (op.type === "setQuickAnalysis") {
     return applyCwsAgentSetQuickAnalysisOp(op);
   }
@@ -18220,6 +18347,149 @@ function applyCwsAgentAddShapeOp(op) {
     width: shapeBox.width,
     height: shapeBox.height,
     address: `${sheet.name}!${op.anchor || "図形"}`,
+  };
+}
+
+function applyCwsAgentCreateWorkbookTemplateOp(op) {
+  const workbookSheetsBefore = cwsAgentCaptureWorkbookSheetsSnapshot();
+  const activeSheetBefore = state.activeSheetIndex;
+  const selectionBefore = cwsAgentCloneRange(state.selectionRange);
+  const selectionBeforeRanges = cwsAgentCloneRanges(state.selectionRanges);
+  const insertAt = op.replaceWorkbook
+    ? 0
+    : Math.max(0, Math.min(state.activeSheetIndex + 1, state.model.sheets.length));
+  const sheets = op.sheets.map((sheetDef) => cwsAgentBuildTemplateSheet(sheetDef));
+  if (op.replaceWorkbook) {
+    state.model.sheets = sheets;
+  } else {
+    state.model.sheets.splice(insertAt, 0, ...sheets);
+  }
+  state.activeSheetIndex = insertAt;
+  state.selectedSheetIndexes = sheets.map((_sheet, offset) => insertAt + offset);
+  const selectionAfter = { sheetIndex: insertAt, top: 1, left: 1, bottom: 1, right: 1 };
+  state.selected = { sheetIndex: insertAt, row: 1, col: 1 };
+  state.selectionRange = selectionAfter;
+  state.selectionRanges = [selectionAfter];
+  state.selectionStart = state.selected;
+  state.selectionAnchor = state.selected;
+  state.selectionDrag = null;
+  state.selectedImage = null;
+  state.formulaEdit = null;
+  refreshCwsAgentWorkbookAfterSheetStructureChange({ preserveSheetSelection: true });
+  pushHistory({
+    sheetIndex: state.activeSheetIndex,
+    workbookSheetsBefore,
+    workbookSheetsAfter: cwsAgentCaptureWorkbookSheetsSnapshot(),
+    activeSheetBefore,
+    activeSheetAfter: state.activeSheetIndex,
+    selectionBefore,
+    selectionAfter,
+    selectionBeforeRanges,
+    selectionAfterRanges: [selectionAfter],
+    label: `${op.templateId || "Workbook template"} CWS Agent テンプレート作成`,
+  });
+  setStatus(`CWS Agent: ${sheets.length} シートのテンプレートを作成しました。`);
+  return {
+    type: "createWorkbookTemplate",
+    templateId: op.templateId || "",
+    sheetIndex: insertAt,
+    sheetName: sheets[0]?.name || "",
+    sheets: sheets.map((sheet) => sheet.name),
+    address: sheets.map((sheet) => sheet.name).join(", "),
+  };
+}
+
+function cwsAgentBuildTemplateSheet(sheetDef) {
+  const rows = sheetDef.rows || [[]];
+  const rowCount = Math.max(1, rows.length);
+  const colCount = Math.max(1, ...rows.map((row) => row.length));
+  const sheet = createBlankSheet(sheetDef.name);
+  const defaultColumnWidth = sheet.defaultColumnWidth || columnWidthToPixels(8.43);
+  const defaultRowHeight = sheet.defaultRowHeight || rowHeightToPixels(15);
+  sheet.rowCount = rowCount;
+  sheet.colCount = colCount;
+  sheet.baseRowCount = rowCount;
+  sheet.baseColCount = colCount;
+  sheet.columns = Array.from({ length: colCount }, (_item, index) => ({
+    width: Number(sheetDef.columnWidths?.[index]) || defaultColumnWidth,
+    hidden: false,
+  }));
+  sheet.rows = Array.from({ length: rowCount }, (_item, index) => ({
+    height: Number(sheetDef.rowHeights?.[index]) || defaultRowHeight,
+    hidden: false,
+  }));
+  const titleRows = new Set(sheetDef.titleRows || [1]);
+  const headerRows = new Set(sheetDef.headerRows || []);
+  rows.forEach((rowValues, rowIndex) => {
+    rowValues.forEach((value, colIndex) => {
+      const row = rowIndex + 1;
+      const col = colIndex + 1;
+      const content = coerceUserInput(value, { preserveWhitespace: true });
+      if (content === "") return;
+      const isFormula = typeof content === "string" && content.startsWith("=");
+      const cell = {
+        row,
+        col,
+        raw: content,
+        formula: isFormula ? content : null,
+        cached: isFormula ? null : content,
+        display: "",
+        hyperlink: null,
+        comment: null,
+        note: null,
+        noteVisible: false,
+        validation: null,
+        richText: null,
+        css: cwsAgentTemplateCellCss(row, col, titleRows, headerRows),
+        hasFill: titleRows.has(row) || headerRows.has(row),
+        hasFontColor: titleRows.has(row),
+        borders: cwsAgentTemplateCellBorders(row, col, rowValues.length),
+        numFmt: "",
+      };
+      cell.display = initialCellDisplayText(cell, content, isFormula);
+      storeCellModelForSheet(sheet, cellKey(row, col), cell);
+    });
+  });
+  internSheetCellStyles(sheet);
+  return sheet;
+}
+
+function cwsAgentTemplateCellCss(row, col, titleRows, headerRows) {
+  if (titleRows.has(row)) {
+    return {
+      backgroundColor: "#1f4e79",
+      color: "#ffffff",
+      fontWeight: "700",
+      textAlign: col === 1 ? "left" : "center",
+      verticalAlign: "middle",
+      whiteSpace: "pre-wrap",
+      overflowWrap: "anywhere",
+    };
+  }
+  if (headerRows.has(row)) {
+    return {
+      backgroundColor: "#d9eaf7",
+      fontWeight: "700",
+      verticalAlign: "middle",
+      whiteSpace: "pre-wrap",
+      overflowWrap: "anywhere",
+    };
+  }
+  return {
+    verticalAlign: "top",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  };
+}
+
+function cwsAgentTemplateCellBorders(row, col, width) {
+  const color = "#b7c9d6";
+  const side = { style: "solid", color, width: 1 };
+  return {
+    top: row === 1 ? side : null,
+    right: col === width ? side : null,
+    bottom: side,
+    left: col === 1 ? side : null,
   };
 }
 
@@ -100258,6 +100528,15 @@ function captureSheetsForHistory(sheetIndexes) {
   }));
 }
 
+function cwsAgentCaptureWorkbookSheetsSnapshot() {
+  return (state.model?.sheets || []).map((sheet) => captureSheetForHistory(sheet));
+}
+
+function cwsAgentRestoreWorkbookSheetsSnapshot(snapshot) {
+  const sheets = Array.isArray(snapshot) ? snapshot.map((sheet) => cloneSheetModel(sheet)).filter(Boolean) : [];
+  state.model.sheets = sheets.length ? sheets : [createBlankSheet("Sheet1")];
+}
+
 function restoreSheetsFromHistory(snapshots) {
   (snapshots || []).forEach((snapshot) => {
     const sheet = state.model?.sheets?.[snapshot.index];
@@ -101022,6 +101301,8 @@ function hasHistoryPayload(entry) {
         entry.workbookViewAfter ||
         entry.macroStateBefore ||
         entry.macroStateAfter ||
+        entry.workbookSheetsBefore ||
+        entry.workbookSheetsAfter ||
         (entry.sheetsBefore && entry.sheetsBefore.length) ||
         (entry.sheetsAfter && entry.sheetsAfter.length) ||
         entry.sheetBefore ||
@@ -101084,6 +101365,10 @@ function applyHistoryEntry(entry, direction) {
   }
   if (entry.sheetMoveMany) {
     applySheetMoveManyHistoryEntry(entry, direction);
+    return;
+  }
+  if (entry.workbookSheetsBefore || entry.workbookSheetsAfter) {
+    applyWorkbookSheetsHistoryEntry(entry, direction);
     return;
   }
   if (!state.model?.sheets[entry.sheetIndex]) return;
@@ -101208,6 +101493,28 @@ function applyHistoryEntry(entry, direction) {
     if (state.selected) {
       updateFormulaBarForCell(state.selected.row, state.selected.col);
     }
+  } finally {
+    state.isRestoringHistory = false;
+  }
+}
+
+function applyWorkbookSheetsHistoryEntry(entry, direction) {
+  if (!state.model) return;
+  state.isRestoringHistory = true;
+  try {
+    const snapshot = direction === "undo" ? entry.workbookSheetsBefore : entry.workbookSheetsAfter;
+    cwsAgentRestoreWorkbookSheetsSnapshot(snapshot);
+    state.activeSheetIndex = Math.max(0, Math.min(
+      Number(direction === "undo" ? entry.activeSheetBefore : entry.activeSheetAfter) || 0,
+      state.model.sheets.length - 1,
+    ));
+    finishSheetStructureHistoryRestore();
+    const selection = direction === "undo" ? entry.selectionBefore : entry.selectionAfter;
+    const selectionRanges = direction === "undo" ? entry.selectionBeforeRanges : entry.selectionAfterRanges;
+    cwsAgentRestoreSelectionSnapshot(selection, selectionRanges, state.activeSheetIndex);
+    renderWorkbook();
+    updateSelectionUi();
+    updateFormulaBarForSelection();
   } finally {
     state.isRestoringHistory = false;
   }
