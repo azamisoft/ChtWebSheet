@@ -12877,6 +12877,10 @@ body.is-object-selection-mode .sheet-host {
     padding-inline: 8px;
   }
 
+  .ribbon-display-options {
+    margin-left: auto;
+  }
+
   .ribbon-status {
     display: none;
   }
