@@ -21785,6 +21785,7 @@ function init() {
   window.addEventListener("pointermove", updateDialogDrag);
   window.addEventListener("pointermove", handleSheetTabDragMove);
   window.addEventListener("pointermove", updateHeaderResize);
+  window.addEventListener("pointermove", updateHeaderSelectionDrag);
   window.addEventListener("pointerup", finishCellRangeSelection);
   window.addEventListener("pointerup", finishObjectSelectionModeDrag, true);
   window.addEventListener("pointerup", finishInkDrawing);
@@ -53480,7 +53481,16 @@ function initWorkbookNameDisplay() {
   }
   if (!workbookNameResizeObserver && $workbookNameDisplay[0] && typeof ResizeObserver !== "undefined") {
     workbookNameResizeObserver = new ResizeObserver(requestWorkbookNameDisplayUpdate);
-    workbookNameResizeObserver.observe($workbookNameDisplay[0]);
+    const row = $workbookNameDisplay[0].closest?.(".ribbon-tab-row");
+    [
+      $workbookNameDisplay[0],
+      row,
+      row?.querySelector?.(".ribbon-tabs"),
+      row?.querySelector?.(".ribbon-status"),
+      row?.querySelector?.(".ribbon-display-options"),
+    ]
+      .filter(Boolean)
+      .forEach((element) => workbookNameResizeObserver.observe(element));
   } else {
     window.addEventListener("resize", requestWorkbookNameDisplayUpdate);
   }
@@ -53505,12 +53515,15 @@ function updateWorkbookNameDisplay() {
   const fullName = String($workbookName.text() || state.model?.sourceName || APP_TITLE).trim() || APP_TITLE;
   const displayNode = $workbookNameDisplay[0];
   const textNode = $workbookNameDisplayText[0];
+  displayNode.style.left = "";
   displayNode.style.width = "";
   displayNode.style.maxWidth = "";
   textNode.textContent = fullName;
   const style = window.getComputedStyle(displayNode);
   const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
-  const availableWidth = workbookNameDisplayAvailableWidth(displayNode);
+  const layout = workbookNameDisplayLayout(displayNode);
+  const availableWidth = layout.availableWidth;
+  if (Number.isFinite(layout.left)) displayNode.style.left = `${layout.left}px`;
   if (availableWidth > 0) displayNode.style.maxWidth = `${availableWidth}px`;
   const desiredWidth = Math.ceil(measureWorkbookNameText(fullName, style.font) + padding + 2);
   const measuredWidth = Math.max(0, Math.min(desiredWidth, availableWidth || desiredWidth));
@@ -53530,28 +53543,43 @@ function updateWorkbookNameDisplay() {
   } while (textNode.scrollWidth > textNode.clientWidth && safety <= 80);
 }
 
-function workbookNameDisplayAvailableWidth(displayNode) {
+function workbookNameDisplayLayout(displayNode) {
   const row = displayNode.closest?.(".ribbon-tab-row");
-  if (!row) return Math.max(120, Math.floor(window.innerWidth * 0.72));
+  if (!row) {
+    return {
+      availableWidth: Math.max(120, Math.floor(window.innerWidth * 0.72)),
+      left: null,
+    };
+  }
   const rowRect = row.getBoundingClientRect();
-  const centerX = rowRect.left + rowRect.width / 2;
   const edgeGap = 8;
   let leftLimit = rowRect.left + edgeGap;
   let rightLimit = rowRect.right - edgeGap;
   const tabs = row.querySelector(".ribbon-tabs");
   const tabsRect = tabs?.getBoundingClientRect?.();
   if (tabsRect && tabsRect.width > 0 && tabsRect.right > leftLimit) {
-    leftLimit = Math.min(tabsRect.right + edgeGap, centerX - 48);
+    leftLimit = tabsRect.right + edgeGap;
   }
-  const status = row.querySelector(".ribbon-status");
-  const statusStyle = status ? window.getComputedStyle(status) : null;
-  const statusRect = status?.getBoundingClientRect?.();
-  if (statusRect && statusStyle?.display !== "none" && statusRect.width > 0 && statusRect.left < rightLimit) {
-    rightLimit = Math.max(statusRect.left - edgeGap, centerX + 48);
+  [row.querySelector(".ribbon-status"), row.querySelector(".ribbon-display-options")]
+    .filter(Boolean)
+    .forEach((element) => {
+      const elementStyle = window.getComputedStyle(element);
+      const elementRect = element.getBoundingClientRect();
+      if (elementStyle.display !== "none" && elementRect.width > 0 && elementRect.left < rightLimit) {
+        rightLimit = elementRect.left - edgeGap;
+      }
+    });
+  const availableWidth = Math.floor(rightLimit - leftLimit);
+  if (availableWidth > 0) {
+    return {
+      availableWidth,
+      left: (leftLimit + rightLimit) / 2 - rowRect.left,
+    };
   }
-  const centeredWidth = Math.floor(Math.min(centerX - leftLimit, rightLimit - centerX) * 2);
-  if (centeredWidth > 0) return centeredWidth;
-  return Math.max(96, Math.floor(rowRect.width * 0.36));
+  return {
+    availableWidth: Math.max(96, Math.floor(rowRect.width * 0.36)),
+    left: rowRect.width / 2,
+  };
 }
 
 function compactWorkbookNameForWidth(name, availableWidth, font) {
@@ -106156,8 +106184,31 @@ function extendHeaderSelection(event) {
   if (!state.isSelecting || !drag || (drag.kind !== "col" && drag.kind !== "row")) return;
   const index = Number(drag.kind === "col" ? event.currentTarget.dataset.col : event.currentTarget.dataset.row);
   if (!index) return;
+  applyHeaderSelectionIndex(drag, index);
+}
+
+function updateHeaderSelectionDrag(event) {
+  const drag = state.selectionDrag;
+  if (!state.isSelecting || !drag || (drag.kind !== "col" && drag.kind !== "row")) return;
+  if (event.buttons !== undefined && (event.buttons & 1) !== 1) return;
+  event.preventDefault?.();
+  updateHeaderSelectionFromClient(event.clientX, event.clientY, { clampToGrid: true });
+  updateSelectionAutoScroll(event.clientX, event.clientY);
+}
+
+function updateHeaderSelectionFromClient(clientX, clientY, options = {}) {
+  const drag = state.selectionDrag;
+  if (!state.isSelecting || !drag || (drag.kind !== "col" && drag.kind !== "row")) return false;
+  const sheetPixel = sheetPixelFromClientPosition(clientX, clientY, options);
+  if (!sheetPixel) return false;
+  const index = sheetIndexFromPixel(activeSheet(), drag.kind, drag.kind === "col" ? sheetPixel.x : sheetPixel.y);
+  if (!index) return false;
+  return applyHeaderSelectionIndex(drag, index);
+}
+
+function applyHeaderSelectionIndex(drag, index) {
   const range = headerSelectionRange(drag.kind, drag.anchor, index);
-  if (!ensureSelectableRangeForProtection(activeSheet(), range)) return;
+  if (!ensureSelectableRangeForProtection(activeSheet(), range)) return false;
   const point = drag.kind === "col"
     ? { sheetIndex: state.activeSheetIndex, row: 1, col: index }
     : { sheetIndex: state.activeSheetIndex, row: index, col: 1 };
@@ -106165,6 +106216,7 @@ function extendHeaderSelection(event) {
   state.suppressNextCellClick = true;
   updateSelectionUi();
   updateFormulaBarForSelection();
+  return true;
 }
 
 function headerSelectionAnchor(kind, index, useShiftRange) {
@@ -114169,11 +114221,11 @@ function updateCellRangeSelectionFromClient(clientX, clientY, options = {}) {
 }
 
 function updateSelectionAutoScroll(clientX, clientY) {
-  if (!state.isSelecting || (state.selectionDrag?.kind !== "cell" && state.selectionDrag?.kind !== "format-painter")) {
+  if (!selectionDragSupportsAutoScroll()) {
     stopSelectionAutoScroll();
     return;
   }
-  const velocity = selectionAutoScrollVelocity(clientX, clientY);
+  const velocity = selectionDragAutoScrollVelocity(clientX, clientY);
   if (!velocity.x && !velocity.y) {
     stopSelectionAutoScroll();
     return;
@@ -114191,7 +114243,7 @@ function runSelectionAutoScroll() {
   if (!job) return;
   job.frame = null;
 
-  if (!state.isSelecting || (state.selectionDrag?.kind !== "cell" && state.selectionDrag?.kind !== "format-painter")) {
+  if (!selectionDragSupportsAutoScroll()) {
     stopSelectionAutoScroll();
     return;
   }
@@ -114202,7 +114254,7 @@ function runSelectionAutoScroll() {
     return;
   }
 
-  const velocity = selectionAutoScrollVelocity(job.clientX, job.clientY);
+  const velocity = selectionDragAutoScrollVelocity(job.clientX, job.clientY);
   job.velocityX = velocity.x;
   job.velocityY = velocity.y;
   if (!velocity.x && !velocity.y) {
@@ -114225,7 +114277,11 @@ function runSelectionAutoScroll() {
     scheduleViewportRender({ deferTrim: true });
   }
 
-  updateCellRangeSelectionFromClient(job.clientX, job.clientY, { clampToGrid: true });
+  if (state.selectionDrag?.kind === "col" || state.selectionDrag?.kind === "row") {
+    updateHeaderSelectionFromClient(job.clientX, job.clientY, { clampToGrid: true });
+  } else {
+    updateCellRangeSelectionFromClient(job.clientX, job.clientY, { clampToGrid: true });
+  }
 
   if (selectionAutoScrollCanContinue(host, velocity)) {
     job.frame = requestAnimationFrame(runSelectionAutoScroll);
@@ -114238,6 +114294,19 @@ function stopSelectionAutoScroll() {
   const frame = state.selectionAutoScroll?.frame;
   if (frame) cancelAnimationFrame(frame);
   state.selectionAutoScroll = null;
+}
+
+function selectionDragSupportsAutoScroll() {
+  if (!state.isSelecting) return false;
+  const kind = state.selectionDrag?.kind;
+  return kind === "cell" || kind === "format-painter" || kind === "col" || kind === "row";
+}
+
+function selectionDragAutoScrollVelocity(clientX, clientY) {
+  const velocity = selectionAutoScrollVelocity(clientX, clientY);
+  if (state.selectionDrag?.kind === "col") return { x: velocity.x, y: 0 };
+  if (state.selectionDrag?.kind === "row") return { x: 0, y: velocity.y };
+  return velocity;
 }
 
 function selectionAutoScrollCanContinue(host, velocity) {
