@@ -841,12 +841,12 @@ function webSheetFormulaDateParts(value) {
   }
   const serial = webSheetFormulaDateSerial(raw);
   if (serial instanceof CellError) return serial;
-  const date = excelSerialToDate(serial - 1);
+  const date = excelSerialToDate(serial);
   return datePartsForDatedif(date.getFullYear(), date.getMonth() + 1, date.getDate());
 }
 
 function webSheetFormulaDatePartsToSerial(parts) {
-  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000) + 25570;
+  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000) + 25569;
 }
 
 function webSheetFormulaValidDateParts(year, month, day) {
@@ -1035,7 +1035,7 @@ function webSheetFormulaHolidaySet(holidays) {
 function webSheetFormulaDateSerialWeekday(serial) {
   const value = Math.trunc(Number(serial));
   if (!Number.isFinite(value)) return NaN;
-  return ((value + 5) % 7 + 7) % 7;
+  return ((value + 6) % 7 + 7) % 7;
 }
 
 function webSheetFormulaWeekStartForReturnType(returnType, defaultType = 1) {
@@ -22201,6 +22201,8 @@ function init() {
     const row = Number($cell.data("row"));
     const col = Number($cell.data("col"));
     const before = String($cell.data("beforeEdit") ?? "");
+    const beforeEditTextData = $cell.data("beforeEditText");
+    const beforeEditText = beforeEditTextData === undefined ? before : String(beforeEditTextData);
     const beforeRichText = $cell.data("beforeRichText") || null;
     const after = editablePlainText(event.currentTarget);
     const afterRichText = cellEditRichTextForCommit(event.currentTarget, after);
@@ -22212,6 +22214,7 @@ function init() {
     clearFormulaReferenceState({ update: false });
     event.currentTarget.removeAttribute("contenteditable");
     $cell.removeData("beforeEdit");
+    $cell.removeData("beforeEditText");
     $cell.removeData("beforeRichText");
     const canceled = Boolean($cell.data("cancelEdit"));
     $cell.removeData("cancelEdit");
@@ -22223,7 +22226,7 @@ function init() {
       return;
     }
     const modelBefore = getCellRawInput(activeSheet(), row, col);
-    if (after !== modelBefore || after !== before || stableObjectKey(beforeRichText || null) !== stableObjectKey(afterRichText || null)) {
+    if (modelBefore !== before || after !== beforeEditText || stableObjectKey(beforeRichText || null) !== stableObjectKey(afterRichText || null)) {
       state.deferredViewportRender = false;
       commitCellValue(row, col, after, { preserveWhitespace: true, richText: afterRichText });
     } else {
@@ -33373,7 +33376,7 @@ function shouldUseCachedWebSheetSpillFormulaForEngine(cell, raw, options = {}) {
 function hyperFormulaBuildConfig() {
   return {
     licenseKey: HYPERFORMULA_LICENSE,
-    leapYear1900: true,
+    leapYear1900: false,
     useArrayArithmetic: true,
     maxRows: EXCEL_MAX_ROWS,
     maxColumns: EXCEL_MAX_COLS,
@@ -106711,7 +106714,7 @@ function selectionToolbarPoint() {
 }
 
 function updateFormulaBarForCell(row, col) {
-  $formulaInput.prop("disabled", false).val(getCellRawInput(activeSheet(), row, col));
+  $formulaInput.prop("disabled", false).val(getCellEditInput(activeSheet(), row, col));
   $formulaInput[0].scrollTop = 0;
   $formulaExpandButton.prop("disabled", false);
   syncRibbonControlsForCell(row, col);
@@ -107320,9 +107323,12 @@ function beginCellEdit(cellElement, options = {}) {
   $cell.data("beforeEdit", beforeEdit);
   $cell.data("beforeRichText", cloneJsonLikeValue(cell.richText || null));
   if (options.replaceText) {
+    $cell.removeData("beforeEditText");
     cellElement.textContent = String(options.initialText ?? "");
   } else {
-    cellElement.innerHTML = cellEditHtmlForCell(cell, beforeEdit);
+    const beforeEditText = getCellEditInput(sheet, row, col);
+    $cell.data("beforeEditText", beforeEditText);
+    cellElement.innerHTML = cellEditHtmlForCell(cell, beforeEditText);
   }
   syncEditableCellAlignment(cellElement);
   repaintActiveSheetCanvas();
@@ -115366,11 +115372,16 @@ function commitEditableCellToSelection(cellElement) {
   const $cell = $(cellElement);
   const row = Number($cell.data("row"));
   const col = Number($cell.data("col"));
-  const value = editablePlainText(cellElement);
+  const editedValue = editablePlainText(cellElement);
+  const beforeEditTextData = $cell.data("beforeEditText");
+  const value = beforeEditTextData !== undefined && editedValue === String(beforeEditTextData)
+    ? String($cell.data("beforeEdit") ?? "")
+    : editedValue;
   const richText = cellEditRichTextForCommit(cellElement, value);
   $cell.data("skipBlurCommit", true);
   cellElement.removeAttribute("contenteditable");
   $cell.removeData("beforeEdit");
+  $cell.removeData("beforeEditText");
   $cell.removeData("beforeRichText");
   clearCellEditSelection(cellElement);
   stopEditAutoScroll();
@@ -115411,6 +115422,7 @@ function beginFormulaBarEdit() {
     row,
     col,
     before: getCellRawInput(activeSheet(), row, col),
+    beforeText: getCellEditInput(activeSheet(), row, col),
   };
   markFormulaEditCell();
   syncFormulaEditPreview();
@@ -115467,7 +115479,11 @@ function commitFormulaBar(options = {}) {
   closeFormulaAutocomplete({ restoreFocus: false });
   clearFormulaReferenceState({ update: false });
   const edit = state.formulaEdit || state.selected;
-  const value = $formulaInput.val();
+  const editedValue = $formulaInput.val();
+  const editSheet = state.model?.sheets?.[edit.sheetIndex];
+  const before = edit.before ?? getCellRawInput(editSheet, edit.row, edit.col);
+  const beforeText = edit.beforeText ?? getCellEditInput(editSheet, edit.row, edit.col);
+  const value = String(editedValue) === String(beforeText) ? before : editedValue;
   state.formulaEdit = null;
   const changedSheet = edit.sheetIndex !== state.activeSheetIndex;
   if (edit.sheetIndex !== state.activeSheetIndex) {
@@ -115522,7 +115538,7 @@ function commitCellValueToSelection(activeRow, activeCol, value, options = {}) {
     commitCellValue(activeRow, activeCol, value, options);
     return;
   }
-  const content = coerceUserInput(value, options);
+  const content = coerceCellInput(sheet, activeRow, activeCol, value, options);
   const invalid = options.skipValidation ? null : targets.find((target) => !validateCellInput(sheet, target.row, target.col, content).valid);
   if (invalid) {
     showValidationErrorForCell(invalid.row, invalid.col, content, validateCellInput(sheet, invalid.row, invalid.col, content));
@@ -115650,7 +115666,7 @@ function restoreGroupedSheetsAfterFailure(sheetsBefore) {
 function commitCellValueToSheetGroup(activeRow, activeCol, value, options = {}) {
   const sheetIndexes = activeSheetGroupEditIndexes();
   if (sheetIndexes.length <= 1) return false;
-  const content = coerceUserInput(value, options);
+  const content = coerceCellInput(activeSheet(), activeRow, activeCol, value, options);
   const selectionBefore = activeSelectionRange() || fallbackSingleCellRangeForSheet(state.activeSheetIndex, activeRow, activeCol);
   const selectionBeforeRanges = activeSelectionRangesForGroupedOperation(activeRow, activeCol);
   const items = [];
@@ -115726,7 +115742,7 @@ function commitCellValue(row, col, value, options = {}) {
   if (!options.skipSheetGroup && commitCellValueToSheetGroup(row, col, value, options)) return;
   if (!ensureEditableRangeForProtection(sheet, selectionRangeFromPoints({ sheetIndex: state.activeSheetIndex, row, col }, { sheetIndex: state.activeSheetIndex, row, col }), "変更")) return;
   const sheetId = getSheetId(sheet.name);
-  const content = coerceUserInput(value, options);
+  const content = coerceCellInput(sheet, row, col, value, options);
   const validation = options.skipValidation ? { valid: true } : validateCellInput(sheet, row, col, content);
   if (!validation.valid) {
     showValidationErrorForCell(row, col, content, validation);
@@ -115797,7 +115813,7 @@ function commitCellValue(row, col, value, options = {}) {
     markWorkbookChanged();
     renderSheet();
     $selectedCellLabel.text(`${columnName(col)}${row}`);
-    $formulaInput.val(getCellRawInput(sheet, row, col));
+    $formulaInput.val(getCellEditInput(sheet, row, col));
     setStatus(`${sheet.name}!${columnName(col)}${row} を更新しました。`);
   } catch (error) {
     console.error(error);
@@ -115990,6 +116006,102 @@ function coerceUserInput(input, options = {}) {
   return text;
 }
 
+function coerceCellInput(sheet, row, col, input, options = {}) {
+  const cell = sheet?.cells?.[cellKey(row, col)];
+  const dateSerial = editedDateSerialForCell(cell, input);
+  return dateSerial == null ? coerceUserInput(input, options) : dateSerial;
+}
+
+function editedDateSerialForCell(cell, input) {
+  if (!cell || cell.formula || cell.dataTableFormula || !isDateFormat(cell.numFmt) || isElapsedTimeFormat(cell.numFmt) || input == null || typeof input === "object") {
+    return null;
+  }
+  const text = String(input).trim();
+  if (!text || text.startsWith("'") || text.startsWith("=") || /[\r\n]/.test(text)) return null;
+
+  const timeSerial = editedTimeSerialForFormat(text, cell.numFmt);
+  if (timeSerial != null) return timeSerial;
+
+  const completeDate = parsePersistedDateString(text);
+  if (completeDate) return dateToExcelSerial(completeDate);
+
+  const baselineSerial = dateSerialFromPersistedValue(cell.raw, cell.numFmt)
+    ?? dateSerialFromPersistedValue(cell.cached, cell.numFmt);
+  const baseline = baselineSerial == null ? null : excelSerialToDate(baselineSerial);
+  const now = new Date();
+  const parts = {
+    year: baseline?.getFullYear() ?? now.getFullYear(),
+    month: (baseline?.getMonth() ?? now.getMonth()) + 1,
+    day: baseline?.getDate() ?? 1,
+    hour: baseline?.getHours() ?? 0,
+    minute: baseline?.getMinutes() ?? 0,
+    second: baseline?.getSeconds() ?? 0,
+  };
+  const build = (next, dayIsExplicit = false) => {
+    const values = { ...parts, ...next };
+    if (!dayIsExplicit) {
+      values.day = Math.min(values.day, new Date(values.year, values.month, 0).getDate());
+    }
+    return localDateFromPersistedParts(values.year, values.month, values.day, values.hour, values.minute, values.second);
+  };
+
+  let match = text.match(/^(\d{4})年\s*(\d{1,2})月$/);
+  let date = match ? build({ year: Number(match[1]), month: Number(match[2]) }) : null;
+  if (!date) {
+    match = text.match(/^(\d{4})[-/.](\d{1,2})$/);
+    date = match ? build({ year: Number(match[1]), month: Number(match[2]) }) : null;
+  }
+  if (!date) {
+    match = text.match(/^(\d{1,2})月\s*(\d{1,2})日$/);
+    date = match ? build({ month: Number(match[1]), day: Number(match[2]) }, true) : null;
+  }
+  if (!date) {
+    match = text.match(/^(\d{1,2})[-/.](\d{1,2})$/);
+    date = match ? build({ month: Number(match[1]), day: Number(match[2]) }, true) : null;
+  }
+  if (!date) {
+    match = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    date = match ? build({ hour: Number(match[1]), minute: Number(match[2]), second: Number(match[3] || 0) }, true) : null;
+  }
+
+  const format = dateDetectionFormat(cell.numFmt).trim().toLowerCase();
+  if (!date && /^y{1,4}$/.test(format) && /^\d{4}$/.test(text)) {
+    date = build({ year: Number(text) });
+  }
+  if (!date && /^m{1,4}$/.test(format) && /^\d{1,2}$/.test(text)) {
+    date = build({ month: Number(text) });
+  }
+  if (!date && /^d{1,4}$/.test(format) && /^\d{1,2}$/.test(text)) {
+    date = build({ day: Number(text) }, true);
+  }
+  return date ? dateToExcelSerial(date) : null;
+}
+
+function editedTimeSerialForFormat(text, numFmt = "") {
+  if (!isTimeOnlyDateFormat(numFmt)) return null;
+  const match = String(text || "").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?$/i);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3] || 0);
+  const meridiem = String(match[4] || "").toUpperCase();
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    hour = hour % 12 + (meridiem === "PM" ? 12 : 0);
+  }
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return null;
+  return (hour * 3600 + minute * 60 + second) / 86400;
+}
+
+function isTimeOnlyDateFormat(numFmt = "") {
+  if (isElapsedTimeFormat(numFmt)) return false;
+  const format = dateDetectionFormat(numFmt);
+  const hasTime = /(^|[^a-z])h{1,2}|(^|[^a-z])s{1,2}|AM\/PM|A\/P/i.test(format);
+  if (!hasTime) return false;
+  const hasCalendarDate = /[年月日]|(^|[^a-z])y{1,4}|(^|[^a-z])d{1,4}/i.test(format);
+  return !hasCalendarDate;
+}
+
 function parseFormattedNumericInput(input) {
   if (input === null || input === undefined || typeof input === "object") return null;
   let text = String(input).trim();
@@ -116031,11 +116143,21 @@ function parseFormattedNumericInput(input) {
 }
 
 function getCellRawInput(sheet, row, col) {
+  if (!sheet) return "";
   const cell = sheet.cells[cellKey(row, col)];
   if (!cell) return "";
   if (cell.dataTableFormula) return cell.dataTableFormula;
   if (cell.formula) return cell.formula;
   return cell.raw == null ? "" : String(cell.raw);
+}
+
+function getCellEditInput(sheet, row, col) {
+  const rawInput = getCellRawInput(sheet, row, col);
+  const cell = sheet?.cells?.[cellKey(row, col)];
+  if (!cell || cell.dataTableFormula || cell.formula || !isDateFormat(cell.numFmt)) return rawInput;
+  const serial = dateSerialFromPersistedValue(cell.raw, cell.numFmt)
+    ?? dateSerialFromPersistedValue(cell.cached, cell.numFmt);
+  return serial == null ? rawInput : displayValue(serial, cell.numFmt);
 }
 
 function getDisplayForCell(sheet, sheetId, row, col) {
@@ -116223,7 +116345,7 @@ function evaluateExcelArraySpillFormula(sheet, sheetIndex, formula) {
     const data = formulaRangeValueMatrix(directRange);
     return { supported: true, data: data.length ? data : [[""]] };
   }
-  const match = expression.match(/^(UNIQUE|SORT|SORTBY|FILTER|SEQUENCE|INDIRECT|OFFSET|INDEX|TAKE|DROP|VSTACK|HSTACK|CHOOSEROWS|CHOOSECOLS|TOCOL|TOROW|WRAPROWS|WRAPCOLS|EXPAND|TRANSPOSE|CHOOSE|TEXTSPLIT|MAKEARRAY|BYROW|BYCOL|MAP|REDUCE|SCAN)\s*\((.*)\)\s*$/i);
+  const match = expression.match(/^(UNIQUE|SORT|SORTBY|FILTER|SEQUENCE|INDIRECT|OFFSET|INDEX|TAKE|DROP|VSTACK|HSTACK|CHOOSEROWS|CHOOSECOLS|TOCOL|TOROW|WRAPROWS|WRAPCOLS|EXPAND|TRANSPOSE|TEXTSPLIT|MAKEARRAY|BYROW|BYCOL|MAP|REDUCE|SCAN)\s*\((.*)\)\s*$/i);
   if (!match) return { supported: false, data: [] };
   const name = match[1].toUpperCase();
   const args = splitFormulaArguments(match[2]);
@@ -116280,11 +116402,6 @@ function evaluateExcelArraySpillFormula(sheet, sheetIndex, formula) {
   }
   if (name === "HSTACK") {
     return { supported: true, data: hstackFormulaMatrices(args.map((arg) => formulaArgumentMatrix(arg, sheet, sheetIndex))) };
-  }
-  if (name === "CHOOSE") {
-    const index = Math.trunc(formulaArgumentNumberValue(args[0], sheet, sheetIndex, 1));
-    const selected = index >= 1 && index < args.length ? args[index] : null;
-    return { supported: true, data: selected == null ? [["#VALUE!"]] : formulaArgumentMatrix(selected, sheet, sheetIndex) };
   }
   const sourceData = formulaArgumentMatrix(args[0], sheet, sheetIndex);
   if (!sourceData.length) return { supported: true, data: [[""]] };
@@ -117248,7 +117365,11 @@ function evaluateExcelSummaryReferenceFormula(sheet, formula) {
     const sourceSheetId = getSheetId(sourceSheet.name);
     forEachCellInRange(range, (row, col) => {
       const cell = sourceSheet.cells[cellKey(row, col)];
-      values.push(cell?.raw ?? cell?.cached ?? getDisplayForCell(sourceSheet, sourceSheetId, row, col));
+      values.push(
+        cell?.formula
+          ? formulaScalarValueForCell(sourceSheet, sourceSheetId, row, col)
+          : cell?.raw ?? cell?.cached ?? getDisplayForCell(sourceSheet, sourceSheetId, row, col),
+      );
     });
   });
   if (invalid.length) return { supported: false, value: null };
@@ -117966,6 +118087,7 @@ function displayValue(value, numFmt = "") {
   if (value == null) return "";
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    if (isElapsedTimeFormat(numFmt)) return formatElapsedTimeForFormat(dateToExcelSerial(value), numFmt);
     return formatDateForFormat(value, numFmt);
   }
   if (typeof value === "object") {
@@ -117976,6 +118098,7 @@ function displayValue(value, numFmt = "") {
 
   if (typeof value === "number") {
     const primaryFormat = primaryExcelFormatSection(numFmt);
+    if (isElapsedTimeFormat(primaryFormat)) return formatElapsedTimeForFormat(value, primaryFormat);
     if (isDateFormat(primaryFormat)) return formatDateForFormat(excelSerialToDate(value), primaryFormat);
     if (/%/.test(primaryFormat)) return `${formatNumberForFormat(value * 100, primaryFormat)}%`;
     const currency = currencySymbol(primaryFormat);
@@ -118004,6 +118127,50 @@ function numericStringValueForNumberFormat(value, numFmt = "") {
 
 function numberFormatCanApplyToNumericString(format) {
   return isDateFormat(format) || /%/.test(format) || Boolean(currencySymbol(format)) || /[0#?]/.test(format);
+}
+
+function isElapsedTimeFormat(numFmt) {
+  return /\[(?:h+|m+|s+)\]/i.test(primaryExcelFormatSection(numFmt || ""));
+}
+
+function formatElapsedTimeForFormat(value, numFmt = "") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  const format = primaryExcelFormatSection(numFmt);
+  if (!isElapsedTimeFormat(format)) return String(value);
+  const negative = number < 0;
+  const absoluteSeconds = Math.abs(number) * 86400;
+  const plainFormat = format.replace(/"[^"]*"/g, "").replace(/\\./g, " ");
+  const hasSeconds = /\[(?:s+)\]|s{1,2}/i.test(plainFormat);
+  const hasMinutes = /\[(?:m+)\]|m{1,2}/i.test(plainFormat);
+  const totalSeconds = hasSeconds
+    ? Math.round(absoluteSeconds)
+    : hasMinutes
+      ? Math.round(absoluteSeconds / 60) * 60
+      : Math.round(absoluteSeconds / 3600) * 3600;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds;
+  const clockHour = hours % 24;
+  const clockMinute = minutes % 60;
+  const clockSecond = seconds % 60;
+  const pad2 = (item) => String(item).padStart(2, "0");
+  const rendered = format.replace(/"([^"]*)"|\\(.)|\[(h+|m+|s+)\]|hh|ss|mm|h|s|m/gi, (match, quoted, escaped, elapsed) => {
+    if (quoted != null) return quoted;
+    if (escaped != null) return escaped;
+    if (elapsed) {
+      const unit = elapsed[0].toLowerCase();
+      return String(unit === "h" ? hours : unit === "m" ? minutes : seconds);
+    }
+    const token = match.toLowerCase();
+    if (token === "hh") return pad2(clockHour);
+    if (token === "h") return String(clockHour);
+    if (token === "mm") return pad2(clockMinute);
+    if (token === "m") return String(clockMinute);
+    if (token === "ss") return pad2(clockSecond);
+    return String(clockSecond);
+  });
+  return `${negative ? "-" : ""}${rendered}`;
 }
 
 function formatDateForFormat(date, numFmt = "") {
@@ -122102,7 +122269,7 @@ function standaloneRuntime() {
   function hyperFormulaBuildConfig() {
     return {
       licenseKey,
-      leapYear1900: true,
+      leapYear1900: false,
       useArrayArithmetic: true,
       maxRows: 1048576,
       maxColumns: 16384,
@@ -126238,10 +126405,24 @@ function standaloneRuntime() {
   }
   function displayValue(value, numFmt) {
     if (value == null) return "";
-    if (value instanceof Date && !Number.isNaN(value.getTime())) return formatDateForFormat(value, numFmt || "");
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      if (isElapsedTimeFormat(numFmt)) {
+        var elapsedSerial = Date.UTC(
+          value.getFullYear(),
+          value.getMonth(),
+          value.getDate(),
+          value.getHours(),
+          value.getMinutes(),
+          value.getSeconds()
+        ) / 86400000 + 25569;
+        return formatElapsedTimeForFormat(elapsedSerial, numFmt || "");
+      }
+      return formatDateForFormat(value, numFmt || "");
+    }
     if (typeof value === "object") return value.value || value.error || String(value);
     if (typeof value === "number") {
       var primaryFormat = primaryExcelFormatSection(numFmt || "");
+      if (isElapsedTimeFormat(primaryFormat)) return formatElapsedTimeForFormat(value, primaryFormat);
       if (isDateFormat(primaryFormat)) return formatDateForFormat(excelSerialToDate(value), primaryFormat);
       const text = formatNumberForFormat(value, primaryFormat);
       if (/%/.test(primaryFormat)) return formatNumberForFormat(value * 100, primaryFormat) + "%";
@@ -126265,6 +126446,48 @@ function standaloneRuntime() {
   }
   function numberFormatCanApplyToNumericString(format) {
     return isDateFormat(format) || /%/.test(format) || Boolean(currencySymbol(format)) || /[0#?]/.test(format);
+  }
+  function isElapsedTimeFormat(numFmt) {
+    return /\[(?:h+|m+|s+)\]/i.test(primaryExcelFormatSection(numFmt || ""));
+  }
+  function formatElapsedTimeForFormat(value, numFmt) {
+    var number = Number(value);
+    if (!Number.isFinite(number)) return String(value);
+    var format = primaryExcelFormatSection(numFmt || "");
+    if (!isElapsedTimeFormat(format)) return String(value);
+    var negative = number < 0;
+    var absoluteSeconds = Math.abs(number) * 86400;
+    var plainFormat = format.replace(/"[^"]*"/g, "").replace(/\\./g, " ");
+    var hasSeconds = /\[(?:s+)\]|s{1,2}/i.test(plainFormat);
+    var hasMinutes = /\[(?:m+)\]|m{1,2}/i.test(plainFormat);
+    var totalSeconds = hasSeconds
+      ? Math.round(absoluteSeconds)
+      : hasMinutes
+        ? Math.round(absoluteSeconds / 60) * 60
+        : Math.round(absoluteSeconds / 3600) * 3600;
+    var hours = Math.floor(totalSeconds / 3600);
+    var minutes = Math.floor(totalSeconds / 60);
+    var seconds = totalSeconds;
+    var clockHour = hours % 24;
+    var clockMinute = minutes % 60;
+    var clockSecond = seconds % 60;
+    var pad2 = function (item) { return String(item).padStart(2, "0"); };
+    var rendered = format.replace(/"([^"]*)"|\\(.)|\[(h+|m+|s+)\]|hh|ss|mm|h|s|m/gi, function (match, quoted, escaped, elapsed) {
+      if (quoted != null) return quoted;
+      if (escaped != null) return escaped;
+      if (elapsed) {
+        var unit = elapsed[0].toLowerCase();
+        return String(unit === "h" ? hours : unit === "m" ? minutes : seconds);
+      }
+      var token = match.toLowerCase();
+      if (token === "hh") return pad2(clockHour);
+      if (token === "h") return String(clockHour);
+      if (token === "mm") return pad2(clockMinute);
+      if (token === "m") return String(clockMinute);
+      if (token === "ss") return pad2(clockSecond);
+      return String(clockSecond);
+    });
+    return (negative ? "-" : "") + rendered;
   }
   function formatDateForFormat(date, numFmt) {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
@@ -126360,8 +126583,10 @@ function standaloneRuntime() {
     return match ? Math.min(6, match[1].length) : 0;
   }
   function isDateFormat(numFmt) {
+    if (isElapsedTimeFormat(numFmt)) return true;
     const format = dateDetectionFormat(numFmt || "");
     if (/[年月日]/.test(format)) return true;
+    if (/^\s*(?:y{1,4}|m{1,4}|d{1,4})\s*$/i.test(format)) return true;
     var hasYear = /(^|[^a-z])y{2,4}/i.test(format);
     var hasMonth = /(^|[^a-z])m{1,4}/i.test(format);
     var hasDay = /(^|[^a-z])d{1,4}/i.test(format);
@@ -127450,8 +127675,10 @@ function excelSerialToDate(serial) {
 }
 
 function isDateFormat(numFmt) {
+  if (isElapsedTimeFormat(numFmt)) return true;
   const format = dateDetectionFormat(numFmt);
   if (/[年月日]/.test(format)) return true;
+  if (/^\s*(?:y{1,4}|m{1,4}|d{1,4})\s*$/i.test(format)) return true;
   const hasYear = /(^|[^a-z])y{2,4}/i.test(format);
   const hasMonth = /(^|[^a-z])m{1,4}/i.test(format);
   const hasDay = /(^|[^a-z])d{1,4}/i.test(format);
