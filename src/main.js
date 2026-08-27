@@ -120660,7 +120660,7 @@ function replaceWorksheetDataValidationsXml(xml, block) {
   const withoutExisting = String(xml || "").replace(/<dataValidations\b[\s\S]*?<\/dataValidations>/, "");
   if (!block) return withoutExisting;
   const anchor = /(<hyperlinks\b|<printOptions\b|<pageMargins\b|<pageSetup\b|<headerFooter\b|<rowBreaks\b|<colBreaks\b|<customProperties\b|<cellWatches\b|<ignoredErrors\b|<smartTags\b|<drawing\b|<legacyDrawing\b|<legacyDrawingHF\b|<picture\b|<oleObjects\b|<controls\b|<webPublishItems\b|<tableParts\b|<extLst\b|<\/worksheet>)/;
-  return anchor.test(withoutExisting) ? withoutExisting.replace(anchor, `${block}$1`) : withoutExisting;
+  return anchor.test(withoutExisting) ? withoutExisting.replace(anchor, (match) => `${block}${match}`) : withoutExisting;
 }
 
 function rangeFromCellLabel(ref) {

@@ -15,6 +15,7 @@ const formulaUiSmokeOnly = cliArgs.includes("--formula-ui-smoke");
 const viewSmokeOnly = cliArgs.includes("--view-smoke");
 const viewDiagnosticsOnly = cliArgs.includes("--view-diagnostics");
 const validationMenuOnly = cliArgs.includes("--validation-menu");
+const validationExportAbsoluteOnly = cliArgs.includes("--validation-export-absolute");
 const outlineGroupingOnly = cliArgs.includes("--outline-grouping");
 const macroVbaSubsetOnly = cliArgs.includes("--macro-vba-subset");
 const customViewImportExportOnly = cliArgs.includes("--custom-view-import-export");
@@ -29,6 +30,7 @@ const smokeOnly =
   formulaUiSmokeOnly ||
   viewSmokeOnly ||
   validationMenuOnly ||
+  validationExportAbsoluteOnly ||
   outlineGroupingOnly ||
   macroVbaSubsetOnly ||
   dataFilterSortOnly ||
@@ -658,10 +660,11 @@ async function patchValidationMenuWorkbookDataValidations(filePath) {
   const dateRule = '<dataValidation type="date" operator="between" allowBlank="1" showErrorMessage="1" sqref="K30"><formula1>45413</formula1><formula2>45443</formula2></dataValidation>';
   const timeRule = '<dataValidation type="time" operator="between" allowBlank="1" showErrorMessage="1" sqref="L30"><formula1>0.375</formula1><formula2>0.75</formula2></dataValidation>';
   const textLengthRule = '<dataValidation type="textLength" operator="equal" allowBlank="1" showErrorMessage="1" sqref="M30"><formula1>5</formula1></dataValidation>';
+  const absoluteReferenceRule = '<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="N30"><formula1>$D$1:$D$3</formula1></dataValidation>';
   if (!xml.includes('sqref="C30:D31"')) {
-    xml = xml.replace("</dataValidations>", `${blankRangeRule}${referenceRule}${customRule}${multiRangeRule}${decimalRule}${dateRule}${timeRule}${textLengthRule}</dataValidations>`);
+    xml = xml.replace("</dataValidations>", `${blankRangeRule}${referenceRule}${customRule}${multiRangeRule}${decimalRule}${dateRule}${timeRule}${textLengthRule}${absoluteReferenceRule}</dataValidations>`);
     xml = xml.replace(/<dataValidations\b([^>]*)\bcount="(\d+)"([^>]*)>/, (_match, before, count, after) =>
-      `<dataValidations${before}count="${Number(count) + 8}"${after}>`,
+      `<dataValidations${before}count="${Number(count) + 9}"${after}>`,
     );
   }
   zip.file(worksheetPath, xml);
@@ -3159,6 +3162,7 @@ async function exerciseDataValidationMenu(context) {
       dateTag: exportedValidationXml?.match(/<dataValidation\b(?=[^>]*\btype="date")(?=[^>]*\boperator="between")(?=[^>]*\bsqref="K30")[^>]*>[\s\S]*?<formula1>45413<\/formula1><formula2>45443<\/formula2><\/dataValidation>/)?.[0] || "",
       timeTag: exportedValidationXml?.match(/<dataValidation\b(?=[^>]*\btype="time")(?=[^>]*\boperator="between")(?=[^>]*\bsqref="L30")[^>]*>[\s\S]*?<formula1>0\.375<\/formula1><formula2>0\.75<\/formula2><\/dataValidation>/)?.[0] || "",
       textLengthTag: exportedValidationXml?.match(/<dataValidation\b(?=[^>]*\btype="textLength")(?=[^>]*\boperator="equal")(?=[^>]*\bsqref="M30")[^>]*>[\s\S]*?<formula1>5<\/formula1><\/dataValidation>/)?.[0] || "",
+      absoluteReferenceTag: exportedValidationXml?.match(/<dataValidation\b(?=[^>]*\btype="list")(?=[^>]*\bsqref="N30")[^>]*>[\s\S]*?<formula1>\$D\$1:\$D\$3<\/formula1><\/dataValidation>/)?.[0] || "",
     };
     return {
       ...menu,
@@ -15763,7 +15767,8 @@ function assertValidationMenuResult(result) {
     !result?.exportedBlankRangeValidation?.decimalTag?.includes('errorStyle="warning"') ||
     !result?.exportedBlankRangeValidation?.dateTag ||
     !result?.exportedBlankRangeValidation?.timeTag ||
-    !result?.exportedBlankRangeValidation?.textLengthTag
+    !result?.exportedBlankRangeValidation?.textLengthTag ||
+    !result?.exportedBlankRangeValidation?.absoluteReferenceTag
   ) {
     throw new Error(`Validation menu smoke failed: ${JSON.stringify(result)}`);
   }
@@ -15787,6 +15792,42 @@ async function runValidationMenuOnly() {
   } finally {
     await browser.close();
   }
+}
+
+async function runValidationExportAbsoluteOnly() {
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: chromePath,
+  });
+  try {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    const inputPath = await createValidationMenuWorkbook();
+    await page.goto(`${appUrl}?validationExportAbsolute=${Date.now()}`, { waitUntil: "load" });
+    await page.setInputFiles("#fileInput", inputPath);
+    await waitForUploadedWorkbook(page, inputPath);
+    const exportedBase64 = await page.evaluate(() => window.__webSheetDevExportXlsxBase64?.() || "");
+    if (!exportedBase64) throw new Error("Absolute-reference validation export did not produce an XLSX payload.");
+    const outputDir = await mkdtemp(path.join(os.tmpdir(), "websheet-validation-export-"));
+    const outputPath = path.join(outputDir, "validation-export-absolute.xlsx");
+    const outputBuffer = Buffer.from(exportedBase64, "base64");
+    await writeFile(outputPath, outputBuffer);
+    const zip = await JSZip.loadAsync(outputBuffer);
+    const worksheetXml = await zip.file("xl/worksheets/sheet1.xml")?.async("text");
+    const formulaPreserved = /<dataValidation\b(?=[^>]*\bsqref="N30")[^>]*>[\s\S]*?<formula1>\$D\$1:\$D\$3<\/formula1><\/dataValidation>/.test(worksheetXml || "");
+    if (!formulaPreserved || /<formula1>[^<]*<pageMargins/.test(worksheetXml || "")) {
+      throw new Error("Absolute-reference validation formula was corrupted during XLSX export.");
+    }
+    await context.close();
+    console.log(JSON.stringify({ ok: true, formulaPreserved, outputPath }, null, 2));
+  } finally {
+    await browser.close();
+  }
+}
+
+if (validationExportAbsoluteOnly) {
+  await runValidationExportAbsoluteOnly();
+  process.exit(0);
 }
 
 if (validationMenuOnly) {
@@ -32695,7 +32736,8 @@ try {
     !dataValidationMenu.exportedBlankRangeValidation?.decimalTag?.includes('errorStyle="warning"') ||
     !dataValidationMenu.exportedBlankRangeValidation?.dateTag ||
     !dataValidationMenu.exportedBlankRangeValidation?.timeTag ||
-    !dataValidationMenu.exportedBlankRangeValidation?.textLengthTag
+    !dataValidationMenu.exportedBlankRangeValidation?.textLengthTag ||
+    !dataValidationMenu.exportedBlankRangeValidation?.absoluteReferenceTag
   ) {
     throw new Error("Data validation should match Excel for menu commands, formulas, list references, input messages, alert styles, and imported OOXML details.");
   }
