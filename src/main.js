@@ -23876,10 +23876,10 @@ function releaseExcelJsWorkbook(workbook) {
 function prepareExcelJsWorkbookForFastImport(workbook) {
   const xlsx = workbook?.xlsx;
   if (!xlsx) return;
+  // Skip media and DrawingML, but retain VML metadata for worksheet comments.
   xlsx._processMediaEntry = async () => {};
   xlsx._processDrawingEntry = async () => {};
   xlsx._processDrawingRelsEntry = async () => {};
-  xlsx._processVmlDrawingEntry = async () => {};
 }
 
 async function createExcelJsWorkbookForImport(buffer, file, excelJsLoad) {
@@ -24892,7 +24892,8 @@ async function stripWorksheetDrawingsForExcelJs(zip) {
       changed = true;
     }));
   Object.keys(zip.files)
-    .filter((path) => /^xl\/drawings\//i.test(path))
+    // Keep VML note parts and their relationships for comment reconciliation.
+    .filter((path) => /^xl\/drawings\/.+\.xml(?:\.rels)?$/i.test(path))
     .forEach((path) => {
       zip.remove(path);
       changed = true;
@@ -24918,7 +24919,7 @@ function stripDrawingRelationshipTags(xml) {
 }
 
 function stripDrawingContentTypeOverrides(xml) {
-  return String(xml || "").replace(/<Override\b(?=[^>]*\bPartName=(["'])\/xl\/drawings\/[^"']+\1)[^>]*\/>/g, "");
+  return String(xml || "").replace(/<Override\b(?=[^>]*\bPartName=(["'])\/xl\/drawings\/[^"']+\.xml\1)[^>]*\/>/g, "");
 }
 
 async function restorePersistedWorkbook() {
