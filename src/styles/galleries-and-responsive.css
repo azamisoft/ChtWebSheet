@@ -1,0 +1,1333 @@
+
+
+.special-dialog-option input {
+  grid-row: 1 / span 2;
+  margin: 1px 0 0;
+}
+
+.special-dialog-option small {
+  min-width: 0;
+  color: #667085;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.header-size-dialog {
+  width: min(282px, calc(100vw - 32px));
+  grid-template-rows: 32px auto 46px;
+}
+
+.header-size-dialog .excel-mini-body {
+  padding: 16px 18px 8px;
+}
+
+.excel-mini-titlebar {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 0 11px;
+  border-bottom: 1px solid #d6d6d6;
+  background: #fff;
+  color: #1a1a1a;
+  font-weight: 400;
+}
+
+.excel-mini-body {
+  min-height: 0;
+  padding: 14px 16px;
+  overflow: auto;
+}
+
+.excel-dialog-field {
+  display: block;
+  margin-bottom: 10px;
+  color: #000;
+}
+
+.excel-dialog-caption {
+  display: inline-block;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.excel-dialog-field input,
+.excel-dialog-field select,
+.excel-dialog-field textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 22px;
+  border: 1px solid #7f9db9;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  padding: 2px 5px;
+  font: inherit;
+}
+
+.excel-dialog-field textarea {
+  resize: vertical;
+}
+
+.data-dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  margin: 3px 0;
+  color: #000;
+  font: inherit;
+  cursor: default;
+}
+
+.data-dialog-checkbox input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+}
+
+.page-setup-dialog {
+  width: min(640px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, 1fr) 46px;
+}
+
+.page-setup-dialog .data-dialog-body {
+  overflow: hidden;
+  padding: 8px 10px 10px;
+}
+
+.page-setup-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  height: 28px;
+}
+
+.page-setup-tab {
+  position: relative;
+  z-index: 1;
+  min-width: 86px;
+  height: 25px;
+  margin-right: -1px;
+  border: 1px solid #9d9d9d;
+  border-bottom-color: #767676;
+  border-radius: 0;
+  background: #e8e8e8;
+  color: #000;
+  padding: 2px 9px 3px;
+  font: inherit;
+  cursor: default;
+}
+
+.page-setup-tab.is-active {
+  z-index: 3;
+  top: 1px;
+  height: 26px;
+  border-bottom-color: #f0f0f0;
+  background: #f0f0f0;
+}
+
+.page-setup-panels {
+  min-height: 254px;
+  border: 1px solid #767676;
+  background: #f0f0f0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.page-setup-panel {
+  display: none;
+}
+
+.page-setup-panel.is-active {
+  display: block;
+}
+
+.page-setup-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.page-setup-radio-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.page-setup-center-group {
+  margin-top: 12px;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.page-setup-print-options {
+  margin-top: 8px;
+}
+
+.custom-view-include-options {
+  margin-top: -2px;
+  padding-left: 2px;
+}
+
+.custom-view-restriction {
+  margin-top: 6px;
+  color: #5f6876;
+}
+
+.excel-dialog-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 54px;
+  overflow: hidden;
+  color: #475467;
+}
+
+.excel-dialog-list span {
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-dialog-content {
+  display: grid;
+  grid-template-columns: 166px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.link-dialog-kind {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid #b7b7b7;
+  background: #fff;
+}
+
+.link-dialog-kind button {
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  color: #000;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-dialog-kind button:hover,
+.link-dialog-kind button:focus-visible {
+  background: var(--selection-tint);
+  outline: 1px solid var(--selection-focus);
+  outline-offset: -1px;
+}
+
+.link-dialog-kind button.is-active,
+.link-dialog-kind button.is-active:hover,
+.link-dialog-kind button.is-active:focus-visible {
+  background: var(--selection-tint);
+}
+
+.link-dialog-main {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.link-dialog-address-label {
+  min-height: 22px;
+  padding: 3px 6px;
+  border: 1px solid #b7b7b7;
+  background: #fff;
+  color: #475467;
+}
+
+.link-dialog-document-panel {
+  display: grid;
+  gap: 4px;
+}
+
+.link-dialog-document-panel[hidden] {
+  display: none;
+}
+
+.link-dialog-document-tree {
+  min-height: 112px;
+  max-height: 156px;
+  overflow: auto;
+  border: 1px solid #b7b7b7;
+  background: #fff;
+  padding: 5px;
+}
+
+.link-dialog-tree-heading {
+  min-height: 22px;
+  padding: 3px 5px;
+  color: #000;
+  font-weight: 600;
+}
+
+.link-dialog-sheet-list {
+  display: grid;
+  gap: 1px;
+  padding-left: 16px;
+}
+
+.link-dialog-sheet-list button {
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: #000;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-dialog-sheet-list button:hover,
+.link-dialog-sheet-list button:focus-visible {
+  background: var(--selection-tint);
+  outline: 1px solid var(--selection-focus);
+  outline-offset: -1px;
+}
+
+.link-dialog-sheet-list button.is-active,
+.link-dialog-sheet-list button.is-active:hover,
+.link-dialog-sheet-list button.is-active:focus-visible {
+  background: var(--selection-tint);
+}
+
+.symbol-dialog {
+  width: min(376px, calc(100vw - 32px));
+  grid-template-rows: 32px auto 46px;
+}
+
+.symbol-dialog-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 42px);
+  gap: 5px;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.symbol-choice {
+  width: 42px;
+  height: 34px;
+  border: 1px solid #b7b7b7;
+  background: #fff;
+  color: #000;
+  font: 18px/1 "Yu Gothic UI", "Segoe UI Symbol", Meiryo, sans-serif;
+  cursor: default;
+}
+
+.symbol-choice:hover,
+.symbol-choice:focus-visible {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+  outline: none;
+}
+
+.paste-special-dialog {
+  width: min(540px, calc(100vw - 32px));
+  grid-template-rows: 32px auto 46px;
+}
+
+.paste-special-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 14px;
+  row-gap: 6px;
+  padding: 12px 14px 8px;
+}
+
+.paste-special-group {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid #a8a8a8;
+  padding: 8px 10px 7px;
+}
+
+.paste-special-group legend {
+  padding: 0 4px;
+}
+
+.paste-special-check {
+  margin-top: 2px;
+}
+
+.insert-gallery-dialog {
+  width: min(620px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, 1fr) 46px;
+}
+
+.insert-gallery-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.insert-gallery-search input {
+  height: 24px;
+  border: 1px solid #7f9db9;
+  border-radius: 0;
+  padding: 2px 6px;
+  font: inherit;
+}
+
+.insert-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.insert-gallery-card {
+  min-width: 0;
+  min-height: 86px;
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  border: 1px solid #b7b7b7;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  cursor: default;
+}
+
+.insert-gallery-card:hover,
+.insert-gallery-card:focus-visible {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+  outline: none;
+}
+
+.insert-gallery-empty {
+  margin-top: 10px;
+  padding: 18px 8px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  color: #667085;
+  text-align: center;
+}
+
+.insert-gallery-preview svg {
+  width: 34px;
+  height: 34px;
+  fill: #4472c4;
+}
+
+.object-insert-dialog {
+  width: min(560px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, 1fr) 46px;
+}
+
+.signature-setup-dialog {
+  width: min(520px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, 1fr) 46px;
+}
+
+.object-insert-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #b7b7b7;
+}
+
+.object-insert-tabs button {
+  min-width: 104px;
+  height: 27px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: #000;
+  font: inherit;
+}
+
+.object-insert-tabs button.is-active {
+  border-color: #b7b7b7;
+  background: #fff;
+  font-weight: 600;
+}
+
+.object-insert-panel {
+  display: none;
+}
+
+.object-insert-panel.is-active {
+  display: block;
+}
+
+.object-insert-panel select {
+  min-height: 130px;
+}
+
+.object-insert-description {
+  margin: 3px 0 10px;
+  color: #526173;
+}
+
+.object-insert-file-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.object-insert-options {
+  margin-top: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.object-insert-icon-label {
+  min-width: 180px;
+  margin: 0;
+}
+
+.object-insert-preview {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 7px 9px;
+  border: 1px solid #c3cbd8;
+  background: #fff;
+  color: #1f2937;
+}
+
+.object-insert-preview-icon {
+  min-width: 30px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #aeb7c6;
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.office-addins-dialog {
+  width: min(720px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, 1fr) 46px;
+}
+
+.office-addin-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #b7b7b7;
+}
+
+.office-addin-tabs button {
+  min-width: 118px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: #000;
+  font: inherit;
+}
+
+.office-addin-tabs button.is-active {
+  border-color: #b7b7b7;
+  background: #fff;
+  font-weight: 600;
+}
+
+.office-addin-list {
+  display: grid;
+  gap: 8px;
+}
+
+.office-addin-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 82px;
+  padding: 8px;
+  border: 1px solid #b7b7b7;
+  background: #fff;
+}
+
+.office-addin-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: #4472c4;
+  color: #fff;
+  font-weight: 700;
+}
+
+.office-addin-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.office-addin-body span,
+.office-addin-body p {
+  margin: 0;
+  color: #526173;
+}
+
+.excel-mini-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+  padding: 10px;
+  background: #f0f0f0;
+}
+
+.excel-mini-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+  padding: 10px;
+  border-top: 1px solid #d6d6d6;
+  background: #f0f0f0;
+}
+
+.excel-mini-action-spacer {
+  flex: 1 1 auto;
+}
+
+.excel-mini-button {
+  min-width: 75px;
+  height: 26px;
+  border: 1px solid #8b8b8b;
+  border-radius: 0;
+  background: #e1e1e1;
+  color: #000;
+  font: inherit;
+  cursor: pointer;
+}
+
+.excel-mini-button:hover,
+.excel-mini-button:focus-visible {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+  outline: 1px solid #0078d7;
+  outline-offset: -1px;
+}
+
+.excel-mini-button:disabled,
+.excel-mini-button:disabled:hover,
+.excel-mini-button:disabled:focus-visible {
+  border-color: #bdbdbd;
+  background: #eeeeee;
+  color: #8a8a8a;
+  outline: none;
+  cursor: default;
+}
+
+.excel-mini-button.is-primary {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+}
+
+.help-dialog {
+  width: min(560px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, 1fr) 46px;
+}
+
+.help-dialog-body {
+  display: grid;
+  gap: 10px;
+}
+
+.help-dialog-lead {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.help-dialog-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+.version-dialog {
+  width: min(640px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, 1fr) 46px;
+}
+
+.version-dialog-product {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.version-dialog-logo {
+  width: 42px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #0f766e;
+  border-radius: 8px;
+  background: #e0f2fe;
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.version-dialog-name {
+  color: #111827;
+  font-weight: 700;
+}
+
+.version-dialog-company {
+  color: #526173;
+  font-size: 11px;
+}
+
+.version-dialog-list {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 12px;
+}
+
+.version-dialog-row {
+  display: grid;
+  grid-template-columns: 124px minmax(96px, 1fr) max-content;
+  align-items: baseline;
+  column-gap: 18px;
+}
+
+.version-dialog-label {
+  color: #526173;
+}
+
+.version-dialog-value,
+.version-dialog-updated {
+  color: #111827;
+  min-width: 0;
+}
+
+.version-dialog-updated {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .version-dialog-row {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    row-gap: 1px;
+  }
+
+  .version-dialog-label {
+    grid-column: 1 / -1;
+  }
+
+  .version-dialog-updated {
+    justify-self: start;
+  }
+}
+
+.version-dialog-benefit {
+  margin: -3px 0 10px;
+  padding: 7px 10px;
+  border: 1px solid #99f6e4;
+  background: #ecfeff;
+  color: #115e59;
+  display: grid;
+  gap: 3px;
+  line-height: 1.45;
+}
+
+.version-dialog-notice {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  line-height: 1.45;
+}
+
+.version-dialog-notice.is-current {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.version-dialog-notice.is-warning,
+.version-dialog-notice.is-update {
+  border-color: #facc15;
+  background: #fffbeb;
+  color: #713f12;
+}
+
+.format-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.format-dialog {
+  width: min(610px, calc(100vw - 32px));
+  height: min(510px, calc(100vh - 40px));
+  display: grid;
+  grid-template-rows: 32px 32px minmax(0, 1fr) 50px;
+  border: 1px solid #7a7a7a;
+  background: #f0f0f0;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26);
+  color: #000;
+  font: 12px "Segoe UI", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+}
+
+.format-dialog-titlebar {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid #d6d6d6;
+  background: #fff;
+}
+
+.format-dialog-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 11px;
+  overflow: hidden;
+  color: #1a1a1a;
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.format-dialog-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  padding: 7px 10px 0;
+  background: #f0f0f0;
+}
+
+.format-dialog-tab {
+  position: relative;
+  z-index: 1;
+  min-width: 70px;
+  height: 25px;
+  margin-right: -1px;
+  border: 1px solid #9d9d9d;
+  border-bottom-color: #767676;
+  border-radius: 0;
+  background: #e8e8e8;
+  color: #000;
+  padding: 2px 10px 3px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.format-dialog-tab.is-active {
+  z-index: 3;
+  top: 1px;
+  height: 26px;
+  border-bottom-color: #f0f0f0;
+  background: #f0f0f0;
+  font-weight: 400;
+}
+
+.format-dialog-body {
+  min-height: 0;
+  margin: -1px 10px 0;
+  border: 1px solid #767676;
+  background: #f0f0f0;
+  overflow: auto;
+  padding: 13px 12px 12px;
+}
+
+.format-dialog-panel {
+  display: none;
+}
+
+.format-dialog-panel.is-active {
+  display: block;
+}
+
+.format-group {
+  min-width: 0;
+  margin: 0 0 12px;
+  border: 1px solid #b7b7b7;
+  padding: 10px 10px 12px;
+}
+
+.format-group.is-hidden,
+.format-number-setting.is-hidden,
+[data-format-number-setting].is-hidden {
+  display: none !important;
+}
+
+.format-group legend {
+  padding: 0 4px;
+  color: #000;
+}
+
+.format-dialog-grid {
+  display: grid;
+  align-items: end;
+  gap: 9px 12px;
+}
+
+.format-dialog-grid.one {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.format-dialog-grid.two {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.format-dialog-grid.three {
+  grid-template-columns: minmax(220px, 1fr) 88px 86px;
+}
+
+.format-field {
+  display: block;
+  min-width: 0;
+  color: #000;
+  white-space: nowrap;
+}
+
+.format-field > input,
+.format-field > select {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+}
+
+.format-dialog input,
+.format-dialog select {
+  min-height: 22px;
+  border: 1px solid #7f9db9;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  padding: 1px 4px;
+  font: inherit;
+}
+
+.format-dialog input[type="color"] {
+  width: 100%;
+  min-height: 22px;
+  padding: 1px;
+}
+
+.format-dialog input[type="number"] {
+  width: 82px;
+}
+
+.format-listbox {
+  width: 100%;
+  height: 244px;
+  padding: 2px;
+}
+
+.format-check {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px !important;
+  min-height: 22px;
+  color: #000;
+}
+
+.format-check input {
+  width: 13px;
+  height: 13px;
+  min-height: 0;
+  margin: 0;
+}
+
+.format-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.format-inline-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.format-number-layout {
+  display: grid;
+  grid-template-columns: 154px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.format-category-group {
+  margin-bottom: 0;
+}
+
+.format-number-details {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.format-border-layout {
+  display: grid;
+  grid-template-columns: 156px minmax(128px, 0.7fr) minmax(190px, 1fr);
+  gap: 12px;
+}
+
+.format-border-preview {
+  margin-bottom: 0;
+}
+
+.format-sample {
+  min-height: 46px;
+  border: 1px solid #8f8f8f;
+  background: #fff;
+  padding: 7px 9px;
+  display: grid;
+  align-content: center;
+}
+
+.format-dialog-help {
+  margin: 0 0 10px;
+  color: #000;
+}
+
+.format-sample strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.format-edge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(70px, 1fr));
+  gap: 6px 8px;
+  min-height: 92px;
+  padding: 8px;
+  border: 1px solid #9d9d9d;
+  background: #fff;
+}
+
+.format-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+  padding: 10px;
+  background: #f0f0f0;
+}
+
+.format-dialog-button {
+  min-width: 75px;
+  height: 26px;
+  border: 1px solid #8b8b8b;
+  border-radius: 0;
+  background: #e1e1e1;
+  color: #000;
+  font: inherit;
+  cursor: pointer;
+}
+
+.format-dialog-button:hover,
+.format-dialog-button:focus-visible {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+  outline: 1px solid #0078d7;
+  outline-offset: -1px;
+}
+
+.format-dialog-button.is-primary {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+}
+
+.cell-structure-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2140;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.cell-structure-dialog {
+  width: 300px;
+  border: 1px solid #7a7a7a;
+  background: #f0f0f0;
+  color: #000;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+  font: 12px "Segoe UI", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+}
+
+.cell-structure-titlebar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #d6d6d6;
+  background: #fff;
+  line-height: 16px;
+}
+
+[data-dialog-drag-handle="true"] {
+  cursor: move;
+  user-select: none;
+}
+
+.is-dialog-dragging,
+.is-dialog-dragging * {
+  cursor: move !important;
+}
+
+.dialog-chrome-close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  margin-left: auto;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #1a1a1a;
+  padding: 0;
+  font: 400 17px/20px "Segoe UI", Arial, sans-serif;
+  text-align: center;
+  cursor: pointer;
+}
+
+.dialog-chrome-close:hover,
+.dialog-chrome-close:focus-visible {
+  border-color: #c42b1c;
+  background: #c42b1c;
+  color: #fff;
+  outline: none;
+}
+
+.cell-structure-body {
+  padding: 14px 14px 8px;
+}
+
+.cell-structure-group {
+  margin: 0;
+  border: 1px solid #b7b7b7;
+  padding: 9px 12px 10px;
+}
+
+.cell-structure-group legend {
+  padding: 0 4px;
+}
+
+.cell-structure-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+}
+
+.cell-structure-option input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+}
+
+.cell-structure-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 8px 14px 14px;
+}
+
+.cell-structure-button {
+  min-width: 75px;
+  height: 26px;
+  border: 1px solid #8b8b8b;
+  border-radius: 0;
+  background: #e1e1e1;
+  color: #000;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cell-structure-button:hover,
+.cell-structure-button:focus-visible {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+  outline: 1px solid #0078d7;
+  outline-offset: -1px;
+}
+
+.cell-structure-button.is-primary {
+  border-color: #0078d7;
+  background: var(--selection-tint);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body.is-object-selection-mode #sheetHost,
+body.is-object-selection-mode .sheet-host {
+  cursor: crosshair;
+}
+
+.object-selection-marquee {
+  position: fixed;
+  z-index: calc(var(--z-floating-menu) + 1);
+  pointer-events: none;
+  border: 1px dashed var(--selection-strong);
+  background: var(--selection-soft);
+}
+
+.translation-pane {
+  z-index: var(--z-floating-pane);
+}
+
+.file-side-menu,
+.ribbon-display-menu,
+.ribbon-color-palette,
+.ribbon-border-menu,
+.ribbon-ink-eraser-menu,
+.ribbon-shape-menu,
+.ribbon-shape-format-menu,
+.ribbon-underline-menu,
+.ribbon-data-menu,
+.sheet-tab-context-menu,
+.cell-context-menu,
+.quick-analysis-popup,
+.name-box-menu,
+.zoom-dialog,
+.validation-dropdown-popup,
+.auto-filter-menu,
+.home-command-menu,
+.data-command-menu,
+.data-validation-menu,
+.what-if-menu,
+.view-command-menu,
+.status-bar-context-menu,
+.formula-autocomplete-popover,
+.auto-fill-options-menu,
+.query-pane-context-menu {
+  z-index: var(--z-floating-menu);
+}
+
+.excel-dialog-overlay,
+.format-dialog-overlay,
+.cell-structure-dialog-overlay {
+  z-index: var(--z-floating-dialog);
+}
+
+.message-box-overlay {
+  z-index: var(--z-message-box);
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .ribbon-tab-row {
+    align-items: stretch;
+    flex-direction: row;
+    gap: 4px;
+    padding: 0 6px;
+  }
+
+  .ribbon-tabs {
+    max-width: 68%;
+  }
+
+  .workbook-name-display {
+    max-width: 46vw;
+    padding-inline: 8px;
+  }
+
+  .ribbon-display-options {
+    margin-left: auto;
+  }
+
+  .ribbon-status {
+    display: none;
+  }
+
+  .ribbon-panels {
+    min-height: 82px;
+    padding-inline: 8px;
+  }
+
+  .ribbon-font-group {
+    width: 248px;
+  }
+
+  .formula-bar {
+    grid-template-columns: 52px minmax(0, 1fr);
+    padding-inline: 12px;
+  }
+
+  .sheet-host {
+    padding: 0;
+  }
+
+  .sheet-footer {
+    --sheet-tabs-width: 55%;
+    grid-template-columns: minmax(120px, var(--sheet-tabs-width)) 8px minmax(180px, 1fr);
+  }
+
+  .sheet-view-toolbar {
+    gap: 6px;
+    padding-right: 6px;
+  }
+
+  .sheet-view-button {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  .sheet-zoom-control {
+    min-width: 130px;
+  }
+
+  .sheet-zoom-slider {
+    width: 54px;
+  }
+
+}

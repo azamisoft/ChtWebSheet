@@ -1,0 +1,2002 @@
+
+
+.text-csv-import-dialog {
+  width: min(900px, calc(100vw - 72px));
+}
+
+.text-csv-file-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0 8px;
+  color: #1f2937;
+}
+
+.text-csv-file-summary strong {
+  font-size: 13px;
+}
+
+.text-csv-file-summary span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.text-csv-options {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.9fr) minmax(120px, 0.7fr) minmax(190px, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.text-csv-preview {
+  max-height: 300px;
+}
+
+.query-transform-dialog {
+  width: min(1180px, calc(100vw - 48px));
+  height: min(860px, calc(100vh - 44px));
+  max-height: calc(100vh - 44px);
+  grid-template-rows: 32px auto minmax(0, 1fr) 48px;
+}
+
+.power-query-overlay {
+  align-items: center;
+}
+
+.power-query-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  align-content: flex-start;
+  max-height: min(190px, calc(100vh - 420px));
+  overflow: auto;
+  padding: 6px 8px;
+  border-bottom: 1px solid #d6deea;
+  background: #f6f8fb;
+}
+
+.power-query-command-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-right: 8px;
+  border-right: 1px solid #d6deea;
+}
+
+.power-query-column-tools {
+  max-width: 520px;
+}
+
+.power-query-row-tools {
+  max-width: 500px;
+}
+
+.power-query-text-tools {
+  max-width: 1040px;
+}
+
+.power-query-add-tools {
+  max-width: 680px;
+}
+
+.power-query-table-tools {
+  max-width: 940px;
+}
+
+.power-query-number-tools {
+  max-width: 1320px;
+}
+
+.power-query-condition-tools {
+  max-width: 760px;
+}
+
+.power-query-filter {
+  display: grid;
+  grid-template-columns: 140px 118px minmax(130px, 210px) auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.power-query-filter select,
+.power-query-filter input,
+.power-query-column-tools select,
+.power-query-column-tools input,
+.power-query-table-tools select,
+.power-query-text-tools input,
+.power-query-table-tools input,
+.power-query-number-tools input,
+.power-query-add-tools select,
+.power-query-add-tools input,
+.power-query-condition-tools select,
+.power-query-condition-tools input,
+.power-query-row-tools input,
+.power-query-name-field input {
+  min-width: 0;
+  height: 24px;
+  border: 1px solid #aeb7c6;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+}
+
+.power-query-column-tools select {
+  width: 112px;
+}
+
+.power-query-column-tools input {
+  width: 108px;
+}
+
+.power-query-row-tools input {
+  width: 58px;
+  text-align: right;
+}
+
+.power-query-text-tools input {
+  width: 92px;
+}
+
+.power-query-text-tools input[type="number"] {
+  width: 54px;
+  text-align: right;
+}
+
+.power-query-table-tools input {
+  width: 92px;
+}
+
+.power-query-table-tools select {
+  width: 104px;
+}
+
+.power-query-table-tools input[type="number"] {
+  width: 54px;
+  text-align: right;
+}
+
+.power-query-number-tools input {
+  width: 92px;
+}
+
+.power-query-number-tools input[type="number"] {
+  width: 64px;
+  text-align: right;
+}
+
+.power-query-add-tools input {
+  width: 110px;
+}
+
+.power-query-add-tools select {
+  width: 112px;
+}
+
+.power-query-condition-tools select {
+  width: 112px;
+}
+
+.power-query-condition-tools input {
+  width: 92px;
+}
+
+.power-query-body {
+  grid-template-columns: 170px minmax(0, 1fr) 230px;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+}
+
+.power-query-pane {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 10px;
+  background: #f7f9fc;
+  border-right: 1px solid #d6deea;
+}
+
+.power-query-settings {
+  border-right: 0;
+  border-left: 1px solid #d6deea;
+}
+
+.power-query-pane strong {
+  font-size: 12px;
+  color: #24364b;
+}
+
+.power-query-queries button {
+  height: 26px;
+  border: 1px solid #7da7d9;
+  background: #e7f1ff;
+  color: #1f2937;
+  font: inherit;
+  text-align: left;
+}
+
+.power-query-main {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  gap: 8px;
+}
+
+.power-query-formula-bar {
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid #c8d1df;
+  background: #fff;
+  color: #475467;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.power-query-column-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-height: 58px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid #d6deea;
+  background: #fbfdff;
+}
+
+.query-transform-preview {
+  max-height: none;
+  min-height: 0;
+}
+
+.query-transform-preview table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.query-transform-preview th,
+.query-transform-preview td {
+  min-width: 96px;
+  max-width: 180px;
+  height: 23px;
+  padding: 2px 6px;
+  border-right: 1px solid #d8dee8;
+  border-bottom: 1px solid #d8dee8;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  text-align: left;
+}
+
+.query-transform-preview th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eef3f9;
+  color: #24364b;
+  font-weight: 600;
+}
+
+.power-query-name-field {
+  grid-template-columns: 46px minmax(0, 1fr);
+}
+
+.power-query-steps {
+  display: grid;
+  gap: 4px;
+}
+
+.power-query-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid #d6deea;
+  background: #fff;
+}
+
+.power-query-step.is-source {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.power-query-step span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.power-query-step button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #667085;
+  font: inherit;
+}
+
+.power-query-step button:hover,
+.power-query-step button:focus-visible {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.query-preview-empty {
+  padding: 18px;
+  color: #64748b;
+  text-align: center;
+}
+
+.query-pane {
+  position: fixed;
+  right: 0;
+  top: 22px;
+  bottom: 0;
+  z-index: 1150;
+  width: 300px;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  border-left: 1px solid #c8d1df;
+  background: #fff;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.16);
+  color: #1f2937;
+  font: 11px/1.25 "Aptos", "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
+}
+
+.query-pane-header {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid #d8dee8;
+  background: #f5f7fb;
+}
+
+.query-pane-header strong {
+  font-size: 13px;
+}
+
+.query-pane-header button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: #475467;
+  font-size: 18px;
+  cursor: default;
+}
+
+.query-pane-toolbar {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e1e6ef;
+}
+
+.query-pane-toolbar button {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #aeb7c6;
+  background: #fff;
+  color: #1f2937;
+  padding: 2px 8px;
+  font: inherit;
+  cursor: default;
+}
+
+.query-pane-toolbar svg {
+  width: 14px;
+  height: 14px;
+}
+
+.query-pane-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid #d8dee8;
+  background: #f8fafc;
+}
+
+.query-pane-tabs button {
+  min-height: 28px;
+  border: 0;
+  border-right: 1px solid #d8dee8;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #344054;
+  font: inherit;
+  cursor: default;
+}
+
+.query-pane-tabs button:last-child {
+  border-right: 0;
+}
+
+.query-pane-tabs button.is-active {
+  border-bottom-color: var(--selection-strong);
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+}
+
+.query-pane-tabs span {
+  color: #667085;
+  font-weight: 400;
+}
+
+.query-pane-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.query-pane-empty {
+  padding: 12px 6px;
+  color: #667085;
+}
+
+.query-pane-item {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #d8dee8;
+  background: #fff;
+}
+
+.query-pane-item + .query-pane-item {
+  margin-top: 8px;
+}
+
+.query-pane-item-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.query-pane-item-main strong,
+.query-pane-item-main span,
+.query-pane-item-main small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.query-pane-item-main small {
+  color: #667085;
+}
+
+.query-pane-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.query-pane-item-actions button {
+  min-height: 22px;
+  border: 1px solid #aeb7c6;
+  background: #fff;
+  color: #1f2937;
+  padding: 1px 7px;
+  font: inherit;
+  cursor: default;
+}
+
+.query-pane button:hover,
+.query-pane button:focus-visible {
+  border-color: var(--selection-strong);
+  outline: 1px solid var(--selection-focus);
+  outline-offset: -1px;
+}
+
+.query-pane-context-menu {
+  z-index: 1250;
+  min-width: 190px;
+}
+
+.translation-pane {
+  position: fixed;
+  right: 0;
+  top: 22px;
+  bottom: 0;
+  z-index: 1160;
+  width: 340px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-left: 1px solid #c8d1df;
+  background: #ffffff;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.16);
+  color: #1f2937;
+  font: 11px/1.3 "Aptos", "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
+}
+
+.translation-pane-header {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px 6px 10px;
+  border-bottom: 1px solid #d8dee8;
+  background: #f5f7fb;
+}
+
+.translation-pane-header > div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.translation-pane-header strong {
+  font-size: 14px;
+}
+
+.translation-pane-header span {
+  min-width: 0;
+  overflow: hidden;
+  color: #667085;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.translation-pane-header button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: #475467;
+  font-size: 18px;
+  cursor: default;
+}
+
+.translation-pane-body {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+}
+
+.translation-pane-controls {
+  display: grid;
+  grid-template-columns: 1fr 28px 1fr;
+  align-items: end;
+  gap: 6px;
+}
+
+.translation-pane-controls label {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  color: #475467;
+}
+
+.translation-pane-controls select {
+  min-width: 0;
+  height: 26px;
+  border: 1px solid #aeb7c6;
+  border-radius: 2px;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+}
+
+.translation-pane-swap {
+  width: 28px;
+  height: 26px;
+  border: 1px solid #aeb7c6;
+  border-radius: 2px;
+  background: #fff;
+  color: #1f2937;
+  cursor: default;
+}
+
+.translation-pane-swap svg {
+  width: 14px;
+  height: 14px;
+}
+
+.translation-pane-detected,
+.translation-pane-note,
+.translation-pane-more {
+  color: #667085;
+}
+
+.translation-pane-preview {
+  min-height: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.translation-pane-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid #d8dee8;
+  background: #fff;
+}
+
+.translation-pane-address {
+  color: #344054;
+  font-weight: 700;
+}
+
+.translation-pane-text {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.translation-pane-source,
+.translation-pane-result {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.translation-pane-source {
+  color: #667085;
+}
+
+.translation-pane-result {
+  color: #111827;
+  font-weight: 600;
+}
+
+.translation-pane-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid #d8dee8;
+  background: #f8fafc;
+}
+
+.translation-pane-footer button {
+  min-height: 26px;
+  border: 1px solid #aeb7c6;
+  border-radius: 2px;
+  background: #fff;
+  color: #1f2937;
+  padding: 2px 10px;
+  font: inherit;
+  cursor: default;
+}
+
+.translation-pane button:hover,
+.translation-pane button:focus-visible {
+  border-color: var(--selection-strong);
+  outline: 1px solid var(--selection-focus);
+  outline-offset: -1px;
+}
+
+.forecast-preview {
+  position: relative;
+  height: 118px;
+  border: 1px solid #c7d2e2;
+  background:
+    linear-gradient(#eef2f7 1px, transparent 1px) 0 0 / 100% 24px,
+    linear-gradient(90deg, #eef2f7 1px, transparent 1px) 0 0 / 42px 100%,
+    #fff;
+  overflow: hidden;
+}
+
+.forecast-preview-axis {
+  position: absolute;
+  left: 28px;
+  right: 12px;
+  bottom: 20px;
+  border-bottom: 1px solid #94a3b8;
+}
+
+.forecast-preview-axis::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 76px;
+  border-left: 1px solid #94a3b8;
+}
+
+.forecast-preview-line {
+  position: absolute;
+  left: 38px;
+  right: 28px;
+  top: 44px;
+  height: 34px;
+  border-top: 2px solid #4472c4;
+  transform: skewY(-12deg);
+}
+
+.forecast-preview[data-chart-type="column"] .forecast-preview-line {
+  left: 46px;
+  right: 36px;
+  top: auto;
+  bottom: 21px;
+  height: 56px;
+  border-top: 0;
+  background:
+    linear-gradient(to top, #4472c4 0 32px, transparent 32px) 0 100% / 22px 100% no-repeat,
+    linear-gradient(to top, #4472c4 0 48px, transparent 48px) 38px 100% / 22px 100% no-repeat,
+    linear-gradient(to top, #4472c4 0 25px, transparent 25px) 76px 100% / 22px 100% no-repeat,
+    linear-gradient(to top, #ed7d31 0 38px, transparent 38px) calc(100% - 76px) 100% / 22px 100% no-repeat,
+    linear-gradient(to top, #ed7d31 0 45px, transparent 45px) calc(100% - 38px) 100% / 22px 100% no-repeat,
+    linear-gradient(to top, #ed7d31 0 52px, transparent 52px) 100% 100% / 22px 100% no-repeat;
+  transform: none;
+}
+
+.forecast-preview-band {
+  position: absolute;
+  left: 192px;
+  right: 34px;
+  top: 38px;
+  bottom: 32px;
+  background: rgba(68, 114, 196, 0.14);
+  border-top: 1px dashed #4472c4;
+  border-bottom: 1px dashed #4472c4;
+}
+
+.forecast-options-fieldset {
+  display: grid;
+  gap: 6px;
+}
+
+.forecast-confidence-row {
+  display: grid;
+  grid-template-columns: auto auto 70px auto;
+  justify-content: start;
+}
+
+.forecast-confidence-row input[type="number"] {
+  height: 22px;
+  border: 1px solid #aeb7c6;
+  background: #fff;
+  font: inherit;
+}
+
+.forecast-confidence-row input[type="number"]:disabled {
+  background: #eeeeee;
+  color: #8a8a8a;
+}
+
+.data-dialog-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #aeb7c6;
+}
+
+.data-dialog-tabs button {
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  font: inherit;
+  cursor: default;
+}
+
+.data-dialog-tabs button.is-active {
+  border-color: #aeb7c6;
+  background: #fff;
+}
+
+.data-dialog-tab-panel {
+  display: none;
+  gap: 8px;
+}
+
+.data-dialog-tab-panel.is-active {
+  display: grid;
+}
+
+.data-dialog-tab-panel textarea {
+  min-width: 0;
+  resize: vertical;
+  font: inherit;
+}
+
+.formula-dialog-body {
+  gap: 8px;
+}
+
+.insert-function-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.insert-function-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.insert-function-layout {
+  min-height: 230px;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.insert-function-list {
+  overflow: auto;
+  border: 1px solid #a8a8a8;
+  background: #fff;
+  position: relative;
+}
+
+.insert-function-list button {
+  width: 100%;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+}
+
+.insert-function-list button.is-active,
+.insert-function-list button:focus-visible {
+  background: var(--selection-tint);
+  outline: 1px solid #0078d7;
+  outline-offset: -1px;
+}
+
+.insert-function-empty {
+  padding: 10px;
+  color: #667085;
+}
+
+.insert-function-description {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #c6c6c6;
+  background: #fff;
+  line-height: 1.28;
+  font-size: 12px;
+}
+
+.insert-function-description code {
+  display: block;
+  padding: 5px 6px;
+  border: 1px solid #d0d0d0;
+  background: #f7f7f7;
+  color: #1f2937;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.function-arguments-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.function-arguments-dialog.is-reference-collapsed {
+  width: min(430px, calc(100vw - 20px));
+  grid-template-rows: 28px auto;
+}
+
+.function-arguments-dialog.is-reference-collapsed .excel-mini-titlebar {
+  height: 28px;
+  min-height: 28px;
+  line-height: 28px;
+}
+
+.function-arguments-dialog.is-reference-collapsed .excel-mini-body {
+  padding: 8px 10px;
+  overflow: visible;
+}
+
+.function-arguments-dialog.is-reference-collapsed .function-argument-heading,
+.function-arguments-dialog.is-reference-collapsed .function-argument-preview,
+.function-arguments-dialog.is-reference-collapsed .function-argument-result,
+.function-arguments-dialog.is-reference-collapsed .function-argument-detail,
+.function-arguments-dialog.is-reference-collapsed .function-argument-syntax,
+.function-arguments-dialog.is-reference-collapsed .function-argument-value,
+.function-arguments-dialog.is-reference-collapsed .function-argument-required,
+.function-arguments-dialog.is-reference-collapsed .excel-mini-actions {
+  display: none;
+}
+
+.function-argument-heading {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #c6c6c6;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.function-argument-heading strong {
+  font-size: 14px;
+}
+
+.function-argument-list {
+  display: grid;
+  gap: 5px;
+}
+
+.function-argument-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) 24px minmax(72px, 0.45fr) 48px;
+  align-items: center;
+  gap: 6px;
+  margin-inline: -4px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  font-size: 12px;
+}
+
+.function-argument-row.is-active {
+  border-color: var(--selection-focus);
+  background: var(--selection-tint);
+}
+
+.function-arguments-dialog.is-reference-collapsed .function-argument-list {
+  gap: 0;
+}
+
+.function-arguments-dialog.is-reference-collapsed .function-argument-row {
+  display: none;
+}
+
+.function-arguments-dialog.is-reference-collapsed .function-argument-row.is-active-reference {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 24px;
+  gap: 5px;
+}
+
+.function-argument-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.function-argument-row input {
+  height: 24px;
+  border: 1px solid #9fb0c7;
+  padding: 2px 6px;
+  background: #fff;
+  font: inherit;
+}
+
+.function-argument-reference-button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #8a9bb5;
+  background: linear-gradient(#ffffff, #edf3fb);
+  color: #1f2937;
+  padding: 0;
+  font: 13px/1 "Segoe UI Symbol", "Yu Gothic UI", sans-serif;
+  cursor: pointer;
+}
+
+.function-argument-reference-button:hover,
+.function-argument-reference-button:focus-visible {
+  border-color: #0078d7;
+  outline: 1px solid #0078d7;
+  outline-offset: -1px;
+}
+
+.function-arguments-dialog.is-reference-collapsed .function-argument-reference-button {
+  background: #fff;
+}
+
+.function-argument-required {
+  color: #667085;
+  font-size: 10px;
+  text-align: right;
+}
+
+.function-argument-value {
+  min-width: 0;
+  color: #475467;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.function-argument-empty {
+  padding: 12px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  color: #667085;
+}
+
+.function-argument-preview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+}
+
+.function-argument-preview code {
+  min-height: 24px;
+  padding: 4px 6px;
+  border: 1px solid #d0d0d0;
+  background: #f7f7f7;
+  overflow-wrap: anywhere;
+}
+
+.function-argument-result {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.function-argument-result strong {
+  min-height: 20px;
+  color: #1f2937;
+}
+
+.function-argument-detail {
+  min-height: 20px;
+  padding: 4px 6px;
+  border: 1px solid #d0d5dd;
+  background: #f8fafc;
+  color: #475467;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.function-argument-detail-argument {
+  color: #0f6cbd;
+  font-weight: 600;
+}
+
+.function-argument-syntax {
+  color: #475467;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.name-manager-dialog {
+  width: min(860px, calc(100vw - 32px));
+}
+
+.name-manager-dialog .formula-dialog-body {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.name-manager-toolbar {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.name-manager-filter {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.name-manager-filter select {
+  min-width: 170px;
+  height: 24px;
+  border: 1px solid #9fb0c7;
+  background: #fff;
+  font: inherit;
+}
+
+.name-manager-table-wrap {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #a8a8a8;
+  background: #fff;
+}
+
+.name-manager-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.name-manager-table th,
+.name-manager-table td {
+  padding: 4px 6px;
+  border-right: 1px solid #d8d8d8;
+  border-bottom: 1px solid #e5e5e5;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name-manager-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f2f2f2;
+  font-weight: 600;
+}
+
+.name-manager-table th:nth-child(1) { width: 18%; }
+
+.name-manager-table th:nth-child(2) { width: 14%; }
+
+.name-manager-table th:nth-child(3) { width: 32%; }
+
+.name-manager-table th:nth-child(4) { width: 14%; }
+
+.name-manager-table th:nth-child(5) { width: 22%; }
+
+.name-manager-table tr.is-active td {
+  background: var(--selection-tint);
+}
+
+.name-manager-table tr.is-empty td {
+  padding: 20px;
+  text-align: center;
+  color: #667085;
+}
+
+.name-manager-table button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.name-manager-table button:focus-visible {
+  outline: 1px solid var(--selection-strong);
+  outline-offset: 1px;
+}
+
+.name-manager-list {
+  min-height: 176px;
+  border: 1px solid #a8a8a8;
+  background: #fff;
+  font: inherit;
+}
+
+.name-manager-summary {
+  min-height: 16px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.name-manager-refers-to-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.name-manager-refers-to-row input {
+  height: 24px;
+  border: 1px solid #9fb0c7;
+  background: #f8fafc;
+  font: inherit;
+}
+
+.name-manager-fields textarea,
+.formula-evaluate-dialog textarea {
+  resize: vertical;
+  font: inherit;
+}
+
+.formula-error-dialog,
+.formula-evaluate-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.formula-error-dialog-body,
+.formula-evaluate-dialog .formula-dialog-body {
+  gap: 8px;
+}
+
+.formula-error-summary,
+.formula-error-location,
+.formula-error-value,
+.formula-error-message {
+  font-size: 12px;
+}
+
+.formula-error-card {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #c6c6c6;
+  background: #fff;
+}
+
+.formula-error-location {
+  font-weight: 700;
+}
+
+.formula-error-value {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.formula-error-message {
+  color: #344054;
+  line-height: 1.35;
+}
+
+.formula-error-dialog textarea {
+  resize: none;
+  font: 12px/1.35 Consolas, "SFMono-Regular", monospace;
+}
+
+.formula-error-list {
+  display: grid;
+  max-height: 108px;
+  overflow: auto;
+  border: 1px solid #c6c6c6;
+  background: #fff;
+}
+
+.formula-error-list button {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  border: 0;
+  border-bottom: 1px solid #eceff4;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.formula-error-list button.is-active {
+  background: var(--selection-tint);
+}
+
+.formula-error-actions {
+  flex-wrap: wrap;
+}
+
+.formula-evaluate-expression {
+  min-height: 58px;
+  padding: 8px;
+  border: 1px solid #a8a8a8;
+  background: #fff;
+  font: 12px/1.45 Consolas, "SFMono-Regular", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.formula-evaluate-steps {
+  display: grid;
+  gap: 2px;
+  max-height: 118px;
+  overflow: auto;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  font-size: 12px;
+}
+
+.formula-evaluate-steps div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.formula-evaluate-steps div.is-active {
+  background: var(--selection-tint);
+  font-weight: 700;
+}
+
+.formula-watch-window {
+  position: fixed;
+  right: 22px;
+  bottom: 66px;
+  z-index: 95;
+  width: min(780px, calc(100vw - 44px));
+  max-height: min(360px, calc(100vh - 140px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background: #f6f6f6;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
+}
+
+.formula-watch-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.formula-watch-close {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  line-height: 1;
+  cursor: default;
+}
+
+.formula-watch-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 7px 8px;
+  border-bottom: 1px solid #c6c6c6;
+}
+
+.formula-watch-table-wrap {
+  overflow: auto;
+  min-height: 96px;
+  background: #fff;
+}
+
+.formula-watch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.formula-watch-table th,
+.formula-watch-table td {
+  padding: 4px 7px;
+  border: 1px solid #d0d5dd;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.formula-watch-table th {
+  background: #e9edf3;
+  font-weight: 600;
+}
+
+.formula-watch-table tr.is-active td {
+  background: var(--selection-tint);
+}
+
+.formula-watch-table td:nth-child(6),
+.formula-watch-table td:nth-child(7) {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.formula-watch-table button {
+  border: 0;
+  background: transparent;
+  color: #0563c1;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.formula-watch-table tr.is-empty td {
+  color: #667085;
+  text-align: center;
+  padding: 18px;
+}
+
+.home-command-menu-heading {
+  padding: 5px 10px 2px;
+  color: #475467;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.paste-name-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.paste-name-dialog .formula-dialog-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.paste-name-list-field {
+  align-items: start;
+}
+
+.paste-name-list-frame {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid #a8a8a8;
+  background: #fff;
+}
+
+.paste-name-list-header {
+  display: grid;
+  grid-template-columns: minmax(120px, 36%) minmax(0, 1fr);
+  border-bottom: 1px solid #d0d5dd;
+  background: #f2f2f2;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.paste-name-list-header span {
+  min-width: 0;
+  padding: 4px 7px;
+  border-right: 1px solid #d0d5dd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paste-name-list-header span:last-child {
+  border-right: 0;
+}
+
+.paste-name-list {
+  border: 0;
+  font-family: "MS PGothic", "ＭＳ Ｐゴシック", "Yu Gothic", system-ui, sans-serif;
+}
+
+.paste-name-reference {
+  min-height: 28px;
+  padding: 6px 8px;
+  border: 1px solid #c6c6c6;
+  background: #fff;
+  color: #475467;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.excel-mini-dialog.print-dialog {
+  width: min(1180px, calc(100vw - 20px));
+}
+
+.print-dialog-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 270px) minmax(560px, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  overflow-x: hidden;
+}
+
+.print-dialog-body > .format-dialog-grid.two {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  align-items: end;
+}
+
+.print-dialog-preview {
+  min-height: 430px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #c6c6c6;
+  background: #e9edf3;
+}
+
+.print-dialog-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.print-dialog-preview-label {
+  min-width: 72px;
+  color: #1f2937;
+  font: 700 12px/1.2 "Yu Gothic UI", Meiryo, sans-serif;
+  text-align: center;
+}
+
+.print-preview-nav {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+}
+
+.print-dialog-preview-viewport {
+  min-height: 0;
+  display: grid;
+  place-items: start center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px 0;
+  border: 1px solid #cbd5e1;
+  background:
+    linear-gradient(45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.print-dialog-preview-content {
+  display: grid;
+  place-items: start center;
+  width: 100%;
+  min-height: 100%;
+}
+
+.print-dialog-preview-paper-shell {
+  position: relative;
+  flex: none;
+}
+
+.print-dialog-preview-paper {
+  position: absolute;
+  inset: 0 auto auto 0;
+  overflow: hidden;
+  transform-origin: top left;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.28);
+}
+
+.print-dialog-preview-printable {
+  position: absolute;
+  overflow: hidden;
+}
+
+.print-dialog-preview .workbook-print-sheet {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.print-dialog-preview .workbook-print-sheet-title {
+  margin-bottom: 6px;
+}
+
+.print-dialog-preview-summary,
+.print-dialog-preview-empty {
+  color: #475569;
+  font: 12px/1.35 "Yu Gothic UI", Meiryo, sans-serif;
+  text-align: center;
+}
+
+.print-dialog-preview-summary {
+  min-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#workbookPrintSurface {
+  display: none;
+}
+
+.print-dialog-preview,
+.print-dialog-preview *,
+#workbookPrintSurface,
+#workbookPrintSurface * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.workbook-print-sheet {
+  position: relative;
+  overflow: visible;
+  width: var(--print-sheet-width, auto);
+  min-height: var(--print-sheet-height, auto);
+  break-after: page;
+  page-break-after: always;
+}
+
+.workbook-print-sheet:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.workbook-print-page {
+  position: relative;
+  width: var(--print-paper-width, auto);
+  height: var(--print-paper-height, auto);
+  overflow: hidden;
+  background: #ffffff;
+  break-after: page;
+  page-break-after: always;
+}
+
+.workbook-print-page:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.workbook-print-page-printable {
+  position: absolute;
+  overflow: hidden;
+}
+
+.workbook-print-page .workbook-print-sheet {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.workbook-print-sheet-title {
+  margin: 0 0 8px;
+  color: #111827;
+  font: 700 11pt/1.25 "Yu Gothic UI", Meiryo, sans-serif;
+}
+
+.workbook-print-sheet-grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  transform-origin: top left;
+  transform: scale(var(--print-scale, 1));
+}
+
+.workbook-print-table {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #ffffff;
+}
+
+.workbook-print-table th,
+.workbook-print-table td {
+  box-sizing: border-box;
+  padding: 0 3px;
+  overflow: hidden;
+  line-height: 1.2;
+}
+
+.workbook-print-cell-content {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.workbook-print-cell-overflow {
+  overflow: visible !important;
+  position: relative;
+  z-index: 2;
+}
+
+.workbook-print-cell-overflow .workbook-print-cell-content,
+.workbook-print-cell-overflow .workbook-print-cell-text {
+  overflow: visible;
+}
+
+.workbook-print-cell-text {
+  display: block;
+  line-height: inherit;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: inherit;
+}
+
+.workbook-print-table.has-gridlines td {
+  border: 1px solid #d9e2ec;
+}
+
+.workbook-print-column-heading,
+.workbook-print-row-heading,
+.workbook-print-corner-heading {
+  border: 1px solid #d9e2ec;
+  background: #f1f5f9;
+  color: #475569;
+  font: 700 9pt/1.2 "Yu Gothic UI", Meiryo, sans-serif;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.workbook-print-object-layer,
+.workbook-print-ink-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.workbook-print-object-layer .sheet-image,
+.workbook-print-object-layer .sheet-picture-crop {
+  position: absolute;
+  display: block;
+  max-width: none;
+}
+
+.workbook-print-sheet.is-black-white {
+  filter: grayscale(1);
+}
+
+@media print {
+  html,
+  body.is-printing-workbook {
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  body.is-printing-workbook > :not(#workbookPrintSurface) {
+    display: none !important;
+  }
+
+  body.is-printing-workbook #workbookPrintSurface {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  body.is-printing-workbook .workbook-print-sheet-grid {
+    transform: none !important;
+    zoom: var(--print-scale, 1);
+  }
+
+  body.is-printing-workbook .workbook-print-page {
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  body.is-printing-workbook .workbook-print-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .print-dialog-body {
+    grid-template-columns: 1fr;
+  }
+
+  .print-dialog-preview {
+    min-height: 320px;
+  }
+}
+
+.create-table-dialog {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.create-names-dialog {
+  width: min(380px, calc(100vw - 32px));
+}
+
+.excel-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2120;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.excel-dialog-overlay.is-reference-pickable {
+  pointer-events: none;
+  background: transparent;
+}
+
+.excel-dialog-overlay.is-reference-pickable .excel-mini-dialog {
+  pointer-events: auto;
+}
+
+.excel-mini-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  display: grid;
+  grid-template-rows: 32px minmax(0, 1fr) 48px;
+  border: 1px solid #7a7a7a;
+  background: #f0f0f0;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26);
+  color: #000;
+  font: 12px "Segoe UI", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+  overflow: hidden;
+}
+
+.link-dialog {
+  width: min(650px, calc(100vw - 32px));
+}
+
+.find-dialog-overlay {
+  pointer-events: none;
+  place-items: start end;
+  padding: 84px 28px 0 0;
+  background: transparent;
+}
+
+.find-dialog {
+  width: min(540px, calc(100vw - 32px));
+  grid-template-rows: 32px minmax(0, auto) auto;
+  pointer-events: auto;
+}
+
+.find-dialog-body {
+  padding: 10px 14px 8px;
+}
+
+.find-dialog-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.find-dialog-tab {
+  min-width: 58px;
+  height: 24px;
+  border: 1px solid #adadad;
+  background: #f9f9f9;
+  color: #000;
+  font: inherit;
+}
+
+.find-dialog-tab.is-active {
+  border-bottom-color: #f0f0f0;
+  background: #f0f0f0;
+}
+
+.find-dialog-query {
+  margin-bottom: 8px;
+}
+
+.find-dialog-scope {
+  margin-bottom: 8px;
+}
+
+.find-dialog-options {
+  display: grid;
+  gap: 5px;
+}
+
+.find-dialog-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.find-dialog-results {
+  margin-top: 10px;
+  border: 1px solid #9aa4b2;
+  background: #fff;
+}
+
+.find-dialog-results-summary {
+  min-height: 24px;
+  padding: 5px 7px;
+  border-bottom: 1px solid #c9d2df;
+  color: #1f2937;
+}
+
+.find-dialog-results-head,
+.find-dialog-result {
+  display: grid;
+  grid-template-columns: minmax(78px, 0.85fr) 76px minmax(0, 2fr);
+  column-gap: 8px;
+}
+
+.find-dialog-results-head {
+  padding: 4px 7px;
+  border-bottom: 1px solid #d9e1ec;
+  background: #f3f6fa;
+  color: #475467;
+  font-weight: 600;
+}
+
+.find-dialog-results-list {
+  max-height: min(230px, 34vh);
+  overflow: auto;
+}
+
+.find-dialog-result {
+  width: 100%;
+  min-height: 25px;
+  padding: 4px 7px;
+  border: 0;
+  border-bottom: 1px solid #edf1f7;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.find-dialog-result:hover,
+.find-dialog-result:focus-visible,
+.find-dialog-result.is-selected {
+  background: #e8f1ff;
+  outline: none;
+}
+
+.find-dialog-result span,
+.find-dialog-results-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.find-dialog-results-empty {
+  padding: 10px 7px;
+  color: #475467;
+}
+
+.find-dialog .excel-mini-actions {
+  flex-wrap: wrap;
+}
+
+.go-to-dialog {
+  width: min(360px, calc(100vw - 32px));
+  grid-template-rows: 32px auto 46px;
+}
+
+.go-to-dialog-body {
+  display: grid;
+  gap: 10px;
+}
+
+.go-to-list {
+  min-height: 94px;
+  max-height: 128px;
+  overflow: auto;
+  border: 1px solid #7f9db9;
+  background: #fff;
+  padding: 2px;
+}
+
+.go-to-list button {
+  width: 100%;
+  min-height: 22px;
+  border: 0;
+  background: transparent;
+  color: #000;
+  text-align: left;
+  padding: 2px 6px;
+  font: inherit;
+}
+
+.go-to-list button:hover,
+.go-to-list button:focus-visible {
+  background: var(--selection-tint);
+  outline: none;
+}
+
+.go-to-empty {
+  padding: 8px;
+  color: #667085;
+}
+
+.special-dialog {
+  width: min(430px, calc(100vw - 32px));
+  grid-template-rows: 32px auto 46px;
+}
+
+.special-dialog-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding-top: 12px;
+  padding-bottom: 10px;
+}
+
+.special-dialog-option {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 4px;
+  align-items: start;
+}

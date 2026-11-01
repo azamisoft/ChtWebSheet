@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "npm run build:app && npm run install:runtime",
     "dev": "vite --host 127.0.0.1",
-    "build:app": "vite build",
+    "build:app": "npm run check:source-size && vite build",
     "build": "npm run build:app && npm run install:runtime",
     "preview": "vite preview --host 127.0.0.1",
     "install:runtime": "node scripts/install-standalone-runtime.mjs",
@@ -16,7 +16,8 @@
     "spec:evidence": "node scripts/generate-cws-evidence.mjs",
     "build:packages": "node scripts/build-runtime-packages.mjs",
     "pretest:e2e": "npm run build",
-    "test:e2e": "node scripts/e2e-real-upload.mjs"
+    "test:e2e": "node scripts/e2e-real-upload.mjs",
+    "check:source-size": "node scripts/check-source-size.mjs"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

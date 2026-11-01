@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>CWS viewport continuity regression</title>
+<style>body{font:18px system-ui;margin:36px;background:#f5f8fa;color:#143b35}li{margin:16px 0}#status{font-size:26px}</style>
+<h1>CWS viewport continuity regression</h1><p id="status">Running in this browser…</p><ol id="results"></ol>
+<script type="module">
+import { checkViewportContinuity } from './helpers/viewport-continuity.mjs';
+try {
+  const results = await checkViewportContinuity(document);
+  document.querySelector('#status').textContent = `PASS — ${results.length} checks, 120 animation frames`;
+  document.querySelector('#results').replaceChildren(...results.map(result => {
+    const item = document.createElement('li'); item.textContent = '✓ ' + result.name; return item;
+  }));
+} catch (error) { document.querySelector('#status').textContent = 'FAIL — ' + error.message; }
+</script></html>

@@ -1,6 +1,9 @@
 node_modules/
 dist/
 cws-agent/
+cws-agent-private/
+__pycache__/
+*.pyc
 build/
 public/download/runtime/
 websheet-launcher.html
