@@ -1,3 +1,4 @@
+import { measuredLineRanges, sliceStyledLine } from "./text-wrap.js";
 // Feature module; shared bindings are imported explicitly.
 import { reconcileViewportGrid } from './viewport-reconciliation.js';
 import {
@@ -3412,25 +3413,12 @@ function splitRichRunsIntoHardLines(runs) {
 
 function wrapCanvasRichText(context, runs, css, maxWidth, fontScale = 1) {
   const lines = [];
-  splitRichRunsIntoHardLines(runs).forEach((hardLine) => {
-    if (!hardLine.length) {
-      lines.push([]);
-      return;
-    }
-    let current = [];
-    hardLine.forEach((segment) => {
-      Array.from(segment.text || "").forEach((char) => {
-        const candidate = appendRichChar(current, char, segment.css);
-        if (richLinePlainText(current) && measureRichLine(context, candidate, css, fontScale) > maxWidth) {
-          lines.push(current);
-          current = appendRichChar([], char, segment.css);
-        } else {
-          current = candidate;
-        }
-      });
-    });
-    lines.push(current);
-  });
+  for (const hardLine of splitRichRunsIntoHardLines(runs)) {
+    const text = richLinePlainText(hardLine);
+    const ranges = measuredLineRanges(text, maxWidth,
+      (start, end) => measureRichLine(context, sliceStyledLine(hardLine, start, end), css, fontScale));
+    for (const [start, end] of ranges) lines.push(sliceStyledLine(hardLine, start, end));
+  }
   return lines.slice(0, 200);
 }
 

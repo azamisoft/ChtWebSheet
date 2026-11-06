@@ -1,3 +1,4 @@
+import { declaredTableRanges, withDeclaredTableRanges } from "./declared-table-ranges.js";
 // Feature module; shared bindings are imported explicitly.
 import {
   CWS_AGENT_CONTRACT_RANGE_OPS,
@@ -198,7 +199,8 @@ function applyCwsAgentOps(ops = [], options = {}) {
     clearCwsAgentPreview({ restore: true, quiet: true });
   }
   const normalizedOps = normalizeCwsAgentOpsBatch(ops, options);
-  const results = normalizedOps.map((op) => applyCwsAgentOp(op));
+  const declarations = declaredTableRanges();
+  const results = withDeclaredTableRanges(declarations, () => normalizedOps.map((op) => applyCwsAgentOp(op)));
   validateCwsAgentAppliedBranchGeometry(normalizedOps, results);
   if (results.length) {
     setStatus(`CWS Agent: ${results.map((result) => result.address).join(", ")} を更新しました。`);
@@ -232,7 +234,8 @@ function previewCwsAgentOps(ops = [], options = {}) {
   const revisionSnapshot = cwsAgentWorkbookRevisionSnapshot();
 
   try {
-    const results = withCwsAgentPreviewMutation(() => normalizedOps.map((op) => applyCwsAgentOp(op)), revisionSnapshot);
+    const declarations = declaredTableRanges();
+    const results = withCwsAgentPreviewMutation(() => withDeclaredTableRanges(declarations, () => normalizedOps.map((op) => applyCwsAgentOp(op))), revisionSnapshot);
     validateCwsAgentAppliedBranchGeometry(normalizedOps, results);
     const afterSheetIndexes = sheetIndexes.filter((index) => state.model?.sheets?.[index]);
     const workbookSheetsAfter = workbookSheetsBefore ? cwsAgentCaptureWorkbookSheetsSnapshot() : null;
@@ -303,13 +306,14 @@ async function previewCwsAgentOpsProgressively(ops = [], options = {}) {
   const selectionBefore = cwsAgentCloneRange(state.selectionRange);
   const selectionBeforeRanges = cwsAgentCloneRanges(state.selectionRanges);
   const revisionSnapshot = cwsAgentWorkbookRevisionSnapshot();
+  const declarations = declaredTableRanges();
   const results = [];
   const wasRestoringHistory = state.isRestoringHistory;
 
   try {
     state.isRestoringHistory = true;
     for (let index = 0; index < normalizedOps.length; index += 1) {
-      const result = applyCwsAgentOp(normalizedOps[index]);
+      const result = withDeclaredTableRanges(declarations, () => applyCwsAgentOp(normalizedOps[index]));
       results.push(result);
       cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
       renderCwsAgentProgressivePreviewStep();
@@ -403,6 +407,7 @@ async function appendCwsAgentPreviewOpsProgressively(ops = [], options = {}) {
     existingOps,
     indexOffset: existingOps.length,
   });
+  const declarations = declaredTableRanges(existingOps);
   const baseline = preview.historyEntry;
   const revisionSnapshot = cwsAgentWorkbookRevisionSnapshot();
   const results = [];
@@ -411,7 +416,7 @@ async function appendCwsAgentPreviewOpsProgressively(ops = [], options = {}) {
   try {
     state.isRestoringHistory = true;
     for (let index = 0; index < normalizedOps.length; index += 1) {
-      const result = applyCwsAgentOp(normalizedOps[index]);
+      const result = withDeclaredTableRanges(declarations, () => applyCwsAgentOp(normalizedOps[index]));
       results.push(result);
       cwsAgentRestoreWorkbookRevisionSnapshot(revisionSnapshot);
       renderCwsAgentProgressivePreviewStep();
@@ -491,7 +496,58 @@ function normalizeCwsAgentOpsBatch(ops = [], options = {}) {
 
 
 
+function cwsAgentDirectedRuns(sheet, image) {
+  const runs = [];
+  for (const [start,end] of lineShapeSegmentsInSheetPixels(sheet,image)) {
+    const dx=end.x-start.x, dy=end.y-start.y;
+    if (Math.abs(dx)<0.01 && Math.abs(dy)<0.01) continue;
+    const axis=Math.abs(dx)<0.01?'y':Math.abs(dy)<0.01?'x':null;
+    const previous=runs.at(-1);
+    if (axis && previous?.axis===axis && (previous.end[axis]-previous.start[axis])*(end[axis]-start[axis])>0) previous.end=end;
+    else runs.push({start,end,axis});
+  }
+  return runs;
+}
+
+function cwsAgentAmbiguousDirectedLane(a,b) {
+  const samePort=(p,q)=>p.imageId===q.imageId && p.site===q.site;
+  for (const [i,x] of a.runs.entries()) for (const [j,y] of b.runs.entries()) {
+    if (!x.axis || x.axis!==y.axis) continue;
+    const axis=x.axis, cross=axis==='x'?'y':'x';
+    if (Math.abs(x.start[cross]-y.start[cross])>0.5) continue;
+    const low=Math.max(Math.min(x.start[axis],x.end[axis]),Math.min(y.start[axis],y.end[axis]));
+    const high=Math.min(Math.max(x.start[axis],x.end[axis]),Math.max(y.start[axis],y.end[axis]));
+    if (high-low<=0.5) continue;
+    const sameDirection=(x.end[axis]-x.start[axis])*(y.end[axis]-y.start[axis])>0;
+    const fanOut=i===0 && j===0 && samePort(a.connection.start,b.connection.start);
+    const fanIn=i===a.runs.length-1 && j===b.runs.length-1 && samePort(a.connection.end,b.connection.end);
+    if (!(sameDirection && (fanOut || fanIn))) return true;
+  }
+  return false;
+}
+
+function cwsAgentVerifyDirectedConnectors(ops,results) {
+  const bySheet=new Map();
+  for (const [i,op] of ops.entries()) {
+    if (op.type!=='addShape' || !op.fromShape || !op.toShape || op.style?.lineEndArrow!==true) continue;
+    const sheet=state.model.sheets.find(s=>s.images?.some(img=>img.id===results[i]?.shapeId));
+    const image=sheet?.images?.find(img=>img.id===results[i]?.shapeId);
+    const connection=image?.shape?.connections;
+    if (!connection?.start || !connection.end || !image.shape.lineEndArrow) throw new Error(`接続線の向き・接続先を検証できません: ${op.fromShape} → ${op.toShape}`);
+    const runs=cwsAgentDirectedRuns(sheet,image);
+    if (!runs.length) throw new Error(`接続線が表示されません: ${op.fromShape} → ${op.toShape}`);
+    const expected=op.style.elbowBend;
+    if (expected!==undefined && image.shape.adjust?.bend!==Number(expected)) throw new Error(`接続線の折れ位置が保存値と異なります: ${op.fromShape} → ${op.toShape}`);
+    const line={connection,runs,from:op.fromShape,to:op.toShape};
+    const earlier=bySheet.get(sheet)??[];
+    for (const peer of earlier) if (cwsAgentAmbiguousDirectedLane(line,peer))
+      throw new Error(`表示された接続線の経路が重なっています: ${line.from} → ${line.to}, ${peer.from} → ${peer.to}`);
+    earlier.push(line);bySheet.set(sheet,earlier);
+  }
+}
+
 function validateCwsAgentAppliedBranchGeometry(ops, results) {
+  cwsAgentVerifyDirectedConnectors(ops,results);
   for (let index = 0; index < ops.length; index += 1) {
     const op = ops[index];
     if (!op.branchRelation) continue;
@@ -628,6 +684,7 @@ function cwsAgentContractRequiredOps(options = {}) {
     "addShape",
     "setShapeText",
     "setShapeStyle",
+    "updateShape",
     "removeShape",
     "createWorkbookTemplate",
     "setPrintArea",
@@ -877,8 +934,13 @@ function setCwsAgentPreviewVisible(previewId, visible) {
 
 
 
-function commitCwsAgentPreview(previewId) {
+function commitCwsAgentPreview(previewId, options = {}) {
   const preview = cwsAgentPreviewForId(previewId);
+  if (options.expectedOpsCount !== undefined && (!Number.isSafeInteger(options.expectedOpsCount)
+      || options.expectedOpsCount !== (preview.results || []).length
+      || options.expectedOpsCount !== (preview.ops || []).length)) {
+    throw new Error("最終結果とプレビューの操作数が一致しません。未反映の操作があるため確定できません。");
+  }
   if (preview.visible === false) {
     applyHistoryEntry(preview.historyEntry, "redo");
     preview.visible = true;
@@ -1111,7 +1173,7 @@ function normalizeCwsAgentOp(op, index) {
   if (type === "addshape" || type === "createshape" || type === "insertshape" || type === "drawshape" || type === "shape" || type === "autoshape" || type === "textbox" || type === "textshape" || type === "addconnector" || type === "createconnector" || type === "insertconnector" || type === "drawconnector" || type === "connector" || type === "line" || type === "arrow") {
     return normalizeCwsAgentAddShapeOp(op, index, type);
   }
-  if (type === "setshapestyle" || type === "removeshape") return normalizeCwsAgentExistingShapeEditOp(op);
+  if (type === "setshapestyle" || type === "updateshape" || type === "removeshape") return normalizeCwsAgentExistingShapeEditOp(op);
   if (type === "setshapetext") return normalizeCwsAgentSetShapeTextOp(op, index);
   if (type === "setquickanalysis" || type === "quickanalysis" || type === "databar" || type === "databars" || type === "colorscale" || type === "iconset" || type === "greaterthanaverage" || type === "aboveaverage" || type === "duplicatevalues") {
     return normalizeCwsAgentSetQuickAnalysisOp(op, index, type);

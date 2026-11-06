@@ -1,3 +1,4 @@
+import { measuredLineRanges } from "../rendering/text-wrap.js";
 // Feature module; shared bindings are imported explicitly.
 import {
   $,
@@ -335,25 +336,11 @@ function canvasLineBaseline(context, line, lineTop, lineHeight, fontSize) {
 function wrapCanvasText(context, text, maxWidth, font) {
   context.save();
   context.font = font;
-  const hardLines = String(text).split(/\r\n|\r|\n/);
   const lines = [];
-  hardLines.forEach((hardLine) => {
-    if (!hardLine) {
-      lines.push("");
-      return;
-    }
-    let current = "";
-    Array.from(hardLine).forEach((char) => {
-      const candidate = current + char;
-      if (current && context.measureText(candidate).width > maxWidth) {
-        lines.push(current);
-        current = char;
-      } else {
-        current = candidate;
-      }
-    });
-    lines.push(current);
-  });
+  for (const hardLine of String(text).split(/\r\n|\r|\n/)) {
+    const ranges = measuredLineRanges(hardLine, maxWidth, (start, end) => context.measureText(hardLine.slice(start, end)).width);
+    for (const [start, end] of ranges) lines.push(hardLine.slice(start, end));
+  }
   context.restore();
   return lines.slice(0, 200);
 }

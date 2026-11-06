@@ -1108,6 +1108,33 @@ function applyCwsAgentAutoFitColumnsOp(op) {
 
 
 
+// Build the only authorized post-edit workbook from the immutable checkpoint.
+// Use the host's own row measurement on a copy, including other text in that row.
+function expectedCwsLiteralWorkbook(baseline, focus) {
+  const expected=structuredClone(baseline);
+  const sheet=expected.sheets.find(item=>item.name===focus.sheetName);
+  if (!sheet || !Number.isInteger(focus.row) || !Number.isInteger(focus.col) || focus.row<1 || focus.col<1 ||
+      focus.row>sheet.rowCount || focus.col>sheet.colCount || typeof focus.value!=='string' || Object.hasOwn(sheet.cells,focus.row+':'+focus.col))
+    throw new Error('単一セル変更の保存済み基準を確認できません。');
+  sheet.cells[focus.row+':'+focus.col]={row:focus.row,col:focus.col,raw:focus.value};
+  applyHeaderAutoFitToSheet(sheet,'row',[{top:focus.row,bottom:focus.row}],{growOnly:true});
+  return expected;
+}
+
+function expectedCwsFormulaWorkbook(baseline, focus) {
+  const expected=structuredClone(baseline);
+  const sheet=expected.sheets.find(item=>item.name===focus.sheetName);
+  if (!sheet || !Number.isInteger(focus.row) || !Number.isInteger(focus.col) || focus.row<1 || focus.col<1 ||
+      focus.row>sheet.rowCount || focus.col>sheet.colCount || typeof focus.value!=="string" || !focus.value.startsWith("="))
+    throw new Error("数式の保存済み基準を確認できません。");
+  const key=focus.row+":"+focus.col;
+  // cloneCellModel uses the same canonical storage representation as the
+  // workbook snapshot. In particular, a formula has no duplicate raw field.
+  sheet.cells[key]=cloneCellModel({...sheet.cells[key],row:focus.row,col:focus.col,raw:focus.value,formula:focus.value,cached:null,display:""});
+  if (focus.rowFit) applyHeaderAutoFitToSheet(sheet,"row",[{top:focus.row,bottom:focus.row}],{growOnly:true});
+  return expected;
+}
+
 function applyCwsAgentAutoFitRowsOp(op) {
   if (state.activeSheetIndex !== op.sheetIndex) {
     setActiveSheet(op.sheetIndex);
@@ -1130,7 +1157,7 @@ function applyCwsAgentAutoFitRowsOp(op) {
     fullRow: true,
   };
   const sheetBefore = captureSheetForHistory(sheet);
-  const changed = applyHeaderAutoFitToSheet(sheet, "row", [range]);
+  const changed = applyHeaderAutoFitToSheet(sheet, "row", [range], { growOnly: op.growOnly === true });
 
   state.selected = { sheetIndex: op.sheetIndex, row: op.top, col: 1 };
   state.selectionRange = range;
@@ -1635,6 +1662,8 @@ function init() {
       restoreTaskWorkbook: restoreCwsAgentTaskWorkbook,
       persistTaskWorkbook: persistCwsAgentTaskWorkbook,
       captureVisualEvidence: captureCwsAgentVisualEvidence,
+      expectedLiteralWorkbook: expectedCwsLiteralWorkbook,
+      expectedFormulaWorkbook: expectedCwsFormulaWorkbook,
     },
   });
 
@@ -3213,12 +3242,20 @@ async function loadCwsHtmlWorkbookFileInCurrentDocument(file, options = {}) {
     setStatus(`${file.name} を開いています...`);
     const html = await file.text();
     const model = cwsHtmlWorkbookModelFromSource(html, file);
-    const loaded = await loadStandaloneWorkbookModel(model, { openedFileName: file.name || model.sourceName || "workbook.html" });
+    const loaded = await loadStandaloneWorkbookModel(model, {
+      openedFileName: file.name || model.sourceName || "workbook.html",
+      standalone: Boolean(window.__WEBSHEET_STANDALONE__),
+      deferLoadedStatus: true,
+    });
     if (loaded === false) return false;
     applyOpenedCwsHtmlSaveTarget(file, options.fileHandle);
     markWorkbookSavedClean();
-    scheduleWorkbookPersistence();
-    setStatus("HTML ワークブックを読み込みました。");
+    // The imported book must be durable before the ready notice. A debounced
+    // write can otherwise restore the previous book after an immediate reload.
+    const persisted = await flushWorkbookPersistence();
+    setStatus(persisted
+      ? "HTML ワークブックを読み込みました。"
+      : "HTML ワークブックを読み込みましたが、再読み込み用の保存に失敗しました。ファイルを保存してください。");
     return true;
   } catch (error) {
     console.error(error);

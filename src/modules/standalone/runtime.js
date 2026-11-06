@@ -1,3 +1,4 @@
+import { measuredLineRanges, sliceStyledLine } from "../rendering/text-wrap.js";
 // Feature module; shared bindings are imported explicitly.
 import {
   $,
@@ -2218,27 +2219,14 @@ function standaloneRuntime() {
     return lines;
   }
 
-  function wrapCanvasRichText(context, runs, css, maxWidth, fontScale) {
+  function wrapCanvasRichText(context, runs, css, maxWidth, fontScale = 1) {
     const lines = [];
-    splitRichRunsIntoHardLines(runs).forEach(function (hardLine) {
-      if (!hardLine.length) {
-        lines.push([]);
-        return;
-      }
-      let current = [];
-      hardLine.forEach(function (segment) {
-        Array.from(segment.text || "").forEach(function (char) {
-          const candidate = appendRichChar(current, char, segment.css);
-          if (richLinePlainText(current) && measureRichLine(context, candidate, css, fontScale || 1) > maxWidth) {
-            lines.push(current);
-            current = appendRichChar([], char, segment.css);
-          } else {
-            current = candidate;
-          }
-        });
-      });
-      lines.push(current);
-    });
+    for (const hardLine of splitRichRunsIntoHardLines(runs)) {
+      const text = richLinePlainText(hardLine);
+      const ranges = measuredLineRanges(text, maxWidth,
+        (start, end) => measureRichLine(context, sliceStyledLine(hardLine, start, end), css, fontScale));
+      for (const [start, end] of ranges) lines.push(sliceStyledLine(hardLine, start, end));
+    }
     return lines.slice(0, 200);
   }
 
@@ -2452,25 +2440,10 @@ function standaloneRuntime() {
     context.save();
     context.font = font;
     const lines = [];
-    String(text)
-      .split(/\r\n|\r|\n/)
-      .forEach(function (hardLine) {
-        if (!hardLine) {
-          lines.push("");
-          return;
-        }
-        let current = "";
-        Array.from(hardLine).forEach(function (char) {
-          const candidate = current + char;
-          if (current && context.measureText(candidate).width > maxWidth) {
-            lines.push(current);
-            current = char;
-          } else {
-            current = candidate;
-          }
-        });
-        lines.push(current);
-      });
+    for (const hardLine of String(text).split(/\r\n|\r|\n/)) {
+      const ranges = measuredLineRanges(hardLine, maxWidth, (start, end) => context.measureText(hardLine.slice(start, end)).width);
+      for (const [start, end] of ranges) lines.push(hardLine.slice(start, end));
+    }
     context.restore();
     return lines.slice(0, 200);
   }

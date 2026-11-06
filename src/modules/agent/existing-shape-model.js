@@ -37,11 +37,26 @@ function cwsNormalizeShapeStylePatch(style) {
 }
 
 function cwsNormalizeExistingShapeEdit(op) {
-  const type=String(op.type || '').toLowerCase()==='removeshape'?'removeShape':'setShapeStyle';
-  if (!['removeshape','setshapestyle'].includes(String(op.type || '').toLowerCase()) || typeof op.shapeId !== 'string' || !op.shapeId || !/^shape-v1-[\da-f]{16}$/.test(op.expectedRevision || '')) throw new Error('Exact shape ID and observed revision are required.');
+  const type={removeshape:'removeShape',setshapestyle:'setShapeStyle',updateshape:'updateShape'}[String(op.type || '').toLowerCase()];
+  if (!type || typeof op.shapeId !== 'string' || !op.shapeId || !/^shape-v1-[\da-f]{16}$/.test(op.expectedRevision || '')) throw new Error('Exact shape ID and observed revision are required.');
   const result={type,shapeId:op.shapeId,expectedRevision:op.expectedRevision};
   if (type==='setShapeStyle') result.style=cwsNormalizeShapeStylePatch(op.style);
+  if (type==='updateShape') {
+    if (op.bounds!==undefined) result.bounds=cwsNormalizeShapeBoundsPatch(op.bounds);
+    if (op.style!==undefined) result.style=cwsNormalizeShapeStylePatch(op.style);
+    if (op.text!==undefined) {
+      if(typeof op.text!=='string') throw new Error('Shape text must be a string.');
+      result.text=op.text;
+    }
+    if(!['bounds','style','text'].some(key=>Object.hasOwn(result,key))) throw new Error('A nonempty shape update is required.');
+  }
   return result;
+}
+
+function cwsNormalizeShapeBoundsPatch(bounds) {
+  if(!bounds || typeof bounds!=='object' || Array.isArray(bounds) || !Object.keys(bounds).length) throw new Error('Sparse native pixel bounds are required.');
+  for(const [key,n] of Object.entries(bounds)) if(!['left','top','width','height'].includes(key) || !Number.isFinite(n) || n<(['width','height'].includes(key)?1:0)) throw new Error('Invalid shape bounds.');
+  return {...bounds};
 }
 
 function cwsExistingShapeEditTarget(sheet,op) {
@@ -56,13 +71,30 @@ function cwsExistingShapeEditTarget(sheet,op) {
   return image;
 }
 
-function cwsApplyExistingShapeEdit(sheet,op) {
+function cwsApplyExistingShapeEdit(sheet,op,geometry) {
+  op=cwsNormalizeExistingShapeEdit(op);
   const image=cwsExistingShapeEditTarget(sheet,op);
   if (op.type==='removeShape') sheet.images=sheet.images.filter(other => other.id!==image.id);
   else {
-    const style=cwsNormalizeShapeStylePatch(op.style);
-    if (style.textMargin) style.textMargin={...(image.shape.textMargin || {}),...style.textMargin};
-    image.shape={...image.shape,...style};
+    // Prepare the entire update before mutating the observed object. Text and
+    // geometry share one revision guard, so a rename cannot stale its resize.
+    const candidate=structuredClone(image),style=op.style || {};
+    if(style.textMargin) style.textMargin={...(image.shape.textMargin || {}),...style.textMargin};
+    candidate.shape={...candidate.shape,...style};
+    if(Object.hasOwn(op,'text')) {
+      if(op.text!==candidate.shape.text) delete candidate.shape.textRuns;
+      candidate.shape.text=op.text;
+    }
+    if(op.bounds) {
+      if(!geometry?.readBounds || !geometry?.setBounds) throw new Error('Native shape geometry is unavailable.');
+      const current=geometry.readBounds(sheet,image);
+      const bounds=cwsNormalizeShapeBoundsPatch({...Object.fromEntries(['left','top','width','height'].map(key=>[key,current?.[key]])),...op.bounds});
+      if(!['left','top','width','height'].every(key=>Number.isFinite(bounds[key]))) throw new Error('Complete native shape bounds are required.');
+      geometry.setBounds(sheet,candidate,bounds);
+      const actual=geometry.readBounds(sheet,candidate);
+      if(['left','top','width','height'].some(key=>!Number.isFinite(actual?.[key]) || Math.abs(actual[key]-Math.round(bounds[key]))>.51)) throw new Error('Requested bounds cannot be represented in this worksheet.');
+    }
+    Object.assign(image,candidate);
   }
   return image;
 }
@@ -72,4 +104,4 @@ function cwsExistingShapeEvidence(image,bounds) {
   return {shapeId:image.id,name:image.name,text:image.shape?.text || '',type:image.shape?.type,revision:cwsShapeRevision(image),style,layout:Object.fromEntries(Object.entries(image.cwsLayout || {}).filter(([,value])=>value!==null&&value!==undefined)),bounds};
 }
 
-export { cwsShapeRevision, cwsNormalizeShapeStylePatch, cwsNormalizeExistingShapeEdit, cwsExistingShapeEditTarget, cwsApplyExistingShapeEdit, cwsExistingShapeEvidence };
+export { cwsShapeRevision, cwsNormalizeShapeStylePatch, cwsNormalizeShapeBoundsPatch, cwsNormalizeExistingShapeEdit, cwsExistingShapeEditTarget, cwsApplyExistingShapeEdit, cwsExistingShapeEvidence };

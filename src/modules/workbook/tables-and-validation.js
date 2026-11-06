@@ -1,3 +1,4 @@
+import { isDeclaredTableRange } from "../agent/declared-table-ranges.js";
 // Feature module; shared bindings are imported explicitly.
 import {
   COLUMN_HEADER_HEIGHT,
@@ -1353,7 +1354,8 @@ function applyTableAutoExpansionForEdit(sheet, row, col, content) {
 
 function tableExpansionTargetForEdit(sheet, row, col, content) {
   if (!tableEditContentIsNonEmpty(content)) return null;
-  const tables = sheet?.tables || [];
+  const sheetIndex = state.model?.sheets?.indexOf(sheet);
+  const tables = (sheet?.tables || []).filter(table => !isDeclaredTableRange(sheetIndex, table));
   const downTable = tables.find((table) => tableCanExpandDownForEdit(sheet, table, row, col));
   if (downTable) return { table: downTable, kind: "row" };
   const rightTable = tables.find((table) => tableCanExpandRightForEdit(sheet, table, row, col));
@@ -1371,7 +1373,9 @@ function tableEditContentIsNonEmpty(content) {
 function tableRangeExpansionTarget(sheet, range, options = {}) {
   if (!range) return null;
   if (!options.assumeNonEmpty && !rangeHasEditableTableContent(sheet, range)) return null;
+  const sheetIndex = state.model?.sheets?.indexOf(sheet);
   for (const table of sheet?.tables || []) {
+    if (isDeclaredTableRange(sheetIndex, table)) continue;
     const tableRange = table?.range;
     if (!tableRange || table.showTotalsRow === true) continue;
     let bottom = tableRange.bottom;

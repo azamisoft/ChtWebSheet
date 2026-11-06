@@ -1601,7 +1601,10 @@ function openBlankWorkbook(options = {}) {
 
 async function loadStandaloneWorkbookModel(model, options = {}) {
   const loadVersion = ++state.workbookLoadVersion;
-  state.isStandalone = true;
+  // The format being imported does not change the page's hosting mode.
+  // Hosted pages must persist their active imported book in the slot that the
+  // same URL restores on reload; real standalone files retain edition isolation.
+  state.isStandalone = options.standalone !== false;
   state.persistenceLoading = true;
   state.standalonePersistenceScope = null;
   try {
@@ -1612,7 +1615,7 @@ async function loadStandaloneWorkbookModel(model, options = {}) {
     let scope = null;
     let saved = null;
     try {
-      scope = await standaloneWorkbookPersistenceScope(workbookModel);
+      if(state.isStandalone)scope = await standaloneWorkbookPersistenceScope(workbookModel);
       if (scope) saved = await readPersistedWorkbookSnapshot(scope.key);
     } catch (error) {
       // Opening a file remains possible when browser storage is blocked. Agent
@@ -1642,7 +1645,7 @@ async function loadStandaloneWorkbookModel(model, options = {}) {
       }
     }
     clearAppAlert();
-    setStatus("HTML ワークブックを読み込みました。");
+    if (!options.deferLoadedStatus) setStatus("HTML ワークブックを読み込みました。");
     return true;
   } catch (error) {
     console.error(error);
@@ -2952,13 +2955,15 @@ async function flushWorkbookPersistence() {
     state.persistenceTimer = null;
   }
   cancelWorkbookPersistenceIdleCallback();
-  if (state.persistenceLoading || !state.model || !persistenceAvailable()) return;
+  if (state.persistenceLoading || !state.model || !persistenceAvailable()) return false;
   const snapshot = currentWorkbookSnapshot();
   try {
     state.persistencePromise = writePersistedWorkbookSnapshot(snapshot);
     await state.persistencePromise;
+    return true;
   } catch (error) {
     console.warn("Failed to save workbook snapshot.", error);
+    return false;
   } finally {
     state.persistencePromise = null;
   }

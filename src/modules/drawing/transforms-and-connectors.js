@@ -2360,11 +2360,15 @@ function boxesEqual(a, b) {
 
 
 
-function setImagePixelBox(sheet, image, box) {
-  const left = Math.max(rowHeaderWidthForSheet(sheet), Math.round(box.left));
-  const top = Math.max(COLUMN_HEADER_HEIGHT, Math.round(box.top));
-  const width = Math.max(1, Math.round(box.width));
-  const height = Math.max(1, Math.round(box.height));
+function setImagePixelBox(sheet, image, box, options = {}) {
+  // Pointer dragging keeps its pixel snapping. Revision-bound Agent edits use
+  // precise worksheet pixels so moving at a fractional zoom cannot resize an
+  // otherwise untouched object when its native dimensions are exported again.
+  const pixel = options.roundPixels === false ? value => value : Math.round;
+  const left = Math.max(rowHeaderWidthForSheet(sheet), pixel(box.left));
+  const top = Math.max(COLUMN_HEADER_HEIGHT, pixel(box.top));
+  const width = Math.max(1, pixel(box.width));
+  const height = Math.max(1, pixel(box.height));
   const anchor = nativeAnchorFromSheetPixel(sheet, "col", left);
   const rowAnchor = nativeAnchorFromSheetPixel(sheet, "row", top);
   const endCol = nativeAnchorFromSheetPixel(sheet, "col", left + width);

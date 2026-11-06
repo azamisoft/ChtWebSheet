@@ -47,6 +47,7 @@ import {
   autoFitCellDisplayText,
   autoFitCellTextHeight,
   getDisplayForCell,
+  getCellRawInput,
   materializeSelectionRangeForSheet,
   rangeToLabel,
 } from "../editing/pointers-and-formula-evaluation.js";
@@ -2341,7 +2342,7 @@ function cwsAgentVisualDetailRegions(width, height, hasCanvas = false) {
 
 
 
-async function captureCwsAgentVisualEvidence(sheetNames) {
+async function captureCwsAgentVisualEvidence(sheetNames, cellFocus = null) {
   await document.fonts.ready;
   const results = [];
   for (const name of sheetNames) {
@@ -2350,18 +2351,28 @@ async function captureCwsAgentVisualEvidence(sheetNames) {
     const sheet = structuredClone(original);
     scaleSheetDisplay(sheet,1/Math.max(.01,Number(sheet.displayScale)||1));
     sheet.zoomScale = 100; sheet.baseZoomScale = 100; sheet.displayScale = 1;
-    const range = sheetUsedRangeForPrint(sheet);
+    const focus = cellFocus?.sheetName === name ? cellFocus : null;
+    const detailRange = focus && {left:focus.col,right:focus.col,top:focus.row,bottom:focus.row};
+    const target = focus && rangePixelRect(sheet,detailRange);
+    if (focus && (getCellRawInput(sheet,focus.row,focus.col) !== focus.value ||
+        !(target.width>0 && target.height>0) || sheet.columns?.[focus.col-1]?.hidden || sheet.rows?.[focus.row-1]?.hidden)) {
+      throw new Error('対象セルの値または表示範囲が確定していません。');
+    }
+    const range = focus ? {left:Math.max(1,focus.col-1),right:Math.min(sheet.colCount,focus.col+1),
+      top:Math.max(1,focus.row-1),bottom:Math.min(sheet.rowCount,focus.row+1)} : sheetUsedRangeForPrint(sheet);
     if (!range) throw new Error(`視覚確認の対象シートが空です: ${name}`);
-    for(const merge of sheet.merges || []) {
+    for (const merge of focus ? [] : (sheet.merges || [])) {
       range.left=Math.min(range.left,merge.left);range.top=Math.min(range.top,merge.top);
       range.right=Math.max(range.right,merge.right);range.bottom=Math.max(range.bottom,merge.bottom);
     }
     const origin = printRangePixelBounds(sheet, range);
-    const boxes = (sheet.images || []).filter(image => !image.hidden).map(image => imageBoxToPixels(sheet,image)).filter(Boolean);
-    const left = Math.min(origin.left,...boxes.map(b=>b.left));
-    const top = Math.min(origin.top,...boxes.map(b=>b.top));
-    const width = Math.ceil(Math.max(origin.right,...boxes.map(b=>b.left+b.width))-left+8);
-    const height = Math.ceil(Math.max(origin.bottom,...boxes.map(b=>b.top+b.height))-top+8);
+    const boxes = focus ? [] : (sheet.images || []).filter(image => !image.hidden).map(image => imageBoxToPixels(sheet,image)).filter(Boolean);
+    // A small border preserves spill, overlap and adjacency evidence without
+    // making nearby cells independent work items. The sheet painter is shared.
+    const left = focus ? Math.max(0,Math.floor(target.left)-12) : Math.min(origin.left,...boxes.map(b=>b.left));
+    const top = focus ? Math.max(0,Math.floor(target.top)-8) : Math.min(origin.top,...boxes.map(b=>b.top));
+    const width = focus ? Math.max(32,Math.ceil(target.right-left)+12) : Math.ceil(Math.max(origin.right,...boxes.map(b=>b.left+b.width))-left+8);
+    const height = focus ? Math.max(20,Math.ceil(target.bottom-top)+8) : Math.ceil(Math.max(origin.bottom,...boxes.map(b=>b.top+b.height))-top+8);
     if (width > 8192 || height > 8192 || width*height > 25000000) throw new Error(`視覚確認の描画範囲が大きすぎます: ${name}`);
     const canvas = document.createElement('canvas'); canvas.width=width; canvas.height=height;
     const textLayout={version:1,checkedShapes:0,checkedCells:0,issues:[]};
@@ -2371,20 +2382,41 @@ async function captureCwsAgentVisualEvidence(sheetNames) {
     paintCanvasCells(ctx,sheet,maps,id,range,cache,'base');
     paintCanvasBorders(ctx,sheet,maps,range,cache);
     paintCanvasCells(ctx,sheet,maps,id,range,cache,'text');
-    measureCwsAgentCellTextLayout(sheet,maps,id,ctx,textLayout);
+    measureCwsAgentCellTextLayout(sheet,maps,id,ctx,textLayout,focus);
     for (const image of sheet.images || []) {
       if (image.hidden) continue;
       const box=imageBoxToPixels(sheet,image); if (!box) throw new Error(`図形の描画位置を確認できません: ${name}`);
+      if (focus) {
+        // Enclose even rotated shapes: anything that can occlude the target
+        // must be painted into its crop.
+        const radius=Math.hypot(box.width,box.height)/2, x=box.left+box.width/2, y=box.top+box.height/2;
+        if (x+radius<left || x-radius>left+width || y+radius<top || y-radius>top+height) continue;
+      }
       const element=await loadImageElement(worksheetImageRenderSource(image));
       ctx.save();
       const rotation=Number(image.rotation || image.shape?.rotation || 0);
       ctx.translate(box.left+box.width/2,box.top+box.height/2);ctx.rotate(rotation*Math.PI/180);
       ctx.drawImage(element,-box.width/2,-box.height/2,box.width,box.height);
-      const textLayer=await renderedShapeTextEvidence(image,box.width,box.height,textLayout);
+      const textLayer=await renderedShapeTextEvidence(image,box.width,box.height,focus ? null : textLayout);
       const measuredRun=textLayout.inlineRuns?.at(-1);
       if(measuredRun?.name===(image.name || image.id)) {measuredRun.left=box.left;measuredRun.top=box.top;}
       if(textLayer) ctx.drawImage(textLayer,-box.width/2,-box.height/2,box.width,box.height);
       ctx.restore();
+    }
+    if (focus) {
+      if (textLayout.checkedCells!==1) throw new Error('対象セルの実測結果がありません。');
+      const scale=width<=512 && height<=256 ? 2 : 1;
+      const pixels=document.createElement('canvas');
+      pixels.width=width*scale; pixels.height=height*scale;
+      const detailCtx=pixels.getContext('2d');
+      if (!detailCtx) throw new Error('対象セルの描画結果を取得できません。');
+      detailCtx.imageSmoothingEnabled=false;
+      detailCtx.drawImage(canvas,0,0,pixels.width,pixels.height);
+      results.push({sheetName:name,kind:'sheet',name:`render-${results.length+1}.png`,mime:'image/png',
+        width:pixels.width,height:pixels.height,dataUrl:pixels.toDataURL('image/png'),details:[],textLayout,
+        cellFocus:{row:focus.row,col:focus.col,value:getCellRawInput(sheet,focus.row,focus.col), displayValue:getDisplayForCell(sheet,id,focus.row,focus.col),
+          bounds:{left:(target.left-left)*scale,top:(target.top-top)*scale,width:target.width*scale,height:target.height*scale}}});
+      continue;
     }
     appendCwsInlineTextSpacingIssues(textLayout);
     const details=[];
@@ -2469,15 +2501,29 @@ function measureShapeTextLayout(host,width,height) {
     overflowSides.bottom=Math.max(overflowSides.bottom,rect.bottom-bounds.bottom);
   }
   const overflow=Object.values(overflowSides).some(value=>value>.75);
-  return {fits:!overflow && requiredHeight<=height+.75,width,height,requiredHeight:Math.ceil(requiredHeight*100)/100,
+  const fits=!overflow && requiredHeight<=height+.75;
+  let preferredWidth=null;
+  if (!fits) {
+    const natural=block.cloneNode(true);
+    Object.assign(natural.style,{position:"absolute",width:"max-content",maxWidth:"none",whiteSpace:"pre",overflowWrap:"normal",wordBreak:"normal",visibility:"hidden"});
+    layer.appendChild(natural);
+    try {
+      preferredWidth=Math.ceil(natural.getBoundingClientRect().width + padding.left + padding.right) + 1;
+    } finally {
+      natural.remove();
+    }
+  }
+  return {fits,width,height,preferredWidth,requiredHeight:Math.ceil(requiredHeight*100)/100,
     recommendedHeight:Math.ceil(Math.max(requiredHeight,height+overflowSides.top+overflowSides.bottom))+1,
     overflowSides,font:css.font,padding,singleLine,advanceWidth};
 }
 
 
 
-function measureCwsAgentCellTextLayout(sheet,maps,sheetId,measure,report) {
-  for(const [key,cell] of Object.entries(sheet.cells || {})) {
+function measureCwsAgentCellTextLayout(sheet,maps,sheetId,measure,report,focus=null) {
+  const entries=focus ? [[focus.row+':'+focus.col,sheet.cells?.[focus.row+':'+focus.col]]] : Object.entries(sheet.cells || {});
+  for(const [key,cell] of entries) {
+    if (!cell) continue;
     if(maps.covered.has(key) || sheet.rows?.[cell.row-1]?.hidden || sheet.columns?.[cell.col-1]?.hidden) continue;
     const text=autoFitCellDisplayText(sheet,{sheetId},cell.row,cell.col,cell);
     if(!text) continue;

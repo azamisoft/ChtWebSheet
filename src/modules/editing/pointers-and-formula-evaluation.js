@@ -590,7 +590,7 @@ function applyHeaderAutoFitToSheetGroup(kind, ranges, sheetIndexes) {
 
 
 
-function applyHeaderAutoFitToSheet(sheet, kind, ranges) {
+function applyHeaderAutoFitToSheet(sheet, kind, ranges, options = {}) {
   const isColumn = kind === "col" || kind === "column";
   const property = isColumn ? "width" : "height";
   const context = createHeaderAutoFitContext(sheet);
@@ -607,9 +607,10 @@ function applyHeaderAutoFitToSheet(sheet, kind, ranges) {
       if (!target) continue;
       const nextSize = bestHeaderAutoFitSize(sheet, kind, index, context);
       if (!Number.isFinite(nextSize)) continue;
+      if (options.growOnly && (target.hidden === true || nextSize <= Number(target[property] || 0))) continue;
       if (Math.abs(Number(target[property] || 0) - nextSize) < 0.5 && target.hidden !== true) continue;
       target[property] = nextSize;
-      target.hidden = false;
+      if (!options.growOnly) target.hidden = false;
       changed += 1;
     }
   });

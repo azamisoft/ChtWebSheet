@@ -3,6 +3,7 @@
 import argparse
 import json
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 
@@ -37,10 +38,18 @@ def snapshot(db, task_id, output_dir):
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
         target = output_dir / (task_id + "-task.json")
-        temp = target.with_suffix(".tmp")
-        temp.write_text(json.dumps(task, ensure_ascii=False, indent=2))
+        # A resume observer and the original read-only watcher may overlap.
+        with tempfile.NamedTemporaryFile("w", dir=output_dir, suffix=".tmp", delete=False) as stream:
+            temp = Path(stream.name)
+            try:
+                json.dump(task, stream, ensure_ascii=False, indent=2)
+            except BaseException:
+                temp.unlink(missing_ok=True)
+                raise
         temp.replace(target)
     return {"taskId": task_id, "status": task.get("status"),
+            "leaseExpired": bool(task.get("status") == "running" and task.get("lease_until")
+                                 and task["lease_until"] <= time.time() * 1000),
             "completed": checkpoint.get("completed"), "total": checkpoint.get("total"),
             "failure": task.get("failure"), "draftFailureCodes": sorted(codes),
             "savedVisualIssues": len(visual.get("issues") or [])}
@@ -54,6 +63,8 @@ def main():
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--wait-for-change", action="store_true", help="Ignore the initial terminal state until a resumed task changes")
     parser.add_argument("--stop-on-interrupted", action="store_true", help="Return when a visual rejection interrupts the task so its saved defects can be inspected")
+    parser.add_argument("--stop-on-expired-lease", action="store_true",
+                        help="Return a diagnostic when a running task lease stays expired; do not change task state")
     parser.add_argument("--interval", type=float, default=5)
     parser.add_argument("--timeout", type=float, default=900)
     parser.add_argument("--terminal-settle", type=float, default=6, help="Require a non-success terminal snapshot to stay unchanged before returning")
@@ -82,7 +93,9 @@ def main():
         # Read-scope routing releases its lease before execution claims the
         # same task. This handoff is not a failed or completed workflow.
         preflight_handoff = any(state["status"] == "interrupted" and state.get("failure") == "preflight_released" for state in states)
-        if observed_change and not preflight_handoff and all(state["status"] in terminal for state in states):
+        expired = args.stop_on_expired_lease and any(s.get("leaseExpired") for s in states)
+        settled = all(s["status"] in terminal or (expired and s.get("leaseExpired")) for s in states)
+        if observed_change and not preflight_handoff and settled:
             if all(state["status"] == "completed" for state in states):
                 return 0
             # Visual rejection currently records reject/claim/evidence/interrupt
@@ -91,6 +104,9 @@ def main():
             if terminal_signature != signature:
                 terminal_signature, terminal_since = signature, time.monotonic()
             elif time.monotonic() - terminal_since >= args.terminal_settle:
+                if expired:
+                    print(json.dumps({"event": "worker_lease_expired", "tasks": states}, ensure_ascii=False), flush=True)
+                    return 4
                 return 2
         else:
             terminal_signature = terminal_since = None

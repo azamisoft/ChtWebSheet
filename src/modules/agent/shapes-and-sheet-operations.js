@@ -1,3 +1,4 @@
+import { registerDeclaredTable } from "./declared-table-ranges.js";
 import { cwsApplyExistingShapeEdit } from './existing-shape-model.js';
 // Feature module; shared bindings are imported explicitly.
 import {
@@ -75,6 +76,8 @@ import {
 } from "../drawing/shape-rendering.js";
 import {
   refreshShapeSource,
+  setImagePixelBox,
+  updateConnectedLinesForTargets,
   shapeConnectionPointForSite,
 } from "../drawing/transforms-and-connectors.js";
 import {
@@ -285,6 +288,7 @@ function applyCwsAgentCreateTableOp(op) {
           hiddenButtons: {},
         },
   });
+  registerDeclaredTable(op.sheetIndex, tableName);
   state.hf = buildFormulaEngine(state.model);
   state.selected = { sheetIndex: op.sheetIndex, row: range.top, col: range.left };
   state.selectionRange = range;
@@ -707,8 +711,12 @@ function applyCwsAgentExistingShapeEditOp(op) {
   const sheet = state.model?.sheets?.[op.sheetIndex];
   if (!sheet || !ensureSheetProtectionPermission(sheet, 'allowEditObjects', '保護されたシートでは図形を編集できません。')) throw new Error('図形は保護されています。');
   const sheetBefore = captureSheetForHistory(sheet);
-  const image = cwsApplyExistingShapeEdit(sheet,op);
-  if (op.type === 'setShapeStyle') refreshShapeSource(image);
+  const image = cwsApplyExistingShapeEdit(sheet,op,{readBounds:imageBoxToPixels,
+    setBounds:(sheet,image,bounds)=>setImagePixelBox(sheet,image,bounds,{roundPixels:false})});
+  if (op.type !== 'removeShape') {
+    refreshShapeSource(image);
+    if(op.bounds) updateConnectedLinesForTargets(sheet,[image.id]);
+  }
   else setSelectedImageIds([]);
   pushHistory({sheetIndex:op.sheetIndex,sheetBefore,sheetAfter:captureSheetForHistory(sheet),label:`${image.name || '図形'} CWS Agent 編集`});
   renderSheet(); updateSelectionUi(); scheduleWorkbookPersistence();

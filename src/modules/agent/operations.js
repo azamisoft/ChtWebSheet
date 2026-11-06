@@ -589,7 +589,8 @@ function cwsAgentShapeStyleForOp(op, index) {
   if (Object.prototype.hasOwnProperty.call(merged, 'points')) style.points = cwsAgentShapeLinePoints(merged.points);
   if ((typeof merged.rotation === "number" || typeof merged.rotation === "string" && merged.rotation.trim() !== "") && Number.isFinite(Number(merged.rotation))) style.rotation = ((Number(merged.rotation) % 360) + 360) % 360;
   if (["x", "y"].includes(merged.elbowAxis)) style.adjust = { axis: merged.elbowAxis, bend: 0.5 };
-  if (merged.elbowBend !== undefined && [0, 0.5, 1].includes(Number(merged.elbowBend))) style.adjust = { ...style.adjust, bend: Number(merged.elbowBend) };
+  const bend = typeof merged.elbowBend === "number" || (typeof merged.elbowBend === "string" && merged.elbowBend.trim()) ? Number(merged.elbowBend) : NaN;
+  if (Number.isFinite(bend) && bend >= 0 && bend <= 1) style.adjust = { ...style.adjust, bend };
   if (merged.lineDash !== undefined) style.lineDash = normalizeShapeLineDash(merged.lineDash);
   const fillColor = cwsAgentShapeColor(merged.fillColor ?? merged.fill ?? merged.backgroundColor);
   if (fillColor !== undefined) style.fillColor = fillColor;
@@ -2079,7 +2080,7 @@ function applyCwsAgentOp(op) {
   if (op.type === "addShape") {
     return applyCwsAgentAddShapeOp(op);
   }
-  if (op.type === "setShapeStyle" || op.type === "removeShape") return applyCwsAgentExistingShapeEditOp(op);
+  if (op.type === "setShapeStyle" || op.type === "updateShape" || op.type === "removeShape") return applyCwsAgentExistingShapeEditOp(op);
   if (op.type === "setShapeText") return applyCwsAgentSetShapeTextOp(op);
   if (op.type === "createWorkbookTemplate") {
     return applyCwsAgentCreateWorkbookTemplateOp(op);

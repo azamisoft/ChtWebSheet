@@ -1058,6 +1058,7 @@ function normalizeCwsAgentAutoFitColumnsOp(op, index) {
 
 
 function normalizeCwsAgentAutoFitRowsOp(op, index) {
+  if (Object.hasOwn(op, "growOnly") && typeof op.growOnly !== "boolean") throw new Error("growOnly must be boolean.");
   const parsedCellRange = cwsAgentParseRangeAddress(op?.range || op?.address || op?.ref || op?.cell || "");
   const parsedRowRange = cwsAgentParseRowRangeAddress(op?.range || op?.address || op?.ref || "");
   const startRow = cwsAgentPositiveInteger(op?.startRow || op?.row || op?.index || op?.top) || parsedRowRange?.top || parsedCellRange?.top || 0;
@@ -1081,6 +1082,7 @@ function normalizeCwsAgentAutoFitRowsOp(op, index) {
     sheetIndex,
     top,
     bottom,
+    ...(op.growOnly === true ? { growOnly: true } : {}),
   };
 }
 

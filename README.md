@@ -188,6 +188,14 @@ Run the end-to-end test script:
 npm run test:e2e
 ```
 
+## CWS Agent acceptance handoff
+
+As of November 6, 2026 (JST), two of five personal OpenAI API scenarios passed
+independent acceptance: the warehouse workflow and receipt extraction. The
+MacBook, Wikipedia and GitHub screenshot design books still require verification.
+See the [handoff and instructions for the next verifier](docs/cws-agent-e2e-handoff.md)
+for the saved evidence, recovery steps and criteria for reporting completion.
+
 ## Repository Layout
 
 - `index.html`: application shell and ribbon markup.
