@@ -9,6 +9,26 @@ separately.
 
 The project is developed by CHT Co., Ltd. (株式会社CHT).
 
+## CWS Agent
+
+**Progress update — November 17, 2026:** CWS Agent is now available for initial
+use, bringing AI-assisted design and diagram creation into CWS.
+
+Current workflows include:
+
+- Creating and refining design documents and worksheet layouts.
+- Creating flowcharts with process steps, decisions, and connections.
+- Creating sequence diagrams to describe interactions between participants.
+- Using screenshots as references to create editable page and UI designs
+  inside a CWS workbook.
+
+The generated content can be reviewed and edited in CWS, refined with further
+instructions, and saved as a CWS HTML workbook.
+
+Start with [CWS online](https://chtec.co.jp/cws/) and see the
+[CWS Agent progress report](docs/cws-agent-progress.md) for the current
+capabilities, example requests, and workflow.
+
 ## W3C Community Group
 
 CWS HTML 1.0 Draft is being incubated through the
@@ -194,6 +214,8 @@ npm run test:e2e
 - `src/main.js`: workbook model, import/export, rendering, editing, dialogs,
   menus, data tools, drawing tools, and runtime behavior.
 - `src/styles.css`: application UI and worksheet styling.
+- `docs/cws-agent-progress.md`: CWS Agent implementation progress, supported
+  design workflows, and example requests.
 - `docs/cws-html-1.0-draft.md`: draft CWS HTML profile specification for
   AI-readable and AI-editable workbook files.
 - `docs/cws-html-application-index.md`: index of standardization application

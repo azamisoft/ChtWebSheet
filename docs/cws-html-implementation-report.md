@@ -4,10 +4,23 @@ Status: Draft 0.1
 
 Date: 2026-06-12
 
+Latest implementation update: 2026-11-17 (CWS Agent).
+
 ## Summary
 
 This report records the implementation status for CWS HTML 1.0 draft
 conformance in the Cht WebSheet project.
+
+## CWS Agent Progress — 2026-11-17
+
+CWS Agent is now available for initial use in Cht WebSheet. Current workflows
+include design documents and layouts, flowcharts, sequence diagrams, and
+editable page designs based on screenshots. Users can review and refine the
+generated content in CWS and save the result as a CWS HTML workbook.
+
+See the [CWS Agent progress report](cws-agent-progress.md) for capabilities,
+example requests, and the user workflow. This application progress update
+does not change the conformance results or evidence recorded below.
 
 ## Implementations
 
