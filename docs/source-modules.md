@@ -32,6 +32,7 @@ This is a source-organization change, not yet a complete elimination of shared a
 - `cws-agent/api/ai/message/`: content routing, planning, document patches, template contracts, semantic review, source/repair, quality checks, provider sessions and prompts.
 - `cws-agent/src/modules/provider-settings.js` and `cws-agent/api/_personal_api.php` implement per-user CHT/OpenAI/compatible profiles. Only the Harness holds the private decryption key. Devlune routes personal inference through its separate authenticated personal-messages endpoint without reserving CHT quota. Harness runs template selection and named output contracts using the selected model.
 - `api/ai/message/request-intent.php` handles the request-only semantic routing contract. A fenced task stores the structured route and an independent answer. Execution replays that answer through normal history and completion, and loads workbook evidence only for read/write paths. Host literal edits still use their deterministic route. The provider contract is `request_intent` in Harness and Devlune.
+- `api/ai/message/reference-query.php` binds registered-template queries to current-request Graphiti receipts. The Harness distinguishes `inspect_template` from document creation: it sends read-only template definitions as `reference_materials`, never execution contracts. Missing/degraded/unverified receipts and workbook writes fail closed; final answer review uses those actual definitions. Ordinary workbook reads still exclude unrelated templates.
 - `cws-agent/api/ai/message/cell-proof.php` verifies numeric cell citations and evaluates a single explicit arithmetic read. `formula-cell.php` binds a whole formula assignment to a one-step edit, its source values and the independent browser workbook diff. Both reuse fenced task resources. The second call checks the scoped candidate through the existing `existing_edit_review` read-only contract.
 - `cws-agent/api/_quota.php`: stable inference request IDs and fail-closed quota interruptions. `api/ai/quota.php` exposes only the authenticated user’s CWS balance. The billing authority and admin configuration are in Devlune `auth-server/token-quota*.mjs`; `token-quota-periods.mjs` owns activation-based seven-day periods and the audited monthly-ledger migration.
 - `cws-agent/api/_task_state.php`: fenced execution, persisted checkpoints, delivery intent (`cws.delivery_contract`) and completion gates. A confirmed workbook delivery cannot become an answer-only result; unfinished checkpoints and empty artifact results remain incomplete. The model's `_readOnlyAnswer` flag is never completion authority by itself.
@@ -100,3 +101,13 @@ Provider isolation disables `agents.enabled` as well as legacy multi-agent featu
 Existing-edit review ignores known blank-to-blank cell writes and groups consecutive new blank-cell writes by row, retaining every exact value. Existing facts retain individual checks. Both passing and failing reviews must bind to the host-extracted operation/target coverage; malformed rejection evidence retries only the read-only review and never authorizes a content rewrite. Requested creation permits necessary presentation operations, while actual rendering and persistence remain separate completion gates.
 
 Generated connector routing rejects shared middle segments even when their directions agree. Only genuine same-port fan-out and final fan-in trunks may overlap. Fractional bend candidates follow the native renderer's interpolation and separate lanes without changing directed topology; existing user diagrams are not silently rerouted.
+
+Partial-result decisions are in `cws-agent/src/modules/partial-results.js`. They retain
+actual host snapshots after a failed/incomplete run, list failed checks, and bind
+Apply/Cancel to the original user, workbook, session and content hashes. A user
+choice never acknowledges completion. The same module handles hold-to-compare
+(pointer, keyboard, release, cancellation and focus loss); `panel-and-sessions.js`
+intercepts comparison keys before they reach worksheet shortcuts. Pending decisions
+and both snapshots persist in the existing recovery store. Tests:
+`cws-agent/test/partial-results.test.mjs` and `scripts/e2e-partial-result-choice.mjs`
+(the latter uses the real local CWS host and deterministic failures, with no model calls).
