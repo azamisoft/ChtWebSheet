@@ -1,3 +1,4 @@
+import { initializeLocale } from "./modules/ui/locale.js";
 // Shared bindings and ordered application initialization.
 import {
   registerWebSheetFormulaPlugin,
@@ -7005,6 +7006,7 @@ const SAVE_AS_LOCATIONS = [
 
 
 
+initializeLocale(document);
 init();
 
 export {

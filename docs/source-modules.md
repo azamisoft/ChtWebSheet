@@ -13,7 +13,7 @@ The application and CWS Agent use explicit ES module imports. Production still b
 - `src/modules/editing/`: selection, clipboard, keyboard, undo/history, autofill and formula evaluation.
 - `src/modules/rendering/`: grid and canvas rendering.
 - `src/modules/data/`: queries, connections, sorting, filters, validation, analysis and forecasts.
-- `src/modules/ui/`: ribbon, annotations, protection, dialogs, views and help.
+- `src/modules/ui/`: ribbon, annotations, protection, dialogs, views and help. `locale.js` and `locales/messages.js` own the persistent Japanese/English/Simplified Chinese interface selector, dynamic control translation and user-content exclusions; `src/styles/locale.css` styles the menu.
 - `src/modules/standalone/`: embedded legacy standalone helper implementation.
 - `src/styles.css`: ordered CSS imports. The cascade is preserved in `src/styles/`.
 

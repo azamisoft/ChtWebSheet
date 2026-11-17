@@ -312,3 +312,9 @@ appropriate commercial HyperFormula license or replacing the calculation engine.
 
 Excel is a trademark of Microsoft Corporation. Cht WebSheet is an independent
 HTML worksheet application that supports Excel-family file formats.
+
+## Interface languages
+
+The upper-right language menu switches the CWS interface between Japanese, English and Simplified Chinese. The choice is kept in `cws.ui.locale` for the current browser/origin. The same menu is available on the welcome screen. Interface labels and dynamic Agent controls use the local catalog in `src/modules/ui/locales/messages.js`; no translation API is called. Workbook cells, drawings, sheet/file names, account names, chat messages and user input remain unchanged. Uncatalogued messages retain their source text rather than being guessed.
+
+Run `node --test scripts/tests/locale.test.mjs` for language persistence, dynamic controls, keyboard navigation, static-label coverage and workbook/conversation isolation. Run `npm run build:app` before deployment. The language observer skips the complete `#sheetHost` subtree, including new virtualized cells and drawings.

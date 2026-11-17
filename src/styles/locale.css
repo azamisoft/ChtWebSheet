@@ -1,0 +1,12 @@
+.cws-language-control { position: relative; flex: 0 0 auto; z-index: 60; }
+.cws-language-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 26px; padding: 0 8px; border: 1px solid #ccd5e2; border-radius: 7px; background: #fff; color: #334155; font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.cws-language-button:hover, .cws-language-button[aria-expanded="true"] { border-color: #159487; background: #edf9f6; color: #087d73; }
+.cws-language-menu { position: absolute; top: calc(100% + 5px); right: 0; min-width: 146px; padding: 5px; border: 1px solid #d9e1eb; border-radius: 10px; background: #fff; box-shadow: 0 10px 30px #14253b26; }
+.cws-language-menu[hidden] { display: none; }
+.cws-language-menu button { display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 6px; background: transparent; text-align: left; font: inherit; font-size: 13px; color: #334155; cursor: pointer; }
+.cws-language-menu button:hover, .cws-language-menu button:focus-visible { background: #f0f5fa; outline: 2px solid #159487; outline-offset: -2px; }
+.cws-language-menu button[aria-checked="true"] { background: #e8f7f2; color: #087d73; font-weight: 600; }
+.cws-language-control.is-welcome { position: absolute; top: 18px; right: 20px; }
+html[lang="en"] .ribbon-tab { padding-inline: 6px; }
+html[lang="en"] .ribbon-status { min-width: 60px; }
+@media (max-width: 900px) { .ribbon-status { display: none; } .cws-language-control { margin-left: auto; } .cws-language-button { padding-inline: 5px; } }
