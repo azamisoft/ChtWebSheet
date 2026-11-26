@@ -4429,52 +4429,6 @@ function standaloneRuntime() {
     });
     return (negative ? "-" : "") + rendered;
   }
-  function formatDateForFormat(date, numFmt) {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-    var format = primaryExcelFormatSection(numFmt || "").replace(/\[[^\]]+\]/g, "");
-    if (!isDateFormat(format)) return date.toLocaleDateString();
-    var monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    var monthNamesLong = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    var weekdayNamesShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    var weekdayNamesLong = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    var pad2 = function (number) { return String(number).padStart(2, "0"); };
-    var uses12HourClock = /AM\/PM|A\/P/i.test(format);
-    var hour24 = date.getHours();
-    var hour12 = hour24 % 12 || 12;
-    var replacements = {
-      yyyy: String(date.getFullYear()),
-      yy: pad2(date.getFullYear() % 100),
-      mmmm: monthNamesLong[date.getMonth()],
-      mmm: monthNamesShort[date.getMonth()],
-      mm: pad2(date.getMonth() + 1),
-      m: String(date.getMonth() + 1),
-      dddd: weekdayNamesLong[date.getDay()],
-      ddd: weekdayNamesShort[date.getDay()],
-      dd: pad2(date.getDate()),
-      d: String(date.getDate()),
-      hh: pad2(uses12HourClock ? hour12 : hour24),
-      h: String(uses12HourClock ? hour12 : hour24),
-      ss: pad2(date.getSeconds()),
-      s: String(date.getSeconds()),
-      "AM/PM": hour24 < 12 ? "AM" : "PM",
-      "am/pm": hour24 < 12 ? "am" : "pm",
-      "A/P": hour24 < 12 ? "A" : "P",
-      "a/p": hour24 < 12 ? "a" : "p"
-    };
-    return format.replace(/"([^"]*)"|\\(.)|AM\/PM|A\/P|yyyy|mmmm|dddd|mmm|ddd|yy|hh|ss|mm|dd|h|s|m|d/gi, function (match, quoted, escaped, offset) {
-      if (quoted != null) return quoted;
-      if (escaped != null) return escaped;
-      var key = match.toLowerCase();
-      if (key === "m" || key === "mm") {
-        return key === "mm" && dateFormatTokenIsMinute(format, offset, match.length)
-          ? pad2(date.getMinutes())
-          : key === "m" && dateFormatTokenIsMinute(format, offset, match.length)
-            ? String(date.getMinutes())
-            : replacements[key];
-      }
-      return replacements[match] || replacements[key] || match;
-    }).replace(/"/g, "");
-  }
   function dateFormatTokenIsMinute(format, start, length) {
     var source = String(format || "");
     var before = source.slice(Math.max(0, start - 8), start);
@@ -4521,19 +4475,6 @@ function standaloneRuntime() {
   function formatDecimalPlaces(numFmt) {
     const match = String(numFmt || "").match(/\\.([0#]+)/);
     return match ? Math.min(6, match[1].length) : 0;
-  }
-  function isDateFormat(numFmt) {
-    if (isElapsedTimeFormat(numFmt)) return true;
-    const format = dateDetectionFormat(numFmt || "");
-    if (/[年月日]/.test(format)) return true;
-    if (/^\s*(?:y{1,4}|m{1,4}|d{1,4})\s*$/i.test(format)) return true;
-    var hasYear = /(^|[^a-z])y{2,4}/i.test(format);
-    var hasMonth = /(^|[^a-z])m{1,4}/i.test(format);
-    var hasDay = /(^|[^a-z])d{1,4}/i.test(format);
-    var hasHour = /(^|[^a-z])h{1,2}/i.test(format);
-    var hasSecond = /(^|[^a-z])s{1,2}/i.test(format);
-    var hasAmPm = /AM\/PM|A\/P/i.test(format);
-    return (hasYear && hasMonth) || (hasMonth && hasDay) || (hasYear && hasDay) || hasHour || hasSecond || hasAmPm;
   }
   function dateDetectionFormat(numFmt) {
     return primaryExcelFormatSection(numFmt || "")

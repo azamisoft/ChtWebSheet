@@ -1,3 +1,4 @@
+import { hasJapaneseEraTokens } from "../workbook/japanese-era-format.js";
 // Feature module; shared bindings are imported explicitly.
 import {
   $appAlert,
@@ -1272,6 +1273,7 @@ function excelSerialToDate(serial) {
 
 function isDateFormat(numFmt) {
   if (isElapsedTimeFormat(numFmt)) return true;
+  if (hasJapaneseEraTokens(primaryExcelFormatSection(numFmt))) return true;
   const format = dateDetectionFormat(numFmt);
   if (/[年月日]/.test(format)) return true;
   if (/^\s*(?:y{1,4}|m{1,4}|d{1,4})\s*$/i.test(format)) return true;

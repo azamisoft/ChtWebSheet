@@ -175,7 +175,7 @@ import {
   extractWorkbookDrawingShapes,
   extractWorkbookMetadata,
   extractWorkbookOutlineDetails,
-  extractWorkbookPhonetics,
+  prepareWorkbookPhonetics,
   extractWorkbookSheetViewDetails,
   extractWorkbookWindowViews,
   parsePreservedContentTypeOverrides,
@@ -456,7 +456,6 @@ async function loadExcelFile(file, options = {}) {
     const themeColors = parseThemeColors(workbook);
     debugWorkbookLoadTrace("metadata-extract:start");
     const [
-      workbookPhonetics,
       workbookDrawingShapes,
       workbookDefinedNames,
       workbookAutoFilters,
@@ -468,7 +467,6 @@ async function loadExcelFile(file, options = {}) {
       workbookMetadata,
       workbookCellHyperlinks,
     ] = await Promise.all([
-      extractWorkbookPhonetics(metadataBuffer),
       extractWorkbookDrawingShapes(metadataBuffer, themeColors),
       extractWorkbookDefinedNames(metadataBuffer),
       extractWorkbookAutoFilters(metadataBuffer, themeColors),
@@ -492,7 +490,7 @@ async function loadExcelFile(file, options = {}) {
     state.model = workbookToModel(
       workbook,
       file.name,
-      workbookPhonetics,
+      excelJsLoad.phonetics,
       workbookDrawingShapes,
       themeColors,
       workbookDefinedNames,
@@ -674,15 +672,16 @@ async function workbookBufferForExcelJs(buffer, file = null, options = {}) {
   if (isLegacyXlsWorkbook(file, buffer)) {
     await loadXlsxModule();
     return {
-      buffer: convertLegacyXlsBufferToXlsxBuffer(buffer, file?.name || "workbook.xls"),
+      ...await prepareWorkbookPhonetics(convertLegacyXlsBufferToXlsxBuffer(buffer, file?.name || "workbook.xls")),
       convertedFromLegacyXls: true,
     };
   }
+  const prepared = await prepareWorkbookPhonetics(buffer);
   if (!options.forceZipPreparation) {
-    return { buffer, convertedFromLegacyXls: false };
+    return { ...prepared, convertedFromLegacyXls: false };
   }
   try {
-    const zip = await JSZip.loadAsync(buffer);
+    const zip = await JSZip.loadAsync(prepared.buffer);
     let changed = false;
     changed = await normalizeSpreadsheetMainNamespacePrefixesForExcelJs(zip) || changed;
     await Promise.all(Object.keys(zip.files)
@@ -698,12 +697,13 @@ async function workbookBufferForExcelJs(buffer, file = null, options = {}) {
       }));
     changed = await stripWorksheetDrawingsForExcelJs(zip) || changed;
     return {
-      buffer: changed ? await zip.generateAsync({ type: "arraybuffer" }) : buffer,
+      ...prepared,
+      buffer: changed ? await zip.generateAsync({ type: "arraybuffer" }) : prepared.buffer,
       convertedFromLegacyXls: false,
     };
   } catch (error) {
     console.warn("Failed to prepare workbook for ExcelJS load.", error);
-    return { buffer, convertedFromLegacyXls: false };
+    return { ...prepared, convertedFromLegacyXls: false };
   }
 }
 

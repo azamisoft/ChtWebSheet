@@ -405,25 +405,49 @@ function normalizeWorkbookRelationshipPath(target) {
 
 
 
-async function parseWorksheetPhonetics(zip, path, sharedStrings) {
+async function parseWorksheetPhonetics(zip, path, sharedStrings, loadFonts) {
   const xml = await zip.file(path)?.async("text");
-  if (!xml) return {};
+  const cells = {};
+  const hasInlineGuides = /<(?:[\w.-]+:)?is[\s>]/.test(xml) && /<(?:[\w.-]+:)?(?:rPh|phoneticPr)\b/.test(xml);
+  if (!xml || (!sharedStrings.length && !hasInlineGuides)) return { cells };
   const doc = parseXmlDocument(xml);
   const mergeRanges = xmlElements(doc.documentElement, "mergeCell")
     .map((node) => decodeRange(node.getAttribute("ref") || ""))
     .filter(Boolean);
-  const cells = {};
+  let changed = false;
+  const defaults = xmlChildren(doc.documentElement, "phoneticPr")[0];
+  const fonts = await loadFonts();
   xmlElements(doc.documentElement, "c").forEach((cellNode) => {
     const address = cellNode.getAttribute("r");
     const point = decodeCell(address);
     if (!point) return;
     const type = cellNode.getAttribute("t");
     const stringInfo = type === "inlineStr" ? inlineStringPhonetics(cellNode) : sharedStringForCell(cellNode, type, sharedStrings);
+    if (type === "inlineStr") {
+      // ExcelJS closes the cell parser on an unknown inline child and can lose later rows.
+      const inline = firstXmlChild(cellNode, "is");
+      for (const child of xmlChildren(inline)) {
+        if (child.localName === "rPh" || child.localName === "phoneticPr") {
+          child.remove();
+          changed = true;
+        }
+      }
+    }
     if (!stringInfo?.phonetics?.length) return;
     const master = mergeMasterForPoint(mergeRanges, point) || point;
-    cells[cellKey(master.row, master.col)] = stringInfo.phonetics;
+    const props = stringInfo.properties || defaults;
+    const fontIndex = props?.getAttribute("fontId");
+    const properties = props ? {
+      fontXml: fontIndex == null ? null : fonts[Number(fontIndex)],
+      type: props.getAttribute("type"),
+      alignment: props.getAttribute("alignment"),
+    } : null;
+    cells[cellKey(master.row, master.col)] = {
+      phonetics: stringInfo.phonetics, properties,
+      visible: /^(?:1|true)$/i.test(cellNode.getAttribute("ph") || ""),
+    };
   });
-  return cells;
+  return { cells, readerXml: changed ? new XMLSerializer().serializeToString(doc) : null };
 }
 
 
@@ -445,7 +469,10 @@ function sharedStringForCell(cellNode, type, sharedStrings) {
 
 function inlineStringPhonetics(cellNode) {
   const inline = xmlChildren(cellNode, "is")[0];
-  if (!inline) return null;
+  return inline ? readPhoneticString(inline) : null;
+}
+
+function readPhoneticString(inline) {
   const text = sharedStringBaseText(inline);
   const phonetics = xmlChildren(inline, "rPh")
     .map((node) => ({
@@ -454,7 +481,7 @@ function inlineStringPhonetics(cellNode) {
       text: xmlTextContent(node),
     }))
     .filter((run) => Number.isFinite(run.start) && Number.isFinite(run.end) && run.end > run.start && run.text.trim());
-  return { text, phonetics: normalizePhoneticRuns(phonetics, text) };
+  return { text, phonetics: normalizePhoneticRuns(phonetics, text), properties: xmlChildren(inline, "phoneticPr")[0] };
 }
 
 
@@ -669,10 +696,11 @@ function worksheetToModel(
     for (let colNumber = 1; colNumber <= colCount; colNumber += 1) {
       const cell = worksheet.getCell(rowNumber, colNumber);
       const cellModel = cellToModel(cell, rowNumber, colNumber, themeColors, workbookProperties, worksheet.name);
-      const phonetics = normalizePhoneticRuns(phoneticsByCell[cellKey(rowNumber, colNumber)]);
-      if (phonetics.length) {
-        cellModel.phonetics = phonetics;
-        cellModel.showPhonetic = false;
+      const reading = phoneticsByCell[cellKey(rowNumber, colNumber)];
+      if (reading) {
+        cellModel.phonetics = reading.phonetics;
+        if (reading.properties) cellModel.phoneticProperties = reading.properties;
+        cellModel.showPhonetic = reading.visible;
       }
       const merge = mergeByMaster.get(cellKey(rowNumber, colNumber));
       if (merge) {
@@ -1208,6 +1236,7 @@ function materializeImportedTableCalculatedCell(sheet, table, row, col, formula)
   cell.display = "";
   delete cell.richText;
   delete cell.phonetics;
+  delete cell.phoneticProperties;
   delete cell.showPhonetic;
   delete cell.sparkline;
   storeCellModelForSheet(sheet, key, cell);
@@ -1578,6 +1607,7 @@ function copyTableCalculatedColumnFormula(sheet, table, sourceRow, targetRow, co
   cell.display = "";
   delete cell.richText;
   delete cell.phonetics;
+  delete cell.phoneticProperties;
   delete cell.showPhonetic;
   delete cell.sparkline;
   storeCellModelForSheet(sheet, cellKey(targetRow, col), cell);
@@ -1684,6 +1714,7 @@ function applyTableCalculatedColumnFormula(sheet, table, sourceRow, col, formula
     cell.display = "";
     delete cell.richText;
     delete cell.phonetics;
+    delete cell.phoneticProperties;
     delete cell.showPhonetic;
     delete cell.sparkline;
     storeCellModelForSheet(sheet, key, cell);
@@ -3479,6 +3510,7 @@ export {
   importedTableStylePalette,
   inferWorkbookWidthMetrics,
   inlineStringPhonetics,
+  readPhoneticString,
   isCoveredMergedCell,
   isWideExcelDigitFont,
   materializeDynamicAutoFilterCriterion,

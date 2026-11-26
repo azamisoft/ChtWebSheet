@@ -2758,6 +2758,7 @@ function clearCellModelForHome(sheet, key, mode) {
     cell.dataTableFormula = "";
     delete cell.richText;
     delete cell.phonetics;
+    delete cell.phoneticProperties;
     delete cell.showPhonetic;
     delete cell.sparkline;
   } else if (mode === "formats") {

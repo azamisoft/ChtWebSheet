@@ -1,3 +1,4 @@
+import { hasJapaneseEraTokens, expandJapaneseEraTokens } from "./japanese-era-format.js";
 // Feature module; shared bindings are imported explicitly.
 import {
   $,
@@ -1815,8 +1816,9 @@ function formatElapsedTimeForFormat(value, numFmt = "") {
 
 function formatDateForFormat(date, numFmt = "") {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-  const format = primaryExcelFormatSection(numFmt).replace(/\[[^\]]+\]/g, "");
-  if (!isDateFormat(format)) return date.toLocaleDateString();
+  const section = primaryExcelFormatSection(numFmt);
+  if (!isDateFormat(section)) return date.toLocaleDateString();
+  const format = (hasJapaneseEraTokens(section) ? expandJapaneseEraTokens(section, date) : section).replace(/\[[^\]]+\]/g, "");
   const monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const monthNamesLong = [
     "January",
@@ -1835,7 +1837,8 @@ function formatDateForFormat(date, numFmt = "") {
   const weekdayNamesShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const weekdayNamesLong = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const pad2 = (number) => String(number).padStart(2, "0");
-  const uses12HourClock = /AM\/PM|A\/P/i.test(format);
+  const tokenContext = format.replace(/"[^"]*"|\\./g, literal => " ".repeat(literal.length));
+  const uses12HourClock = /AM\/PM|A\/P/i.test(tokenContext);
   const hour24 = date.getHours();
   const hour12 = hour24 % 12 || 12;
   const replacements = {
@@ -1863,9 +1866,9 @@ function formatDateForFormat(date, numFmt = "") {
     if (escaped != null) return escaped;
     const key = match.toLowerCase();
     if (key === "m" || key === "mm") {
-      return key === "mm" && dateFormatTokenIsMinute(format, offset, match.length)
+      return key === "mm" && dateFormatTokenIsMinute(tokenContext, offset, match.length)
         ? pad2(date.getMinutes())
-        : key === "m" && dateFormatTokenIsMinute(format, offset, match.length)
+        : key === "m" && dateFormatTokenIsMinute(tokenContext, offset, match.length)
           ? String(date.getMinutes())
           : replacements[key];
     }

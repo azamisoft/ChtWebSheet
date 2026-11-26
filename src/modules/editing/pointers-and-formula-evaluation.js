@@ -2711,6 +2711,7 @@ function updateCellModel(sheet, row, col, content, options = {}) {
   }
   if (textChanged) {
     delete cell.phonetics;
+    delete cell.phoneticProperties;
     delete cell.showPhonetic;
     delete cell.sparkline;
   }

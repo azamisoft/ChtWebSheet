@@ -807,6 +807,7 @@ function clearVbaRangeTarget(target, method, context) {
       model.display = "";
       delete model.richText;
       delete model.phonetics;
+      delete model.phoneticProperties;
       delete model.showPhonetic;
       delete model.sparkline;
       delete model.dataTableFormula;

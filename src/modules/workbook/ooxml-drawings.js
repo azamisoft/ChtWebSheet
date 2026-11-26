@@ -91,7 +91,7 @@ import {
   imageMimeType,
   normalizeOutlineSettings,
   normalizePackageRelationshipPath,
-  normalizePhoneticRuns,
+  readPhoneticString,
   normalizeWorkbookRelationshipPath,
   parseValidationOptions,
   parseWorksheetPhonetics,
@@ -1050,7 +1050,7 @@ function xmlBooleanAttribute(node, name, defaultValue = false) {
 
 
 
-async function extractWorkbookPhonetics(buffer) {
+async function prepareWorkbookPhonetics(buffer) {
   try {
     const zip = await JSZip.loadAsync(buffer);
     const [sharedStringsXml, workbookXml, workbookRelsXml] = await Promise.all([
@@ -1058,20 +1058,28 @@ async function extractWorkbookPhonetics(buffer) {
       zip.file("xl/workbook.xml")?.async("text"),
       zip.file("xl/_rels/workbook.xml.rels")?.async("text"),
     ]);
-    if (!sharedStringsXml || !workbookXml || !workbookRelsXml) return {};
-    const sharedStrings = parseSharedStringPhonetics(sharedStringsXml);
-    if (!sharedStrings.some((item) => item.phonetics.length)) return {};
+    if (!workbookXml || !workbookRelsXml) return { buffer, phonetics: {} };
+    const sharedStrings = /<(?:[\w.-]+:)?rPh\b/.test(sharedStringsXml || "") ? parseSharedStringPhonetics(sharedStringsXml) : [];
+    let fontPromise;
+    const loadFonts = () => fontPromise ??= (async () => {
+      const styles = await zip.file("xl/styles.xml")?.async("text");
+      if (!styles) return [];
+      const fonts = xmlChildren(parseXmlDocument(styles).documentElement, "fonts")[0];
+      return xmlChildren(fonts, "font").map(font => new XMLSerializer().serializeToString(font));
+    })();
     const sheetPaths = workbookSheetPaths(workbookXml, workbookRelsXml);
-    const entries = await Promise.all(
-      sheetPaths.map(async ({ name, path }) => ({
-        name,
-        cells: await parseWorksheetPhonetics(zip, path, sharedStrings),
-      })),
-    );
-    return Object.fromEntries(entries.filter((entry) => Object.keys(entry.cells).length).map((entry) => [entry.name, entry.cells]));
+    const entries = await Promise.all(sheetPaths.map(async ({ name, path }) => {
+      const { cells, readerXml } = await parseWorksheetPhonetics(zip, path, sharedStrings, loadFonts);
+      if (readerXml) zip.file(path, readerXml);
+      return { name, cells, changed: Boolean(readerXml) };
+    }));
+    return {
+      phonetics: Object.fromEntries(entries.filter(entry => Object.keys(entry.cells).length).map(entry => [entry.name, entry.cells])),
+      buffer: entries.some(entry => entry.changed) ? await zip.generateAsync({ type: "arraybuffer" }) : buffer,
+    };
   } catch (error) {
     console.warn("Failed to parse workbook phonetics.", error);
-    return {};
+    return { buffer, phonetics: {} };
   }
 }
 
@@ -3101,17 +3109,7 @@ function stableObjectId(value) {
 
 function parseSharedStringPhonetics(xml) {
   const doc = parseXmlDocument(xml);
-  return xmlChildren(doc.documentElement, "si").map((si) => {
-    const text = sharedStringBaseText(si);
-    const phonetics = xmlChildren(si, "rPh")
-      .map((node) => ({
-        start: Number.parseInt(node.getAttribute("sb") || "0", 10),
-        end: Number.parseInt(node.getAttribute("eb") || "0", 10),
-        text: xmlTextContent(node),
-      }))
-      .filter((run) => Number.isFinite(run.start) && Number.isFinite(run.end) && run.end > run.start && run.text.trim());
-    return { text, phonetics: normalizePhoneticRuns(phonetics, text) };
-  });
+  return xmlChildren(doc.documentElement, "si").map(readPhoneticString);
 }
 
 
@@ -3618,7 +3616,7 @@ export {
   extractWorkbookDrawingShapes,
   extractWorkbookMetadata,
   extractWorkbookOutlineDetails,
-  extractWorkbookPhonetics,
+  prepareWorkbookPhonetics,
   extractWorkbookSheetViewDetails,
   extractWorkbookWindowViews,
   extractWorksheetCellHyperlinks,

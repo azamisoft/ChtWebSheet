@@ -1,3 +1,4 @@
+import { patchExcelPhonetics } from "./excel-phonetics.js";
 // Feature module; shared bindings are imported explicitly.
 import {
   $sheetHost,
@@ -177,6 +178,7 @@ async function postProcessExcelWorkbookBuffer(buffer, model, type) {
   await patchExcelWorksheetAutoFilterDetails(zip, model, autoFilterExportContext);
   await patchExcelTableDefinitions(zip, model, autoFilterExportContext);
   await finalizeExcelAutoFilterExportContext(zip, autoFilterExportContext);
+  await patchExcelPhonetics(zip, model);
   return zip.generateAsync({ type: "arraybuffer" });
 }
 

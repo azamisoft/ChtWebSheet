@@ -2193,6 +2193,7 @@ function cloneCellModel(cell) {
     dataTableFormula: cell.dataTableFormula || "",
     richText: cloneJsonLikeValue(cell.richText),
     phonetics: cloneJsonLikeValue(cell.phonetics),
+    phoneticProperties: cloneJsonLikeValue(cell.phoneticProperties),
     showPhonetic: Boolean(cell.showPhonetic),
     css: cell.css || {},
     hasFill: Boolean(cell.hasFill),
@@ -2733,6 +2734,7 @@ function compactCellModelForStorage(cell) {
   if (cell.dataTableFormula) compact.dataTableFormula = String(cell.dataTableFormula);
   if (cell.richText?.length) compact.richText = cloneJsonLikeValue(cell.richText);
   if (cell.phonetics?.length) compact.phonetics = cloneJsonLikeValue(cell.phonetics);
+  if (cell.phonetics?.length && cell.phoneticProperties) compact.phoneticProperties = cloneJsonLikeValue(cell.phoneticProperties);
   if (cell.showPhonetic) compact.showPhonetic = true;
 
   const css = internCssObject(cell.css);
