@@ -1,4 +1,5 @@
 // Feature module; shared bindings are imported explicitly.
+import { ungzip } from "pako/lib/inflate.js";
 import {
   $,
   $exportHtmlButton,
@@ -2020,23 +2021,48 @@ function normalizeWorkbookImageAsset(asset) {
 
 function materializeWorkbookImageAssets(model) {
   const assets = model?.assets?.images || {};
-  if (!model?.sheets?.length || !Object.keys(assets).length) return;
+  if (!model?.sheets?.length) return;
+  const resolvedAssets = new Map();
   (model.sheets || []).forEach((sheet) => {
     if (!Array.isArray(sheet.images)) return;
     sheet.images.forEach((image) => {
-      if (!image || image.src || !image.assetId) return;
-      const asset = assets[String(image.assetId)];
-      const src = workbookImageAssetSource(asset);
+      if (!image) return;
+      if (image.src) {
+        image.src = decodeStoredWorkbookImageSource(image.src);
+        return;
+      }
+      if (!image.assetId) return;
+      const id = String(image.assetId);
+      const asset = assets[id];
+      if (!asset) return;
+      if (!resolvedAssets.has(id)) resolvedAssets.set(id, decodeStoredWorkbookImageSource(workbookImageAssetSource(asset)));
+      const src = resolvedAssets.get(id);
       if (!src) return;
       image.src = src;
       image.mimeType = image.mimeType || asset.mimeType;
       image.extension = image.extension || asset.extension;
     });
   });
-  if (model.assets && typeof model.assets === "object") {
+  if (model.assets && Object.keys(assets).length) {
     delete model.assets.images;
     if (!Object.keys(model.assets).length) delete model.assets;
   }
+}
+
+
+
+function decodeStoredWorkbookImageSource(src) {
+  // Older imports also persisted gzip bytes as inline image URLs without an encoding flag.
+  const prefix = /^(data:image\/[\w.+-]+;base64,)\s*H\s*4\s*s\s*I/.exec(src);
+  if (!prefix) return src;
+  try {
+    const bytes = ungzip(base64ToBytes(src.slice(prefix[1].length)));
+    if (bytes?.length) return prefix[1] + bytesToBase64(bytes);
+  } catch (error) {
+    console.warn("Could not decompress a stored workbook image.", error);
+  }
+  // Preserve unreadable source bytes for recovery without discarding the rest of the workbook.
+  return src;
 }
 
 

@@ -12,6 +12,7 @@ continue to apply when they are used, bundled, or redistributed.
 | `jquery` | 3.7.1 | MIT |
 | `jszip` | 3.10.1 | MIT OR GPL-3.0-or-later |
 | `lucide` | 0.468.0 | ISC |
+| `pako` | 1.0.11 | MIT AND Zlib |
 
 ## Development Dependencies
 
