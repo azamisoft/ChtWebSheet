@@ -5,6 +5,8 @@ import {
   DEFAULT_THEME_COLORS,
   EXCEL_MAX_COLS,
   EXCEL_MAX_ROWS,
+  FALLBACK_VISIBLE_COLS,
+  FALLBACK_VISIBLE_ROWS,
   PAGE_LAYOUT_MARGIN_PRESETS,
   WORKSHEET_IMAGE_OBJECT_URL_MIN_DATA_URL_LENGTH,
   state,
@@ -570,10 +572,19 @@ function worksheetToModel(
   debugWorkbookLoadTrace(`worksheet:${worksheet.name}:dimensions:start`);
   const dimensions = findWorksheetDimensions(worksheet, merges, widthMetrics, normalizedDrawingShapes);
   const tableDimensions = importedTableDimensions(importedTables);
-  const dataValidationDimensions = importedDataValidationDimensions(importedDataValidationDetails);
   const outlineDimensions = worksheetOutlineDetailsDimensions(outlineDetails);
-  const rowCount = Math.max(dimensions.rows, tableDimensions.rows, dataValidationDimensions.rows, outlineDimensions.rows, 1);
-  const colCount = Math.max(dimensions.cols, tableDimensions.cols, dataValidationDimensions.cols, outlineDimensions.cols, 1);
+  let rowCount = Math.max(dimensions.rows, tableDimensions.rows, outlineDimensions.rows, 1);
+  let colCount = Math.max(dimensions.cols, tableDimensions.cols, outlineDimensions.cols, 1);
+  // A blank validated cell in the initial viewport should be available immediately.
+  const initialRows = Math.max(rowCount, FALLBACK_VISIBLE_ROWS);
+  const initialCols = Math.max(colCount, FALLBACK_VISIBLE_COLS);
+  for (const detail of importedDataValidationDetails || []) {
+    for (const range of detail.ranges) {
+      if (range.top > initialRows || range.left > initialCols) continue;
+      rowCount = Math.max(rowCount, Math.min(range.bottom, initialRows));
+      colCount = Math.max(colCount, Math.min(range.right, initialCols));
+    }
+  }
   debugWorkbookLoadTrace(`worksheet:${worksheet.name}:dimensions:done:${rowCount}x${colCount}`);
   const warnings = [];
   const worksheetView = worksheet.views?.[0] || {};
@@ -962,56 +973,39 @@ function normalizeImportedWorksheetTables(tables) {
 
 
 
-function importedDataValidationDimensions(details = []) {
-  const maxCellsForDimensionExpansion = 20000;
-  return (Array.isArray(details) ? details : []).reduce(
-    (dimensions, detail) => {
-      (Array.isArray(detail?.ranges) ? detail.ranges : []).forEach((range) => {
-        if (!range) return;
-        const rows = Math.max(0, (Number(range.bottom) || 0) - (Number(range.top) || 0) + 1);
-        const cols = Math.max(0, (Number(range.right) || 0) - (Number(range.left) || 0) + 1);
-        if (rows * cols > maxCellsForDimensionExpansion) return;
-        dimensions.rows = Math.max(dimensions.rows, Number(range.bottom) || 0);
-        dimensions.cols = Math.max(dimensions.cols, Number(range.right) || 0);
-      });
-      return dimensions;
-    },
-    { rows: 0, cols: 0 },
-  );
-}
-
-
-
 function applyImportedDataValidationDetails(sheet, details = []) {
   if (!sheet || !Array.isArray(details) || !details.length) return;
-  details.forEach((detail) => {
-    const ranges = Array.isArray(detail?.ranges) ? detail.ranges : [];
-    if (!ranges.length) return;
-    const importedValidation = detail.validation && typeof detail.validation === "object" ? detail.validation : null;
-    const hasShowDropDown = Object.prototype.hasOwnProperty.call(detail, "showDropDown");
-    const hasImeMode = Object.prototype.hasOwnProperty.call(detail, "imeMode") && detail.imeMode;
-    if (!importedValidation && !hasShowDropDown && !hasImeMode) return;
-    ranges.forEach((range) => {
-      if (!range) return;
-      const top = Math.max(1, Number(range.top) || 1);
-      const left = Math.max(1, Number(range.left) || 1);
-      const bottom = Math.min(Number(sheet.rowCount) || top, Math.max(top, Number(range.bottom) || top));
-      const right = Math.min(Number(sheet.colCount) || left, Math.max(left, Number(range.right) || left));
-      for (let row = top; row <= bottom; row += 1) {
-        for (let col = left; col <= right; col += 1) {
-          const key = cellKey(row, col);
-          const cell = sheet.cells?.[key] || (importedValidation ? ensureCellModel(sheet, row, col) : null);
-          if (!cell?.validation && !importedValidation) continue;
+  const deferred = [];
+  for (const detail of details) {
+    const remaining = [];
+    for (const range of detail.ranges || []) {
+      const { top, left, bottom, right } = range;
+      if (top > sheet.rowCount || left > sheet.colCount) {
+        remaining.push(range);
+        continue;
+      }
+      // Only the intersection belongs to the grid. Keep both disjoint outer strips for later.
+      const lastRow = Math.min(bottom, sheet.rowCount);
+      const lastCol = Math.min(right, sheet.colCount);
+      if (bottom > lastRow) remaining.push({ top: lastRow + 1, left, bottom, right });
+      if (right > lastCol) remaining.push({ top, left: lastCol + 1, bottom: lastRow, right });
+      for (let row = top; row <= lastRow; row += 1) {
+        for (let col = left; col <= lastCol; col += 1) {
+          const cell = sheet.cells[cellKey(row, col)] || (detail.validation && ensureCellModel(sheet, row, col));
+          if (!cell?.validation && !detail.validation) continue;
           cell.validation = {
-            ...(cell.validation || {}),
-            ...(importedValidation || {}),
-            ...(hasShowDropDown ? { showDropDown: detail.showDropDown !== false } : {}),
-            ...(hasImeMode ? { imeMode: detail.imeMode } : {}),
+            ...cell.validation,
+            ...detail.validation,
+            ...(detail.showDropDown != null ? { showDropDown: detail.showDropDown } : {}),
+            ...(detail.imeMode ? { imeMode: detail.imeMode } : {}),
           };
         }
       }
-    });
-  });
+    }
+    if (remaining.length) deferred.push({ ...detail, ranges: remaining });
+  }
+  if (deferred.length) sheet.deferredDataValidations = deferred;
+  else delete sheet.deferredDataValidations;
 }
 
 
@@ -3481,7 +3475,6 @@ export {
   imageMimeType,
   importedAutoFilterCellValue,
   importedAutoFilterNumericRows,
-  importedDataValidationDimensions,
   importedTableDimensions,
   importedTableStylePalette,
   inferWorkbookWidthMetrics,

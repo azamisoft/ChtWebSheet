@@ -402,7 +402,7 @@ function applyWorksheetCellHyperlinkToModel(sheet, hyperlink) {
 
 function dataValidationRuleFromXmlElement(node, options = {}) {
   const type = String(node?.getAttribute("type") || "any").trim() || "any";
-  if (type === "none" || type === "any") return null;
+  if (type === "none") return null;
   const formula1 = normalizeDataValidationFormulaFromXml(type, String(firstXmlChild(node, "formula1")?.textContent || "").trim());
   const formula2 = normalizeDataValidationFormulaFromXml(type, String(firstXmlChild(node, "formula2")?.textContent || "").trim());
   const base = {

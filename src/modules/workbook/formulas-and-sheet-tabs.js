@@ -13,7 +13,6 @@ import {
   FORMULA_ENGINE_STATIC_CELL_INFO_TYPES,
   HYPERFORMULA_LICENSE,
   HyperFormula,
-  IMPORTED_RANGE_DIMENSION_EXPANSION_CELL_LIMIT,
   INDEXED_COLORS,
   SHEET_INSERT_TEMPLATES,
   SPECIAL_SHEET_INSERT_META,
@@ -547,16 +546,6 @@ function findWorksheetDimensions(worksheet, merges, widthMetrics = defaultWorkbo
     row.eachCell({ includeEmpty: false }, (_cell, colNumber) => {
       cols = Math.max(cols, colNumber);
     });
-  });
-
-  Object.keys(worksheet.dataValidations?.model || {}).forEach((ref) => {
-    const range = decodeRange(String(ref || "").replace(/\$/g, ""));
-    if (!range) return;
-    const rangeRows = Math.max(0, (Number(range.bottom) || 0) - (Number(range.top) || 0) + 1);
-    const rangeCols = Math.max(0, (Number(range.right) || 0) - (Number(range.left) || 0) + 1);
-    if (rangeRows * rangeCols > IMPORTED_RANGE_DIMENSION_EXPANSION_CELL_LIMIT) return;
-    rows = Math.max(rows, range.bottom);
-    cols = Math.max(cols, range.right);
   });
 
   merges.forEach((merge) => {

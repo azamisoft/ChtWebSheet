@@ -6,6 +6,8 @@ import {
   DEFAULT_CELL_CSS_KEYS,
   EMPTY_CELL_BORDERS,
   EMPTY_CELL_CSS,
+  EXCEL_MAX_ROWS,
+  EXCEL_MAX_COLS,
   HISTORY_LIMIT,
   INFERRED_DEFAULT_CELL_CSS_KEYS,
   LOCALIZED_DEFAULT_CELL_CSS_KEYS,
@@ -161,6 +163,7 @@ import {
   copyTableCellFormatting,
   ensureTableColumnMetadata,
   normalizeOutlineSettings,
+  applyImportedDataValidationDetails,
   refreshImportedTableVisualStyleForTableMutation,
   syncTableColumnNamesFromHeaders,
   tableAutoFilterRange,
@@ -1090,7 +1093,7 @@ function applyDeleteOperation(sheet, range, option) {
 function insertCellsShiftRight(sheet, range) {
   const amount = range.right - range.left + 1;
   const oldColCount = sheet.colCount;
-  ensureSheetSize(sheet, sheet.rowCount, oldColCount + amount);
+  ensureSheetSize(sheet, sheet.rowCount, oldColCount + amount, { shiftingCells: true });
   for (let row = range.top; row <= range.bottom; row += 1) {
     for (let col = oldColCount; col >= range.left; col -= 1) {
       writeClonedCellContent(sheet, row, col + amount, cloneCellModel(sheet.cells[cellKey(row, col)] || null));
@@ -1100,6 +1103,7 @@ function insertCellsShiftRight(sheet, range) {
     }
   }
   removeIntersectingMerges(sheet, { ...range, right: oldColCount + amount });
+  shiftDeferredValidations(sheet, "col", range.left, amount, "insert", range.top, range.bottom);
 }
 
 
@@ -1107,7 +1111,7 @@ function insertCellsShiftRight(sheet, range) {
 function insertCellsShiftDown(sheet, range) {
   const amount = range.bottom - range.top + 1;
   const oldRowCount = sheet.rowCount;
-  ensureSheetSize(sheet, oldRowCount + amount, sheet.colCount);
+  ensureSheetSize(sheet, oldRowCount + amount, sheet.colCount, { shiftingCells: true });
   for (let col = range.left; col <= range.right; col += 1) {
     for (let row = oldRowCount; row >= range.top; row -= 1) {
       writeClonedCellContent(sheet, row + amount, col, cloneCellModel(sheet.cells[cellKey(row, col)] || null));
@@ -1117,6 +1121,7 @@ function insertCellsShiftDown(sheet, range) {
     }
   }
   removeIntersectingMerges(sheet, { ...range, bottom: oldRowCount + amount });
+  shiftDeferredValidations(sheet, "row", range.top, amount, "insert", range.left, range.right);
 }
 
 
@@ -1133,6 +1138,7 @@ function deleteCellsShiftLeft(sheet, range) {
     }
   }
   removeIntersectingMerges(sheet, { ...range, right: oldColCount });
+  shiftDeferredValidations(sheet, "col", range.left, amount, "delete", range.top, range.bottom);
 }
 
 
@@ -1149,6 +1155,7 @@ function deleteCellsShiftUp(sheet, range) {
     }
   }
   removeIntersectingMerges(sheet, { ...range, bottom: oldRowCount });
+  shiftDeferredValidations(sheet, "row", range.top, amount, "delete", range.left, range.right);
 }
 
 
@@ -1156,7 +1163,7 @@ function deleteCellsShiftUp(sheet, range) {
 function insertEntireRows(sheet, startRow, amount) {
   const oldRowCount = sheet.rowCount;
   const colCount = sheet.colCount;
-  ensureSheetSize(sheet, oldRowCount + amount, colCount);
+  ensureSheetSize(sheet, oldRowCount + amount, colCount, { shiftingCells: true });
   for (let row = oldRowCount; row >= startRow; row -= 1) {
     for (let col = 1; col <= colCount; col += 1) {
       writeClonedCellContent(sheet, row + amount, col, cloneCellModel(sheet.cells[cellKey(row, col)] || null));
@@ -1173,6 +1180,7 @@ function insertEntireRows(sheet, startRow, amount) {
   shiftTablesForRows(sheet, startRow, amount, "insert");
   shiftSheetFilterAndSortForRows(sheet, startRow, amount, "insert");
   syncSheetAutoFilterToTableRangesAfterStructureChange(sheet);
+  shiftDeferredValidations(sheet, "row", startRow, amount, "insert");
 }
 
 
@@ -1180,7 +1188,7 @@ function insertEntireRows(sheet, startRow, amount) {
 function insertEntireColumns(sheet, startCol, amount) {
   const oldColCount = sheet.colCount;
   const rowCount = sheet.rowCount;
-  ensureSheetSize(sheet, rowCount, oldColCount + amount);
+  ensureSheetSize(sheet, rowCount, oldColCount + amount, { shiftingCells: true });
   for (let col = oldColCount; col >= startCol; col -= 1) {
     for (let row = 1; row <= rowCount; row += 1) {
       writeClonedCellContent(sheet, row, col + amount, cloneCellModel(sheet.cells[cellKey(row, col)] || null));
@@ -1197,6 +1205,7 @@ function insertEntireColumns(sheet, startCol, amount) {
   shiftTablesForColumns(sheet, startCol, amount, "insert");
   shiftSheetFilterAndSortForColumns(sheet, startCol, amount, "insert");
   syncSheetAutoFilterToTableRangesAfterStructureChange(sheet);
+  shiftDeferredValidations(sheet, "col", startCol, amount, "insert");
 }
 
 
@@ -1222,6 +1231,7 @@ function deleteEntireRows(sheet, startRow, amount) {
   shiftTablesForRows(sheet, startRow, actualAmount, "delete");
   shiftSheetFilterAndSortForRows(sheet, startRow, actualAmount, "delete");
   syncSheetAutoFilterToTableRangesAfterStructureChange(sheet);
+  shiftDeferredValidations(sheet, "row", startRow, actualAmount, "delete");
 }
 
 
@@ -1247,6 +1257,7 @@ function deleteEntireColumns(sheet, startCol, amount) {
   shiftTablesForColumns(sheet, startCol, actualAmount, "delete");
   shiftSheetFilterAndSortForColumns(sheet, startCol, actualAmount, "delete");
   syncSheetAutoFilterToTableRangesAfterStructureChange(sheet);
+  shiftDeferredValidations(sheet, "col", startCol, actualAmount, "delete");
 }
 
 
@@ -1311,6 +1322,32 @@ function shiftMergesForColumnDelete(sheet, startCol, amount) {
       return { ...merge, left: startCol, right: merge.right - amount };
     })
     .filter((merge) => merge && merge.top <= merge.bottom && merge.left <= merge.right);
+}
+
+
+
+function shiftDeferredValidations(sheet, axis, start, amount, action, bandStart = 1, bandEnd = Infinity) {
+  if (!sheet.deferredDataValidations?.length) return;
+  const rows = axis === "row";
+  const low = rows ? "left" : "top";
+  const high = rows ? "right" : "bottom";
+  const shift = rows ? shiftRangeRows : shiftRangeColumns;
+  for (const detail of sheet.deferredDataValidations) {
+    detail.ranges = detail.ranges.flatMap((range) => {
+      const from = Math.max(range[low], bandStart);
+      const to = Math.min(range[high], bandEnd);
+      if (from > to) return [range];
+      const result = [];
+      if (range[low] < from) result.push({ ...range, [high]: from - 1 });
+      if (range[high] > to) result.push({ ...range, [low]: to + 1 });
+      const moved = shift({ ...range, [low]: from, [high]: to }, start, amount, action);
+      if (moved && moved.top <= EXCEL_MAX_ROWS && moved.left <= EXCEL_MAX_COLS) {
+        result.push({ ...moved, bottom: Math.min(moved.bottom, EXCEL_MAX_ROWS), right: Math.min(moved.right, EXCEL_MAX_COLS) });
+      }
+      return result;
+    });
+  }
+  applyImportedDataValidationDetails(sheet, sheet.deferredDataValidations);
 }
 
 
@@ -2026,6 +2063,7 @@ function captureSheetForHistory(sheet) {
     headerFooter: cloneJsonLikeValue(sheet.headerFooter),
     protection: cloneJsonLikeValue(sheet.protection),
     cells: Object.fromEntries(Object.entries(sheet.cells || {}).map(([key, cell]) => [key, cloneCellModel(cell)])),
+    deferredDataValidations: cloneJsonLikeValue(sheet.deferredDataValidations || []),
     styleRanges: cloneJsonLikeValue(sheet.styleRanges || []),
     hfData: [],
   };
@@ -2085,6 +2123,7 @@ function restoreSheetFromHistory(sheet, snapshot) {
   sheet.sortState = cloneJsonLikeValue(snapshot.sortState);
   sheet.headerFooter = normalizedHeaderFooterSettings(snapshot.headerFooter, sheet.pageLayout);
   sheet.protection = cloneJsonLikeValue(snapshot.protection);
+  sheet.deferredDataValidations = cloneJsonLikeValue(snapshot.deferredDataValidations || []);
   sheet.styleRanges = cloneJsonLikeValue(snapshot.styleRanges || []);
   normalizeSheetStyleRanges(sheet);
   const cells = Object.fromEntries(Object.entries(snapshot.cells || {}).map(([key, cell]) => [key, cloneCellModel(cell)]));

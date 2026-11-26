@@ -1089,10 +1089,10 @@ async function patchExcelWorksheetDataValidations(zip, model) {
 
 function excelWorksheetDataValidationsXml(sheet) {
   const groups = excelWorksheetDataValidationGroups(sheet);
-  if (!groups.length) return "";
-  const items = groups
-    .map((group) => excelDataValidationXml(group.descriptor, excelSqrefFromCells(group.cells)))
-    .filter(Boolean);
+  const items = groups.map(({ descriptor, cells, ranges }) => {
+    const sqref = [excelSqrefFromCells(cells), ...ranges.map(rangeToLabel)].filter(Boolean).join(" ");
+    return excelDataValidationXml(descriptor, sqref);
+  }).filter(Boolean);
   return items.length ? `<dataValidations count="${items.length}">${items.join("")}</dataValidations>` : "";
 }
 
@@ -1100,14 +1100,21 @@ function excelWorksheetDataValidationsXml(sheet) {
 
 function excelWorksheetDataValidationGroups(sheet) {
   const groups = new Map();
-  Object.values(sheet?.cells || {}).forEach((cell) => {
-    if (!cell?.validation || !Number.isFinite(Number(cell.row)) || !Number.isFinite(Number(cell.col))) return;
-    const descriptor = excelDataValidationXmlDescriptor(cell.validation);
-    if (!descriptor) return;
+  function groupFor(validation) {
+    const descriptor = excelDataValidationXmlDescriptor(validation);
+    if (!descriptor) return null;
     const key = JSON.stringify(descriptor);
-    if (!groups.has(key)) groups.set(key, { descriptor, cells: [] });
-    groups.get(key).cells.push({ row: Number(cell.row), col: Number(cell.col) });
-  });
+    if (!groups.has(key)) groups.set(key, { descriptor, cells: [], ranges: [] });
+    return groups.get(key);
+  }
+  for (const cell of Object.values(sheet?.cells || {})) {
+    if (cell?.validation) groupFor(cell.validation)?.cells.push({ row: cell.row, col: cell.col });
+  }
+  for (const detail of sheet?.deferredDataValidations || []) {
+    if (!detail.validation) continue;
+    const group = groupFor(detail.validation);
+    if (group) group.ranges = group.ranges.concat(detail.ranges);
+  }
   return [...groups.values()].sort((left, right) => {
     const a = left.cells[0] || {};
     const b = right.cells[0] || {};
@@ -1119,13 +1126,13 @@ function excelWorksheetDataValidationGroups(sheet) {
 
 function excelDataValidationXmlDescriptor(validation = {}) {
   const type = validation.type || "custom";
-  if (!type || type === "any" || type === "none") return null;
+  if (type === "none") return null;
   const formulas = type === "list"
     ? [excelDataValidationListFormula(validation)].filter((formula) => formula !== "")
     : excelDataValidationFormulae(validation).map((formula) => excelDataValidationFormulaXmlText(formula));
   const attrs = {
-    type,
-    ...(type !== "list" && type !== "custom" && validation.operator ? { operator: validation.operator } : {}),
+    type: type === "any" ? "" : type,
+    ...(type !== "any" && type !== "list" && type !== "custom" && validation.operator ? { operator: validation.operator } : {}),
     allowBlank: validation.allowBlank === true ? "1" : "",
     showInputMessage: validation.showInputMessage === true ? "1" : "",
     showErrorMessage: validation.showErrorMessage !== false ? "1" : "0",

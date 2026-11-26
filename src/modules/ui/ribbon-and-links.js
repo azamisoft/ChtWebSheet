@@ -331,6 +331,7 @@ import {
   showUnsavedWorkbookReplacementMessage,
 } from "../workbook/startup-and-loading.js";
 import {
+  applyImportedDataValidationDetails,
   validationDefinedNameFromFormulaText,
   validationReferenceFromFormula,
 } from "../workbook/tables-and-validation.js";
@@ -1271,16 +1272,16 @@ function resizeActiveSheetForScroll({ allowExtend = true, allowTrim = true } = {
 
 
 
-function ensureSheetSize(sheet, minRows, minCols) {
+function ensureSheetSize(sheet, minRows, minCols, options) {
   const addRows = Math.max(0, minRows - sheet.rowCount);
   const addCols = Math.max(0, minCols - sheet.colCount);
   if (!addRows && !addCols) return;
-  extendSheet(sheet, addRows, addCols);
+  extendSheet(sheet, addRows, addCols, options);
 }
 
 
 
-function extendSheet(sheet, addRows, addCols) {
+function extendSheet(sheet, addRows, addCols, options = {}) {
   const rowsToAdd = Math.max(0, addRows);
   const colsToAdd = Math.max(0, addCols);
   if (!rowsToAdd && !colsToAdd) return;
@@ -1301,6 +1302,7 @@ function extendSheet(sheet, addRows, addCols) {
 
   sheet.rowCount += rowsToAdd;
   sheet.colCount += colsToAdd;
+  if (!options.shiftingCells) applyImportedDataValidationDetails(sheet, sheet.deferredDataValidations);
   sheet.hfData = [];
 
   if (!formulaSheetExtended) {

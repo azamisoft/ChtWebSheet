@@ -539,7 +539,7 @@ const PERSISTENCE_SAVE_DEBOUNCE_MS = 1500;
 const PERSISTENCE_IDLE_TIMEOUT_MS = 3000;
 
 
-const EXCELJS_IMPORT_IGNORE_NODES = ["drawing", "picture", "tableParts"];
+const EXCELJS_IMPORT_IGNORE_NODES = ["drawing", "picture", "tableParts", "dataValidations"];
 
 
 const DEFAULT_MACRO_SECURITY_LEVEL = "disableWithNotification";
@@ -4349,7 +4349,6 @@ const INDEXED_COLORS = {
 
 
 
-const IMPORTED_RANGE_DIMENSION_EXPANSION_CELL_LIMIT = 20000;
 
 
 
@@ -7247,7 +7246,6 @@ export {
   Highlighter,
   HyperFormula,
   IMAGE_RENDER_BUFFER_PX,
-  IMPORTED_RANGE_DIMENSION_EXPANSION_CELL_LIMIT,
   INDEXED_COLORS,
   INFERRED_DEFAULT_CELL_CSS_KEYS,
   INSERT_FUNCTION_CATEGORY_ORDER,

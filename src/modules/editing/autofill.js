@@ -2084,6 +2084,13 @@ function applyWorkbookReferenceShiftForStructureChange(context) {
   if (!model || !targetSheet) return false;
   let changed = false;
   (model.sheets || []).forEach((sheet, sheetIndex) => {
+    for (const detail of sheet.deferredDataValidations || []) {
+      const validation = shiftValidationReferencesForStructureChange(detail.validation, context, sheetIndex);
+      if (validation !== detail.validation) {
+        detail.validation = validation;
+        changed = true;
+      }
+    }
     Object.entries(sheet.cells || {}).forEach(([key, cell]) => {
       if (!cell) return;
       let cellChanged = false;
